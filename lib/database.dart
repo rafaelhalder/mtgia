@@ -56,4 +56,12 @@ class Database {
     _connected = true;
     print('Conectado ao PostgreSQL com sucesso!');
   }
+
+  /// Fecha a conexão com o banco de dados.
+  Future<void> close() async {
+    if (!_connected) return;
+    await _connection.close();
+    _connected = false;
+    print('Conexão com o PostgreSQL fechada.');
+  }
 }

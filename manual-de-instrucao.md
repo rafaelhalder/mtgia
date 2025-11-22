@@ -252,6 +252,249 @@ Permitir que um usuário autenticado crie um novo deck.
   }
   ```
 
+### 5.5. Rota de Busca de Regras (`GET /rules`)
+
+**Local:** `routes/rules/index.dart`
+
+**Objetivo:**
+Permitir a busca textual nas regras oficiais do Magic: The Gathering.
+
+**Lógica e Padrões:**
+1.  **Busca Textual (ILIKE):** Utiliza o operador `ILIKE` do PostgreSQL para realizar buscas case-insensitive (ignora maiúsculas/minúsculas) tanto no título (número da regra) quanto na descrição.
+2.  **Paginação Simples:** Utiliza o parâmetro `limit` para restringir o número de resultados retornados, evitando sobrecarga.
+3.  **Sem Autenticação:** Esta rota é pública, pois as regras do jogo são de domínio público e essenciais para qualquer usuário.
+
+**Exemplo de Uso:**
+- **Método:** `GET`
+- **URL:** `http://localhost:8080/rules?q=trample&limit=5`
+- **Resposta:** Retorna uma lista JSON com as regras que contêm a palavra "trample".
+
+### 5.6. Rota de Análise Matemática (`GET /decks/<id>/analysis`)
+
+**Local:** `routes/decks/[id]/analysis/index.dart`
+
+**Objetivo:**
+Fornecer uma análise determinística e estatística do deck (Módulo 1 da IA).
+
+**Lógica e Padrões:**
+1.  **Cálculo de Curva de Mana:** Itera sobre todas as cartas, faz o parse do custo de mana (ex: `{2}{U}`) e conta a distribuição de Custo de Mana Convertido (CMC).
+2.  **Distribuição de Cores:** Conta a frequência de cada símbolo de mana (W, U, B, R, G, C) para ajudar no ajuste da base de mana.
+3.  **Validação de Legalidade:** Verifica cada carta contra a tabela `card_legalities` para o formato do deck. Retorna uma lista de cartas ilegais ou banidas.
+
+**Exemplo de Uso:**
+- **Método:** `GET`
+- **URL:** `http://localhost:8080/decks/UUID-DO-DECK/analysis`
+- **Resposta:** JSON contendo `mana_curve`, `color_distribution` e `legality`.
+
+### 5.7. Rota de Recomendações com IA (`POST /decks/<id>/recommendations`)
+
+**Local:** `routes/decks/[id]/recommendations/index.dart`
+
+**Objetivo:**
+Usar Inteligência Artificial Generativa (OpenAI GPT) para atuar como um "Consultor Criativo" (Módulo 2 da IA).
+
+**Lógica e Padrões:**
+1.  **Construção de Contexto:** Busca o nome, descrição e a lista completa de cartas do deck no banco de dados.
+2.  **Engenharia de Prompt:** Monta um prompt detalhado para o LLM, instruindo-o a agir como um especialista em Magic e pedindo uma saída estritamente em JSON.
+3.  **Integração OpenAI:** Envia o prompt para a API `chat/completions` e processa a resposta.
+4.  **Output Estruturado:** A IA retorna:
+    -   `suggestions`: Lista de cartas para adicionar.
+    -   `cuts`: Lista de cartas para remover.
+    -   `power_level`: Nota de 1 a 10.
+    -   `analysis`: Texto explicativo.
+
+### 5.8. Rota de Importação de Decks (`POST /import`)
+
+**Local:** `routes/import/index.dart`
+
+**Objetivo:**
+Permitir a importação rápida de decks a partir de listas de texto (comuns em sites como MTGGoldfish, TappedOut) ou arrays JSON.
+
+**Mudança de Rota:**
+Originalmente localizada em `/decks/import`, a rota foi movida para `/import` (na raiz) para evitar conflitos de roteamento com a rota dinâmica `/decks/[id]`. O Dart Frog prioriza rotas dinâmicas, o que fazia com que requisições para `/decks/import` fossem capturadas incorretamente pelo handler de ID.
+
+**Funcionalidades:**
+- **Suporte a Formatos Flexíveis:** Aceita tanto uma string única (lista de texto) quanto um array JSON de strings ou objetos.
+- **Detecção de Comandante:** Identifica o comandante através de:
+    - Campo JSON explícito: `"commander": "Nome da Carta"`
+    - Tags no texto: `[Commander]`, `*CMDR*`, `!Commander`
+- **Regex Robusto:** Utiliza uma expressão regular ajustada para capturar nomes de cartas mesmo quando seguidos por códigos de edição entre parênteses (padrão Archidekt/Moxfield).
+    - Regex: `r'^(\d+)x?\s+([^(]+)\s*(?:\(([\w\d]+)\))?.*$'`
+    - Captura: Quantidade, Nome (até o primeiro parêntese) e Set Code (opcional).
+
+**Exemplo de Payload Suportado:**
+```json
+{
+  "name": "Meu Deck",
+  "format": "commander",
+  "list": [
+    "1x Sol Ring (cmm)",
+    "1x Arcane Signet (cmm)",
+    "1x Atraxa, Praetors' Voice (2xm) *F* [Commander]"
+  ]
+}
+```
+
+### 3.7. Otimização de Performance e Fallback (`routes/import/index.dart`)
+
+**Problema:**
+A importação inicial era lenta (N+1 queries) e falhava em encontrar cartas duplas (Split Cards) ou com nomes ligeiramente diferentes no banco (ex: "Command Tower" vs "Command Tower // Command Tower").
+
+**Solução Implementada:**
+1.  **Batch Query (Leitura em Lote):** Em vez de buscar carta por carta, o sistema coleta todos os nomes e faz uma única consulta `SELECT ... WHERE name = ANY(@names)`.
+2.  **Índice de Banco:** Adicionado índice `idx_cards_lower_name` para acelerar buscas case-insensitive.
+3.  **Lógica de Fallback em 3 Níveis:**
+    *   *Nível 1:* Busca Exata (Case-insensitive).
+    *   *Nível 2:* Limpeza de Sufixos Numéricos (ex: "Forest 96" -> "Forest").
+    *   *Nível 3:* Split Cards (ex: Se busca "Command Tower" e falha, tenta encontrar "Command Tower // %").
+4.  **Bulk Insert (Escrita em Lote):** A inserção na tabela `deck_cards` agora é feita em um único comando SQL (`VALUES (...), (...), ...`), reduzindo o tempo de escrita de segundos para milissegundos.
+
+**Resultado:**
+Importação de decks de Commander (100 cartas) agora é praticamente instantânea e robusta contra variações de nome.
+
+### 3.8. Visualização de Decks (`routes/decks/[id]/index.dart`)
+
+**Funcionalidade:**
+A rota `GET /decks/[id]` foi aprimorada para entregar os dados prontos para visualização no frontend, evitando processamento pesado no cliente.
+
+**Estrutura da Resposta:**
+```json
+{
+  "id": "...",
+  "name": "Nome do Deck",
+  "stats": {
+    "total_cards": 100,
+    "unique_cards": 65,
+    "mana_curve": { "1": 5, "2": 12, "3": 8, "4": 4, "7+": 2 },
+    "color_distribution": { "W": 10, "U": 15, "B": 20, "R": 0, "G": 12 }
+  },
+  "commander": [ { ...carta... } ],
+  "main_board": {
+    "Creature": [ ... ],
+    "Land": [ ... ],
+    "Instant": [ ... ],
+    "Artifact": [ ... ],
+    "Enchantment": [ ... ],
+    "Planeswalker": [ ... ]
+  },
+  "all_cards_flat": [ ... ]
+}
+```
+
+**Lógica de Agrupamento:**
+- **Comandante:** Separado automaticamente baseado na flag `is_commander`.
+- **Main Board:** Agrupado por `type_line` (prioridade: Land > Creature > Planeswalker > Artifact > Enchantment > Instant > Sorcery).
+- **Estatísticas:**
+    - *Curva de Mana:* Calculada somando os símbolos de mana no custo (ex: `{1}{U}{U}` = 3).
+    - *Distribuição de Cores:* Contagem de símbolos coloridos em todas as cartas.
+
+### 3.9. Análise e Legalidade (`routes/decks/[id]/analysis/index.dart`)
+
+**Objetivo:**
+Validar se um deck segue as regras estritas do formato (ex: Commander) e fornecer feedback imediato ao usuário sobre problemas (cartas banidas, tamanho incorreto, cópias excessivas).
+
+**Endpoint:** `GET /decks/[id]/analysis`
+
+**Lógica de Validação Implementada:**
+1.  **Tamanho do Deck:** Verifica se o deck tem o número mínimo/exato de cartas (ex: 100 para Commander).
+2.  **Limite de Cópias (Singleton):**
+    - Regra: Em Commander, apenas 1 cópia de cada carta é permitida.
+    - Exceção: Terrenos Básicos (Plains, Island, Swamp, Mountain, Forest, Wastes e suas variantes nevadas) podem ter qualquer quantidade.
+3.  **Cartas Banidas:**
+    - Consulta a tabela `card_legalities` para verificar o status de cada carta no formato do deck.
+    - Reporta erro se `status == 'banned'`.
+    - Reporta erro se `status == 'restricted'` e quantidade > 1.
+
+**Otimização de Performance (Batch Query):**
+Em vez de fazer 100 consultas ao banco para verificar a legalidade de cada carta (o problema "N+1"), fazemos uma única consulta usando o operador `ANY`:
+```sql
+SELECT card_id, status FROM card_legalities 
+WHERE format = @format AND card_id = ANY(@ids)
+```
+Isso reduz drasticamente o tempo de resposta da análise.
+
+**Resposta da API:**
+Retorna um objeto JSON contendo:
+- `is_valid`: Booleano indicando se o deck passou em todos os testes.
+- `issues`: Lista de problemas encontrados (ex: `{"type": "error", "message": "\"Sol Ring\" is BANNED in standard."}`).
+- `mana_curve` e `color_distribution`: Recalculados para uso em gráficos de análise.
+
+### 3.10. Análise de Consistência (O "Técnico Virtual")
+
+**Objetivo:**
+Ir além das regras e ajudar o usuário a ganhar jogos, apontando falhas matemáticas na construção do deck.
+
+**Métricas Implementadas:**
+1.  **Custo de Mana Médio (Avg CMC):**
+    - Calcula a média de custo de todas as cartas não-terreno.
+    - *Por que importa?* Define a velocidade do deck.
+2.  **Recomendação de Terrenos (Land Count Verdict):**
+    - Usa uma fórmula heurística baseada em Frank Karsten: `Lands = 31 + (AvgCMC * 2.5)` (ajustado para Commander).
+    - *Exemplo:* Se o deck tem média 3.0, precisa de ~38 terrenos. Se tiver 30, o sistema emite um **Aviso (Warning)** sugerindo adicionar mais.
+    - *Diferencial:* Não impede o uso do deck (é um warning, não erro), mas educa o usuário sobre probabilidade.
+3.  **Análise de Composição (Vegetables):**
+    - Verifica se o deck tem os "vegetais" necessários para funcionar (Ramp, Draw, Removal).
+    - *Heurística:* Busca palavras-chave no `oracle_text` (ex: "draw a card", "add {", "destroy target").
+    - *Metas (Commander):*
+        - Ramp: 10+
+        - Draw: 10+
+        - Removal: 8+
+        - Board Wipes: 2+
+    - *Aviso:* "Você tem apenas 2 cartas de compra. Recomendamos pelo menos 10 para não ficar sem mão."
+
+### 3.11. Crawler de Meta Decks (`bin/fetch_meta.dart`)
+
+**Objetivo:**
+Criar uma base de dados de decks competitivos (Meta) para servir de referência para a IA.
+
+**Fonte de Dados:**
+- **MTGTop8:** Escolhido pela consistência, organização por arquétipos e facilidade de exportação em texto.
+
+**Funcionamento do Script:**
+1.  Acessa a página do formato (ex: `mtgtop8.com/format?f=EDH`).
+2.  Identifica os últimos eventos (torneios).
+3.  Entra em cada evento e lista os decks do Top 8.
+4.  Usa o endpoint de exportação (`mtgtop8.com/mtgo?d=ID`) para baixar a lista de cartas em texto puro.
+5.  Salva na tabela `meta_decks` evitando duplicatas (`source_url` único).
+
+**Como Executar:**
+```bash
+# Para buscar decks de Commander (EDH)
+dart run bin/fetch_meta.dart EDH
+
+# Para buscar decks de Standard (ST)
+dart run bin/fetch_meta.dart ST
+
+# Para buscar TODOS os formatos (ST, MO, LE, VI, EDH, PAU, PI)
+dart run bin/fetch_meta.dart ALL
+```
+
+**Formatos Suportados:**
+- `ST`: Standard
+- `MO`: Modern
+- `LE`: Legacy
+- `VI`: Vintage
+- `EDH`: Commander
+- `PAU`: Pauper
+- `PI`: Pioneer
+
+**Infraestrutura:**
+Este script foi desenhado para rodar como uma **Cron Job** (tarefa agendada) no servidor de produção (ex: Digital Ocean), mantendo o banco sempre atualizado com o que está ganhando no mundo real.
+
+### 3.12. Comparação com o Meta (Meta Insights)
+
+**Objetivo:**
+Usar os dados coletados pelo Crawler para dar conselhos práticos ao usuário.
+
+**Algoritmo de Similaridade:**
+1.  Busca os últimos 50 decks do formato no banco `meta_decks`.
+2.  Compara as cartas do usuário com cada deck do meta usando o **Índice de Jaccard** (Interseção / União).
+3.  Identifica o arquétipo mais próximo (ex: "Seu deck é 45% similar ao 'Rakdos Midrange'").
+4.  **Sugestão de Staples:** Lista as cartas que estão no deck do Meta mas faltam no deck do usuário.
+
+**Resultado:**
+O usuário recebe: "Seu deck parece um 'Rakdos Midrange'. A maioria desses decks usa 'Fable of the Mirror-Breaker', mas você não tem. Considere adicionar."
+
 ---
 
 ## 6. Guia para Desenvolvimento Futuro

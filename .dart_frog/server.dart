@@ -9,10 +9,16 @@ import 'package:dart_frog/dart_frog.dart';
 import '../routes/index.dart' as index;
 import '../routes/users/register.dart' as users_register;
 import '../routes/users/login.dart' as users_login;
+import '../routes/rules/index.dart' as rules_index;
+import '../routes/import/index.dart' as import_index;
 import '../routes/decks/index.dart' as decks_index;
+import '../routes/decks/[id]/index.dart' as decks_$id_index;
+import '../routes/decks/[id]/recommendations/index.dart' as decks_$id_recommendations_index;
+import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/cards/index.dart' as cards_index;
 
 import '../routes/_middleware.dart' as middleware;
+import '../routes/import/_middleware.dart' as import_middleware;
 import '../routes/decks/_middleware.dart' as decks_middleware;
 
 void main() async {
@@ -30,7 +36,12 @@ Handler buildRootHandler() {
   final pipeline = const Pipeline().addMiddleware(middleware.middleware);
   final router = Router()
     ..mount('/cards', (context) => buildCardsHandler()(context))
+    ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
+    ..mount('/decks/<id>/recommendations', (context,id,) => buildDecks$idRecommendationsHandler(id,)(context))
+    ..mount('/decks/<id>', (context,id,) => buildDecks$idHandler(id,)(context))
     ..mount('/decks', (context) => buildDecksHandler()(context))
+    ..mount('/import', (context) => buildImportHandler()(context))
+    ..mount('/rules', (context) => buildRulesHandler()(context))
     ..mount('/users', (context) => buildUsersHandler()(context))
     ..mount('/', (context) => buildHandler()(context));
   return pipeline.addHandler(router);
@@ -43,10 +54,45 @@ Handler buildCardsHandler() {
   return pipeline.addHandler(router);
 }
 
+Handler buildDecks$idAnalysisHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => decks_$id_analysis_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildDecks$idRecommendationsHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => decks_$id_recommendations_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildDecks$idHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => decks_$id_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
 Handler buildDecksHandler() {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
     ..all('/', (context) => decks_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildImportHandler() {
+  final pipeline = const Pipeline().addMiddleware(import_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => import_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildRulesHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => rules_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

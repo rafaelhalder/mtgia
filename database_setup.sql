@@ -99,3 +99,14 @@ CREATE TABLE IF NOT EXISTS battle_simulations (
     game_log JSONB, -- Log completo passo-a-passo da partida (crucial para RL)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 9. Tabela de Decks do Meta (Crawler)
+-- Armazena decks competitivos importados de sites externos (MTGTop8, MTGO)
+CREATE TABLE IF NOT EXISTS meta_decks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    format TEXT NOT NULL, -- 'standard', 'commander', etc.
+    archetype TEXT, -- Ex: 'Rakdos Midrange', 'Mono Red Aggro'
+    source_url TEXT UNIQUE NOT NULL, -- URL de origem para evitar duplicatas
+    card_list TEXT NOT NULL, -- Lista de cartas em texto puro (formato de importação)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

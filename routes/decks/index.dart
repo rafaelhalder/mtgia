@@ -9,11 +9,33 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   // Futuramente, podemos adicionar o método GET para listar os decks do usuário
-  // if (context.request.method == HttpMethod.get) {
-  //   return _listDecks(context);
-  // }
+  if (context.request.method == HttpMethod.get) {
+    return _listDecks(context);
+  }
 
   return Response(statusCode: HttpStatus.methodNotAllowed);
+}
+
+/// Lista os decks do usuário autenticado.
+Future<Response> _listDecks(RequestContext context) async {
+  final userId = context.read<String>();
+  final conn = context.read<Connection>();
+
+  try {
+    final result = await conn.execute(
+      Sql.named('SELECT id, name, format, description, synergy_score, created_at FROM decks WHERE user_id = @userId ORDER BY created_at DESC'),
+      parameters: {'userId': userId},
+    );
+
+    final decks = result.map((row) => row.toColumnMap()).toList();
+
+    return Response.json(body: decks);
+  } catch (e) {
+    return Response.json(
+      statusCode: HttpStatus.internalServerError,
+      body: {'error': 'Failed to list decks: $e'},
+    );
+  }
 }
 
 /// Cria um novo deck para o usuário autenticado.

@@ -120,3 +120,35 @@ O `manual-de-instrucao.md` deve conter:
 - **DB Driver:** `postgres` (v3.x).
 - **Env:** `dotenv`.
 - **Http:** `http` (para requisições externas).
+
+## 6. Roadmap de Implementação da IA (MVP)
+
+Para transformar o projeto em um "Deck Builder Inteligente", seguiremos este roteiro de implementação, dividindo a IA em três módulos de complexidade crescente.
+
+### Módulo 1: O Analista Matemático (Algoritmos Heurísticos)
+*Objetivo:* Fornecer feedback imediato e determinístico sem custos de API externa.
+1.  **Calculadora de Curva de Mana:** Analisar a distribuição de custos (CMC) e alertar se o deck está muito "pesado" ou "leve" para o formato.
+2.  **Distribuição de Cores (Devotion):** Comparar os símbolos de mana nas cartas com os terrenos disponíveis.
+    *   *Regra:* Se 50% dos símbolos são Pretos, mas apenas 20% dos terrenos geram mana Preta -> **Alerta de Consistência**.
+3.  **Validação de Formato:** Usar a tabela `card_legalities` para garantir que o deck é legal.
+
+### Módulo 2: O Consultor Criativo (LLM - OpenAI/Gemini)
+*Objetivo:* Usar Inteligência Artificial Generativa para tarefas criativas e de compreensão de linguagem natural.
+1.  **Gerador de Decks (Text-to-Deck):**
+    *   *Input:* "Quero um deck de Commander focado em ganhar vida e drenar oponentes, cores Orzhov."
+    *   *Processo:* O LLM recebe o prompt + um contexto das cartas mais populares/fortes dessas cores -> Retorna uma lista JSON de cartas.
+2.  **Analista de Sinergia (Synergy Score):**
+    *   *Input:* Lista completa do deck.
+    *   *Processo:* O LLM analisa as interações (ex: "Esta carta cria fichas" + "Esta carta dá +1/+1 para fichas") e gera um texto explicativo (`strengths`, `weaknesses`) e uma nota (`synergy_score`).
+3.  **Autocompletar Inteligente:**
+    *   *Input:* Deck com 80 cartas (faltam 20).
+    *   *Processo:* O LLM analisa o tema predominante e sugere as 20 melhores cartas para fechar a estratégia.
+
+### Módulo 3: O Simulador de Probabilidade (Monte Carlo Simplificado)
+*Objetivo:* Simular o desempenho do deck sem precisar implementar um motor de regras completo (que seria complexo demais).
+1.  **Simulador de "Goldfish" (Jogar Sozinho):**
+    *   Simular 1.000 mãos iniciais e os primeiros 5 turnos de compra.
+    *   *Métrica 1 (Zica/Flood):* Qual a % de mãos com 0, 1, 6 ou 7 terrenos?
+    *   *Métrica 2 (Curva):* Qual a % de chance de ter uma jogada válida no turno 1, 2, 3 e 4?
+2.  **Treinamento Futuro:**
+    *   Os resultados dessas simulações populam a tabela `battle_simulations`, criando um dataset para futuramente treinar uma IA que entenda "o que faz um deck ser consistente".
