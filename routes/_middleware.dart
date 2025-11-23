@@ -15,6 +15,7 @@ Handler middleware(Handler handler) {
     }
     
     // Fornece a conexão do banco de dados para todas as rotas filhas.
-    return handler.use(provider<Connection>((_) => _db.connection))(context);
+    // Agora injetamos o Pool, que é compatível com a interface Session/Connection para execuções simples
+    return handler.use(provider<Pool>((_) => _db.connection))(context);
   };
 }

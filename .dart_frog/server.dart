@@ -17,6 +17,8 @@ import '../routes/decks/[id]/simulate/index.dart' as decks_$id_simulate_index;
 import '../routes/decks/[id]/recommendations/index.dart' as decks_$id_recommendations_index;
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/cards/index.dart' as cards_index;
+import '../routes/auth/register.dart' as auth_register;
+import '../routes/auth/login.dart' as auth_login;
 import '../routes/ai/generate/index.dart' as ai_generate_index;
 
 import '../routes/_middleware.dart' as middleware;
@@ -39,6 +41,7 @@ Handler buildRootHandler() {
   final pipeline = const Pipeline().addMiddleware(middleware.middleware);
   final router = Router()
     ..mount('/ai/generate', (context) => buildAiGenerateHandler()(context))
+    ..mount('/auth', (context) => buildAuthHandler()(context))
     ..mount('/cards', (context) => buildCardsHandler()(context))
     ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
     ..mount('/decks/<id>/recommendations', (context,id,) => buildDecks$idRecommendationsHandler(id,)(context))
@@ -56,6 +59,13 @@ Handler buildAiGenerateHandler() {
   final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
   final router = Router()
     ..all('/', (context) => ai_generate_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAuthHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/register', (context) => auth_register.onRequest(context,))..all('/login', (context) => auth_login.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

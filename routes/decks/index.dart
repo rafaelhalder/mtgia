@@ -18,19 +18,49 @@ Future<Response> onRequest(RequestContext context) async {
 
 /// Lista os decks do usuário autenticado.
 Future<Response> _listDecks(RequestContext context) async {
-  final userId = context.read<String>();
-  final conn = context.read<Connection>();
-
+  print('📥 [GET /decks] Iniciando listagem de decks...');
+  
   try {
+    final userId = context.read<String>();
+    print('👤 User ID identificado: $userId');
+    
+    final conn = context.read<Pool>();
+    print('🔌 Conexão com banco obtida.');
+
+    print('🔍 Executando query SELECT...');
     final result = await conn.execute(
-      Sql.named('SELECT id, name, format, description, synergy_score, created_at FROM decks WHERE user_id = @userId ORDER BY created_at DESC'),
+      Sql.named('''
+        SELECT 
+          d.id, 
+          d.name, 
+          d.format, 
+          d.description, 
+          d.synergy_score, 
+          d.created_at,
+          COALESCE(SUM(dc.quantity), 0)::int as card_count
+        FROM decks d
+        LEFT JOIN deck_cards dc ON d.id = dc.deck_id
+        WHERE d.user_id = @userId
+        GROUP BY d.id
+        ORDER BY d.created_at DESC
+      '''),
       parameters: {'userId': userId},
     );
+    print('✅ Query executada. Encontrados ${result.length} decks.');
 
-    final decks = result.map((row) => row.toColumnMap()).toList();
+    final decks = result.map((row) {
+      final map = row.toColumnMap();
+      if (map['created_at'] is DateTime) {
+        map['created_at'] = (map['created_at'] as DateTime).toIso8601String();
+      }
+      return map;
+    }).toList();
 
+    print('📤 Retornando resposta JSON.');
     return Response.json(body: decks);
-  } catch (e) {
+  } catch (e, stackTrace) {
+    print('❌ Erro crítico em _listDecks: $e');
+    print('Stack trace: $stackTrace');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
       body: {'error': 'Failed to list decks: $e'},
@@ -47,16 +77,16 @@ Future<Response> _createDeck(RequestContext context) async {
   final body = await context.request.json();
   final name = body['name'] as String?;
   final format = body['format'] as String?;
-  final cards = body['cards'] as List?; // Ex: [{'card_id': 'uuid', 'quantity': 2}]
+  final cards = body['cards'] as List? ?? []; // Ex: [{'card_id': 'uuid', 'quantity': 2}]
 
-  if (name == null || format == null || cards == null || cards.isEmpty) {
+  if (name == null || format == null) {
     return Response.json(
       statusCode: HttpStatus.badRequest,
-      body: {'error': 'Fields name, format, and a non-empty cards list are required.'},
+      body: {'error': 'Fields name and format are required.'},
     );
   }
 
-  final conn = context.read<Connection>();
+  final conn = context.read<Pool>();
 
   // 3. Usar uma transação para garantir a consistência dos dados
   try {
@@ -74,7 +104,12 @@ Future<Response> _createDeck(RequestContext context) async {
         },
       );
 
-      final newDeckId = deckResult.first.toColumnMap()['id'];
+      final deckMap = deckResult.first.toColumnMap();
+      if (deckMap['created_at'] is DateTime) {
+        deckMap['created_at'] = (deckMap['created_at'] as DateTime).toIso8601String();
+      }
+
+      final newDeckId = deckMap['id'];
 
       // Prepara a inserção das cartas do deck
       final cardInsertSql = Sql.named(
@@ -96,7 +131,7 @@ Future<Response> _createDeck(RequestContext context) async {
         });
       }
       
-      return deckResult.first.toColumnMap();
+      return deckMap;
     });
 
     return Response.json(body: newDeck);

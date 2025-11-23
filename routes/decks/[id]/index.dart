@@ -22,7 +22,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 /// Deleta um deck.
 Future<Response> _deleteDeck(RequestContext context, String deckId) async {
   final userId = context.read<String>();
-  final conn = context.read<Connection>();
+  final conn = context.read<Pool>();
 
   try {
     // Usamos uma transação para garantir que o deck e suas cartas sejam removidos atomicamente.
@@ -62,7 +62,7 @@ Future<Response> _deleteDeck(RequestContext context, String deckId) async {
 /// Atualiza um deck existente (nome, formato, cartas, etc.).
 Future<Response> _updateDeck(RequestContext context, String deckId) async {
   final userId = context.read<String>();
-  final conn = context.read<Connection>();
+  final conn = context.read<Pool>();
 
   final body = await context.request.json();
   final name = body['name'] as String?;
@@ -107,13 +107,14 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 
         // Insere as novas cartas
         final cardInsertSql = Sql.named(
-          'INSERT INTO deck_cards (deck_id, card_id, quantity) VALUES (@deckId, @cardId, @quantity)',
+          'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES (@deckId, @cardId, @quantity, @isCommander)',
         );
         for (final card in cards) {
           await session.execute(cardInsertSql, parameters: {
             'deckId': deckId,
             'cardId': card['card_id'],
             'quantity': card['quantity'],
+            'isCommander': card['is_commander'] ?? false,
           });
         }
       }
@@ -123,7 +124,11 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
         Sql.named('SELECT * FROM decks WHERE id = @deckId'),
         parameters: {'deckId': deckId},
       );
-      return result.first.toColumnMap();
+      final deckMap = result.first.toColumnMap();
+      if (deckMap['created_at'] is DateTime) {
+        deckMap['created_at'] = (deckMap['created_at'] as DateTime).toIso8601String();
+      }
+      return deckMap;
     });
 
     return Response.json(body: {'success': true, 'deck': updatedDeck});
@@ -139,7 +144,7 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 /// Busca um deck específico pelo seu ID, incluindo a lista de cartas.
 Future<Response> _getDeckById(RequestContext context, String deckId) async {
   final userId = context.read<String>();
-  final conn = context.read<Connection>();
+  final conn = context.read<Pool>();
 
   try {
     // 1. Buscar os detalhes do deck e verificar se pertence ao usuário

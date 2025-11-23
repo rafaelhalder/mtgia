@@ -8,7 +8,7 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   // Acessa a conexão do banco de dados fornecida pelo middleware
-  final conn = context.read<Connection>();
+  final conn = context.read<Pool>();
 
   final params = context.request.uri.queryParameters;
   final nameFilter = params['name'];

@@ -3,9 +3,9 @@ import 'package:dotenv/dotenv.dart';
 
 /// Classe para gerenciar a conexão com o banco de dados PostgreSQL.
 ///
-/// Utiliza o padrão Singleton para garantir uma única instância da conexão.
+/// Utiliza o padrão Singleton para garantir uma única instância do Pool de conexões.
 class Database {
-  late final Connection _connection;
+  late final Pool _pool;
   bool _connected = false;
 
   // Singleton pattern
@@ -13,17 +13,17 @@ class Database {
   factory Database() => _instance;
   Database._internal();
 
-  /// Retorna a instância da conexão.
+  /// Retorna a instância do Pool.
   ///
   /// Se a conexão não estiver ativa, lança uma exceção.
-  Connection get connection {
+  Pool get connection {
     if (!_connected) {
       throw Exception('A conexão com o banco de dados não foi inicializada. Chame connect() primeiro.');
     }
-    return _connection;
+    return _pool;
   }
 
-  /// Carrega as variáveis de ambiente e estabelece a conexão com o banco.
+  /// Carrega as variáveis de ambiente e estabelece o Pool de conexões.
   Future<void> connect() async {
     if (_connected) return;
 
@@ -41,26 +41,30 @@ class Database {
       return;
     }
 
-    _connection = await Connection.open(
-      Endpoint(
-        host: host,
-        port: port,
-        database: database,
-        username: username,
-        password: password,
-      ),
-      settings: const ConnectionSettings(
-        sslMode: SslMode.disable, // Conforme solicitado
+    _pool = Pool.withEndpoints(
+      [
+        Endpoint(
+          host: host,
+          port: port,
+          database: database,
+          username: username,
+          password: password,
+        )
+      ],
+      settings: const PoolSettings(
+        maxConnectionCount: 10, // Ajuste conforme necessário
+        sslMode: SslMode.disable,
       ),
     );
+
     _connected = true;
-    print('Conectado ao PostgreSQL com sucesso!');
+    print('✅ Pool de conexões com o banco de dados inicializado.');
   }
 
   /// Fecha a conexão com o banco de dados.
   Future<void> close() async {
     if (!_connected) return;
-    await _connection.close();
+    await _pool.close();
     _connected = false;
     print('Conexão com o PostgreSQL fechada.');
   }
