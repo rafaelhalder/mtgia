@@ -79,16 +79,94 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 - [ ] **Aplicação de Otimização:** Transformar o deck baseado no arquétipo escolhido.
 - [ ] **Gerador de Decks (Text-to-Deck):** Criar decks do zero via prompt.
 
+### ✅ **Implementado (CRUD de Decks)**
+1. **Gerenciamento Completo de Decks:**
+   - [x] `GET /decks` - Listar decks do usuário autenticado
+   - [x] `POST /decks` - Criar novo deck
+   - [x] `GET /decks/:id` - Detalhes de um deck (com cartas inline)
+   - [x] `PUT /decks/:id` - Atualizar deck (nome, formato, descrição, cartas)
+   - [x] `DELETE /decks/:id` - Deletar deck (soft delete com CASCADE)
+   - ~~[ ] `GET /decks/:id/cards` - Listar cartas do deck~~ _(cartas vêm inline no GET /decks/:id)_
+
+**Validações Implementadas no PUT:**
+- Limite de cópias por formato (Commander/Brawl: 1, outros: 4)
+- Exceção para terrenos básicos (unlimited)
+- Verificação de cartas banidas/restritas por formato
+- Transações atômicas (rollback automático em caso de erro)
+- Verificação de ownership (apenas o dono pode atualizar)
+
+**Testado:** 58 testes unitários + 14 testes de integração (100% das validações cobertas)
+
+### ✅ **Testes Automatizados Implementados**
+
+A suíte de testes cobre **109 testes** divididos em:
+
+#### **Testes Unitários (95 testes)**
+1. **`test/auth_service_test.dart` (16 testes)**
+   - Hash e verificação de senhas (bcrypt)
+   - Geração e validação de JWT tokens
+   - Edge cases (senhas vazias, Unicode, caracteres especiais)
+
+2. **`test/import_parser_test.dart` (35 testes)**
+   - Parsing de listas de decks em diversos formatos
+   - Detecção de comandantes (`[commander]`, `*cmdr*`, `!commander`)
+   - Limpeza de nomes de cartas (collector numbers)
+   - Validação de limites por formato
+
+3. **`test/deck_validation_test.dart` (44 testes)** ⭐ NOVO
+   - Limites de cópias por formato (Commander: 1, Standard: 4)
+   - Detecção de terrenos básicos (unlimited)
+   - Detecção de tipo de carta (Creature, Land, Planeswalker, etc)
+   - Cálculo de CMC (Converted Mana Cost)
+   - Validação de legalidade (banned, restricted, not_legal)
+   - Edge cases de UPDATE e DELETE
+   - Comportamento transacional
+
+#### **Testes de Integração (14 testes)** 🔌
+4. **`test/decks_crud_test.dart` (14 testes)** ⭐ NOVO
+   - `PUT /decks/:id` - Atualização de decks
+     - Atualizar nome, formato, descrição individualmente
+     - Atualizar múltiplos campos de uma vez
+     - Substituir lista completa de cartas
+     - Validação de regras do MTG (limites, legalidade)
+     - Testes de permissão (ownership)
+     - Rejeição de cartas banidas
+   - `DELETE /decks/:id` - Deleção de decks
+     - Delete bem-sucedido (204 No Content)
+     - Cascade delete de cartas
+     - Verificação de ownership
+     - Tentativa de deletar deck inexistente (404)
+   - Ciclo completo: CREATE → UPDATE → DELETE
+
+**Executar Testes:**
+```bash
+# Apenas testes unitários (rápido, sem dependências)
+cd server
+dart test test/auth_service_test.dart
+dart test test/import_parser_test.dart
+dart test test/deck_validation_test.dart
+
+# Testes de integração (requer servidor rodando)
+# Terminal 1:
+dart_frog dev
+
+# Terminal 2:
+dart test test/decks_crud_test.dart
+
+# Todos os testes
+dart test
+```
+
+**Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
+
+**Cobertura Estimada:**
+- `lib/auth_service.dart`: ~90%
+- `routes/import/index.dart`: ~85%
+- `routes/decks/[id]/index.dart`: ~80% (validações + endpoints)
+
 ### ❌ **Pendente (Próximas Implementações)**
 
 #### **Backend (Prioridade Alta)**
-1. **CRUD de Decks:**
-   - [x] `GET /decks` - Listar decks do usuário autenticado
-   - [x] `POST /decks` - Criar novo deck
-   - [x] `GET /decks/:id` - Detalhes de um deck
-   - [ ] `PUT /decks/:id` - Atualizar deck
-   - [ ] `DELETE /decks/:id` - Deletar deck
-   - ~~[ ] `GET /decks/:id/cards` - Listar cartas do deck~~ _(cartas vêm inline no GET /decks/:id)_
 
 3. **Sistema de Cartas:**
    - [x] `GET /cards` - Buscar cartas (com filtros)
