@@ -310,8 +310,10 @@ void main() {
         }),
       );
       
-      // Assert: Deve rejeitar
-      expect(response.statusCode, equals(500)); // Erro de validação
+      // Assert: Deve rejeitar com erro
+      // NOTA: Implementação atual retorna 500 (Internal Server Error)
+      // O ideal seria 400 (Bad Request) mas estamos testando comportamento atual
+      expect(response.statusCode, equals(500)); // TODO: Deveria ser 400
       final data = jsonDecode(response.body);
       expect(data['error'], contains('limite'));
     });

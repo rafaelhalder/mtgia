@@ -230,17 +230,19 @@ void main() {
       expect(calculateCmc('{2}{X}'), equals(2)); // 2 + 0
     });
     
-    test('should handle phyrexian mana (captured as single symbol)', () {
-      // A regex \{(\w+)\} não captura o "/" então {U/P} é capturado como "U" apenas
-      // Isto é uma limitação conhecida mas não afeta o cálculo final do CMC
-      expect(calculateCmc('{U/P}'), equals(0)); // Captura apenas "U" e ignora "/P"
-      expect(calculateCmc('{W/P}{W/P}'), equals(0)); // Símbolos compostos não são capturados
+    test('should handle phyrexian mana symbols (not captured by current regex)', () {
+      // NOTA: A regex \{(\w+)\} não captura "/" então {U/P} não gera match
+      // Isto é uma limitação conhecida da implementação atual
+      // CMC para phyrexian/hybrid deveria ser 1, mas implementação retorna 0
+      expect(calculateCmc('{U/P}'), equals(0)); // Nenhum match encontrado
+      expect(calculateCmc('{W/P}{W/P}'), equals(0)); // Nenhum match encontrado
     });
     
-    test('should handle hybrid mana (captured as single symbol)', () {
-      // Similar ao phyrexian, híbridos com "/" não são completamente capturados
-      expect(calculateCmc('{W/U}'), equals(0)); // Captura "W" mas ignora o resto
-      expect(calculateCmc('{2/W}'), equals(0)); // Símbolos híbridos complexos
+    test('should handle hybrid mana symbols (not captured by current regex)', () {
+      // Similar ao phyrexian, híbridos com "/" não são capturados
+      // Implementação atual não suporta estes símbolos complexos
+      expect(calculateCmc('{W/U}'), equals(0)); // Nenhum match encontrado
+      expect(calculateCmc('{2/W}'), equals(0)); // Nenhum match encontrado
     });
     
     test('should return 0 for empty or null mana cost', () {
