@@ -4,6 +4,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
+import '../../../lib/card_validation_service.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -119,14 +120,67 @@ Future<Response> onRequest(RequestContext context) async {
     // Limpeza básica se a IA mandar markdown
     content = content.replaceAll('```json', '').replaceAll('```', '').trim();
 
-    final deckList = jsonDecode(content);
-
-    return Response.json(body: {
+    final deckList = jsonDecode(content) as Map<String, dynamic>;
+    final cards = (deckList['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    
+    // Validar cartas geradas pela IA
+    final pool = context.read<Pool>();
+    final validationService = CardValidationService(pool);
+    
+    // Extrair nomes das cartas e sanitizar
+    final cardNames = cards.map((card) {
+      final name = card['name'] as String;
+      return CardValidationService.sanitizeCardName(name);
+    }).toList();
+    
+    // Validar todas as cartas
+    final validation = await validationService.validateCardNames(cardNames);
+    
+    // Filtrar apenas cartas válidas e reconstruir a lista
+    final validCards = <Map<String, dynamic>>[];
+    final invalidCards = validation['invalid'] as List<String>;
+    
+    for (final card in cards) {
+      final name = CardValidationService.sanitizeCardName(card['name'] as String);
+      
+      // Verificar se a carta é válida
+      final isValid = (validation['valid'] as List).any((validCard) =>
+        (validCard['name'] as String).toLowerCase() == name.toLowerCase()
+      );
+      
+      if (isValid) {
+        validCards.add({
+          'name': name,
+          'quantity': card['quantity'] ?? 1,
+        });
+      }
+    }
+    
+    // Preparar resposta
+    final responseBody = {
       'prompt': prompt,
       'format': format,
-      'generated_deck': deckList,
+      'generated_deck': {
+        'cards': validCards,
+      },
       'meta_context_used': metaContext.isNotEmpty,
-    });
+      'stats': {
+        'total_suggested': cards.length,
+        'valid_cards': validCards.length,
+        'invalid_cards': invalidCards.length,
+      },
+    };
+    
+    // Adicionar avisos se houver cartas inválidas
+    if (invalidCards.isNotEmpty) {
+      responseBody['warnings'] = {
+        'invalid_cards': invalidCards,
+        'message': 'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
+        'suggestions': validation['suggestions'],
+      };
+    }
+
+    return Response.json(body: responseBody);
 
   } catch (e) {
     return Response.json(
