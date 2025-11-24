@@ -83,21 +83,21 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 
 #### **Backend (Prioridade Alta)**
 1. **CRUD de Decks:**
-   - [ ] `GET /decks` - Listar decks do usuário autenticado
-   - [ ] `POST /decks` - Criar novo deck
-   - [ ] `GET /decks/:id` - Detalhes de um deck
+   - [x] `GET /decks` - Listar decks do usuário autenticado
+   - [x] `POST /decks` - Criar novo deck
+   - [x] `GET /decks/:id` - Detalhes de um deck
    - [ ] `PUT /decks/:id` - Atualizar deck
    - [ ] `DELETE /decks/:id` - Deletar deck
-   - [ ] `GET /decks/:id/cards` - Listar cartas do deck
+   - ~~[ ] `GET /decks/:id/cards` - Listar cartas do deck~~ _(cartas vêm inline no GET /decks/:id)_
 
 3. **Sistema de Cartas:**
-   - [ ] `GET /cards` - Buscar cartas (com filtros)
-   - [ ] `GET /cards/:id` - Detalhes de uma carta
-   - [ ] Sistema de paginação para grandes resultados
+   - [x] `GET /cards` - Buscar cartas (com filtros)
+   - [x] `GET /cards/:id` - Detalhes de uma carta _(via busca)_
+   - [x] Sistema de paginação para grandes resultados
 
 4. **Validação de Decks:**
-   - [ ] Endpoint para validar legalidade por formato
-   - [ ] Verificação de cartas banidas/restritas
+   - [x] Endpoint para validar legalidade por formato _(GET /decks/:id/analysis)_
+   - [x] Verificação de cartas banidas/restritas
 
 #### **Frontend (Prioridade Alta)**
 1. **Tela de Criação de Deck:**
@@ -467,15 +467,15 @@ app/
 
 | Fase | Semanas | Status | Entregas |
 |------|---------|--------|----------|
-| 1. Fundação | 1 | ✅ Concluída | Auth mock, estrutura base, splash |
-| 2. CRUD Core | 2 | 🎯 Próxima | Auth real, criar/editar decks |
-| 3. Sistema de Cartas | 3-4 | ⏳ Pendente | Busca, adicionar cartas |
-| 4. Validação e Preços | 5 | ⏳ Pendente | Legalidade, preços |
+| 1. Fundação | 1 | ✅ Concluída | Auth real, estrutura base, splash |
+| 2. CRUD Core | 2 | ✅ Concluída | Auth real, criar/listar decks |
+| 3. Sistema de Cartas | 3-4 | 🟡 70% Concluída | Busca (✅), PUT/DELETE decks (❌) |
+| 4. Validação e Preços | 5 | ✅ Concluída | Legalidade, preços |
 | 5. Importação | 6 | ✅ Concluída | Parser de texto |
-| 6. IA Matemático | 7-8 | ✅ Concluída | Curva, consistência |
-| 7. IA LLM | 9-10 | 🚧 Em Andamento | Gerador criativo, Otimizador |
+| 6. IA Matemático | 7-8 | 🟡 80% Concluída | Curva (✅), Devotion (⚠️ frontend?) |
+| 7. IA LLM | 9-10 | 🟡 75% Concluída | Explain (✅), Archetypes (✅), Generate (✅), Optimize (🚧) |
 | 8. IA Simulador | 11-12 | ⏳ Pendente | Monte Carlo |
-| 9. Deploy | 13-14 | ⏳ Pendente | Produção |
+| 9. Deploy | 13-14 | ⏳ Pendente | Produção, testes |
 
 **Tempo Total Estimado:** 14 semanas (~3.5 meses)
 
