@@ -83,7 +83,9 @@ Future<void> main() async {
 
     // Flush do batch se necessário
     if (valueBuffer.length >= batchSize) {
-      await _flushBatch(conn, valueBuffer);
+      await conn.run((connection) async {
+        await _flushBatch(connection, valueBuffer);
+      });
       totalInserted += valueBuffer.length;
       valueBuffer.clear();
       stdout.write('\rRegras inseridas: $totalInserted...');
@@ -97,7 +99,9 @@ Future<void> main() async {
 
   // Flush final
   if (valueBuffer.isNotEmpty) {
-    await _flushBatch(conn, valueBuffer);
+    await conn.run((connection) async {
+      await _flushBatch(connection, valueBuffer);
+    });
     totalInserted += valueBuffer.length;
   }
 
@@ -116,7 +120,7 @@ void _addToBuffer(List<String> buffer, String? title, String description, String
   buffer.add("('$safeTitle', '$safeDesc', '$safeCat')");
 }
 
-Future<void> _flushBatch(Connection conn, List<String> values) async {
+Future<void> _flushBatch(Session conn, List<String> values) async {
   if (values.isEmpty) return;
   final valuesStr = values.join(',');
   final sql = 'INSERT INTO rules (title, description, category) VALUES $valuesStr';

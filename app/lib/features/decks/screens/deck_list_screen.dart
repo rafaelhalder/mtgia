@@ -115,6 +115,11 @@ class _DeckListScreenState extends State<DeckListScreen> {
         title: const Text('Meus Decks'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () => context.go('/decks/generate'),
+            tooltip: 'Gerar Deck com IA',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => context.read<DeckProvider>().fetchDecks(),
             tooltip: 'Recarregar',
@@ -194,10 +199,29 @@ class _DeckListScreenState extends State<DeckListScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  ElevatedButton.icon(
-                    onPressed: () => _showCreateDeckDialog(context),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Criar Deck'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _showCreateDeckDialog(context),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Criar Deck'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: () => context.go('/decks/generate'),
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text('Gerar com IA'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.secondary,
+                          foregroundColor: theme.colorScheme.onSecondary,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

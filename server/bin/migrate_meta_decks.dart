@@ -1,4 +1,3 @@
-import 'package:postgres/postgres.dart';
 import '../lib/database.dart';
 
 Future<void> main() async {

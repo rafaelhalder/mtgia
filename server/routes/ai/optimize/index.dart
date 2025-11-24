@@ -4,6 +4,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/card_validation_service.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -129,8 +130,55 @@ Future<Response> onRequest(RequestContext context) async {
     final cleanContent = content.replaceAll('```json', '').replaceAll('```', '').trim();
     
     try {
-      final jsonResponse = jsonDecode(cleanContent);
-      return Response.json(body: jsonResponse);
+      final jsonResponse = jsonDecode(cleanContent) as Map<String, dynamic>;
+      
+      // Validar cartas sugeridas pela IA
+      final validationService = CardValidationService(pool);
+      
+      // Sanitizar nomes das cartas (corrigir capitalização, etc)
+      final removals = (jsonResponse['removals'] as List?)?.cast<String>() ?? [];
+      final additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
+      
+      final sanitizedRemovals = removals.map(CardValidationService.sanitizeCardName).toList();
+      final sanitizedAdditions = additions.map(CardValidationService.sanitizeCardName).toList();
+      
+      // Validar todas as cartas sugeridas
+      final allSuggestions = [...sanitizedRemovals, ...sanitizedAdditions];
+      final validation = await validationService.validateCardNames(allSuggestions);
+      
+      // Filtrar apenas cartas válidas
+      final validRemovals = sanitizedRemovals.where((name) {
+        return (validation['valid'] as List).any((card) => 
+          (card['name'] as String).toLowerCase() == name.toLowerCase()
+        );
+      }).toList();
+      
+      final validAdditions = sanitizedAdditions.where((name) {
+        return (validation['valid'] as List).any((card) => 
+          (card['name'] as String).toLowerCase() == name.toLowerCase()
+        );
+      }).toList();
+      
+      // Preparar resposta com avisos sobre cartas inválidas
+      final invalidCards = validation['invalid'] as List<String>;
+      final suggestions = validation['suggestions'] as Map<String, List<String>>;
+      
+      final responseBody = {
+        'removals': validRemovals,
+        'additions': validAdditions,
+        'reasoning': jsonResponse['reasoning'],
+      };
+      
+      // Adicionar avisos se houver cartas inválidas
+      if (invalidCards.isNotEmpty) {
+        responseBody['warnings'] = {
+          'invalid_cards': invalidCards,
+          'message': 'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
+          'suggestions': suggestions,
+        };
+      }
+      
+      return Response.json(body: responseBody);
     } catch (e) {
       return Response.json(
         statusCode: HttpStatus.internalServerError,

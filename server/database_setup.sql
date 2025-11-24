@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS cards (
     image_url TEXT, -- URL da imagem na Scryfall
     set_code TEXT,
     rarity TEXT,
+    ai_description TEXT, -- Cache de explicações da IA
+    price DECIMAL(10,2), -- Preço da carta (integração Scryfall)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -63,7 +65,8 @@ CREATE TABLE IF NOT EXISTS decks (
     strengths TEXT, -- Ex: "Ramp rápido, Proteção contra anulações"
     weaknesses TEXT, -- Ex: "Vulnerável a board wipes, Falta de card draw"
     
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP WITH TIME ZONE -- Soft delete
 );
 
 -- 6. Tabela de Itens do Deck (Relacionamento N:N entre Deck e Cartas)

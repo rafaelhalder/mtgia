@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/api/api_client.dart';
 import '../models/deck.dart';
 import '../models/deck_details.dart';
@@ -250,6 +251,156 @@ class DeckProvider extends ChangeNotifier {
         return response.data as Map<String, dynamic>;
       } else {
         throw Exception('Falha ao otimizar deck: ${response.statusCode}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Gera um deck do zero usando IA baseado em um prompt de texto
+  Future<Map<String, dynamic>> generateDeck({
+    required String prompt,
+    required String format,
+  }) async {
+    try {
+      final response = await _apiClient.post('/ai/generate', {
+        'prompt': prompt,
+        'format': format,
+      });
+
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      } else {
+        throw Exception('Falha ao gerar deck: ${response.statusCode}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Aplica as sugestões de otimização ao deck
+  /// Recebe uma lista de cartas para remover e adicionar (por nome)
+  /// Busca os IDs das cartas e atualiza o deck
+  Future<bool> applyOptimization({
+    required String deckId,
+    required List<String> cardsToRemove,
+    required List<String> cardsToAdd,
+  }) async {
+    try {
+      // 1. Buscar o deck atual para pegar a lista de cartas
+      if (_selectedDeck == null || _selectedDeck!.id != deckId) {
+        await fetchDeckDetails(deckId);
+      }
+      
+      if (_selectedDeck == null) {
+        throw Exception('Deck não encontrado');
+      }
+
+      // 2. Construir lista atual de cartas em formato de map
+      final currentCards = <String, Map<String, dynamic>>{};
+      
+      for (final commander in _selectedDeck!.commander) {
+        currentCards[commander.id] = {
+          'card_id': commander.id,
+          'quantity': commander.quantity,
+          'is_commander': true,
+        };
+      }
+      
+      for (final entry in _selectedDeck!.mainBoard.entries) {
+        for (final card in entry.value) {
+          if (!card.isCommander) {
+            currentCards[card.id] = {
+              'card_id': card.id,
+              'quantity': card.quantity,
+              'is_commander': false,
+            };
+          }
+        }
+      }
+
+      // 3. Buscar IDs das cartas a adicionar pelo nome
+      final cardsToAddIds = <Map<String, dynamic>>[];
+      
+      for (final cardName in cardsToAdd) {
+        try {
+          // Buscar carta pelo nome na API
+          final searchResponse = await _apiClient.get('/cards?name=$cardName&limit=1');
+          
+          if (searchResponse.statusCode == 200 && searchResponse.data is List) {
+            final results = searchResponse.data as List;
+            if (results.isNotEmpty) {
+              final card = results[0] as Map<String, dynamic>;
+              cardsToAddIds.add({
+                'card_id': card['id'],
+                'quantity': 1,
+                'is_commander': false,
+              });
+            }
+          }
+        } catch (e) {
+          // Se não conseguir encontrar a carta, ignora
+          if (kDebugMode) {
+            debugPrint('Erro ao buscar carta $cardName: $e');
+          }
+        }
+      }
+
+      // 4. Buscar IDs das cartas a remover pelo nome
+      final cardsToRemoveIds = <String>{};
+      
+      for (final cardName in cardsToRemove) {
+        try {
+          final searchResponse = await _apiClient.get('/cards?name=$cardName&limit=1');
+          
+          if (searchResponse.statusCode == 200 && searchResponse.data is List) {
+            final results = searchResponse.data as List;
+            if (results.isNotEmpty) {
+              final card = results[0] as Map<String, dynamic>;
+              cardsToRemoveIds.add(card['id'] as String);
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Erro ao buscar carta $cardName: $e');
+          }
+        }
+      }
+
+      // 5. Remover as cartas da lista atual
+      currentCards.removeWhere((key, value) => cardsToRemoveIds.contains(key));
+
+      // 6. Adicionar as novas cartas
+      for (final cardToAdd in cardsToAddIds) {
+        final cardId = cardToAdd['card_id'] as String;
+        
+        // Se a carta já existe, aumenta a quantidade (até o limite)
+        if (currentCards.containsKey(cardId)) {
+          final existing = currentCards[cardId]!;
+          final newQuantity = (existing['quantity'] as int) + 1;
+          // Limite básico (não aplica regras complexas aqui)
+          if (newQuantity <= 4) {
+            currentCards[cardId] = {
+              ...existing,
+              'quantity': newQuantity,
+            };
+          }
+        } else {
+          currentCards[cardId] = cardToAdd;
+        }
+      }
+
+      // 7. Atualizar o deck via API
+      final response = await _apiClient.put('/decks/$deckId', {
+        'cards': currentCards.values.toList(),
+      });
+
+      if (response.statusCode == 200) {
+        // Recarregar os detalhes do deck
+        await fetchDeckDetails(deckId);
+        return true;
+      } else {
+        throw Exception('Falha ao atualizar deck: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;

@@ -28,8 +28,10 @@ Future<void> main() async {
     
     print('Encontradas ${cardsMap.length} cartas únicas no JSON.');
     
-    // 3. Inserir no Banco
-    await _processAndInsertCards(conn, cardsMap);
+    // 3. Inserir no Banco usando uma conexão do pool
+    await conn.run((connection) async {
+      await _processAndInsertCards(connection, cardsMap);
+    });
     
   } catch (e) {
     print('Erro fatal no seed: $e');
@@ -61,7 +63,7 @@ Future<File> _downloadJson() async {
   }
 }
 
-Future<void> _processAndInsertCards(Connection conn, Map<String, dynamic> cardsMap) async {
+Future<void> _processAndInsertCards(Session conn, Map<String, dynamic> cardsMap) async {
   print('Iniciando processamento e inserção...');
   
   final batchSize = 500;
@@ -140,25 +142,23 @@ Future<void> _processAndInsertCards(Connection conn, Map<String, dynamic> cardsM
   print('Seed concluído! Total de $count cartas inseridas/atualizadas.');
 }
 
-Future<void> _insertBatch(Connection conn, String sql, List<List<dynamic>> batch) async {
-  await conn.runTx((session) async {
-    final stmt = await session.prepare(sql);
-    try {
-      for (final row in batch) {
-        await stmt.run([
-          row[0], // scryfall_id
-          row[1], // name
-          row[2], // mana_cost
-          row[3], // type_line
-          row[4], // oracle_text
-          row[5], // colors
-          row[6], // image_url
-          row[7], // set_code
-          row[8], // rarity
-        ]);
-      }
-    } finally {
-      await stmt.dispose();
+Future<void> _insertBatch(Session conn, String sql, List<List<dynamic>> batch) async {
+  final stmt = await conn.prepare(sql);
+  try {
+    for (final row in batch) {
+      await stmt.run([
+        row[0], // scryfall_id
+        row[1], // name
+        row[2], // mana_cost
+        row[3], // type_line
+        row[4], // oracle_text
+        row[5], // colors
+        row[6], // image_url
+        row[7], // set_code
+        row[8], // rarity
+      ]);
     }
-  });
+  } finally {
+    await stmt.dispose();
+  }
 }

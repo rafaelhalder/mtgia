@@ -67,7 +67,9 @@ Future<void> main() async {
         valueBuffer.add("('$dbId', '$safeFormat', '$safeStatus')");
 
         if (valueBuffer.length >= batchSize) {
-          await _flushBatch(conn, valueBuffer);
+          await conn.run((connection) async {
+            await _flushBatch(connection, valueBuffer);
+          });
           totalInserted += valueBuffer.length;
           valueBuffer.clear();
           stdout.write('\rInseridos: $totalInserted...');
@@ -77,7 +79,9 @@ Future<void> main() async {
 
     // Inserir o restante
     if (valueBuffer.isNotEmpty) {
-      await _flushBatch(conn, valueBuffer);
+      await conn.run((connection) async {
+        await _flushBatch(connection, valueBuffer);
+      });
       totalInserted += valueBuffer.length;
     }
 
@@ -90,7 +94,7 @@ Future<void> main() async {
   }
 }
 
-Future<void> _flushBatch(Connection conn, List<String> values) async {
+Future<void> _flushBatch(Session conn, List<String> values) async {
   if (values.isEmpty) return;
   final valuesStr = values.join(',');
   final sql = 'INSERT INTO card_legalities (card_id, format, status) VALUES $valuesStr ON CONFLICT (card_id, format) DO NOTHING';

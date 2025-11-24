@@ -315,7 +315,8 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
             ],
           ),
         ),
-      );
+      ),
+    );
   }
 
   Future<void> _showAiExplanation(BuildContext context, DeckCardItem card) async {
@@ -530,14 +531,18 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
     );
 
     try {
-      // 2. Call API
+      // 2. Call API to get suggestions
       final result = await context.read<DeckProvider>().optimizeDeck(widget.deckId, archetype);
       
       if (!context.mounted) return;
       Navigator.pop(context); // Close loading
 
-      // 3. Show Results Dialog
-      showDialog(
+      final removals = (result['removals'] as List).cast<String>();
+      final additions = (result['additions'] as List).cast<String>();
+      final reasoning = result['reasoning'] as String? ?? '';
+
+      // 3. Show confirmation dialog with suggestions
+      final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('Sugestões para: $archetype'),
@@ -546,34 +551,77 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(result['reasoning'] ?? ''),
+                Text(reasoning),
+                const SizedBox(height: 16),
                 const Divider(),
+                const SizedBox(height: 8),
                 const Text('❌ Remover:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                ...(result['removals'] as List).map((c) => Text('• $c')),
-                const SizedBox(height: 10),
+                ...removals.map((c) => Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 4),
+                  child: Text('• $c'),
+                )),
+                const SizedBox(height: 16),
                 const Text('✅ Adicionar:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                ...(result['additions'] as List).map((c) => Text('• $c')),
+                ...additions.map((c) => Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 4),
+                  child: Text('• $c'),
+                )),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context); // Close Sheet
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Sugestões aceitas! (Implementação de update em breve)')),
-                );
-              },
+              onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Aplicar Mudanças'),
             ),
           ],
         ),
       );
+
+      if (confirmed != true || !context.mounted) return;
+
+      // 4. Apply the optimization
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Aplicando mudanças...', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      );
+
+      final success = await context.read<DeckProvider>().applyOptimization(
+        deckId: widget.deckId,
+        cardsToRemove: removals,
+        cardsToAdd: additions,
+      );
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // Close loading
+      Navigator.pop(context); // Close Sheet
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Deck otimizado com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao aplicar otimização')),
+        );
+      }
 
     } catch (e) {
       if (context.mounted) {
