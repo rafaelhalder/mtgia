@@ -526,6 +526,14 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
     // Controle do estado do loading para garantir fechamento correto
     bool isLoadingDialogOpen = false;
     
+    /// Helper para fechar o dialog de loading de forma segura
+    void closeLoadingDialog() {
+      if (context.mounted && isLoadingDialogOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        isLoadingDialogOpen = false;
+      }
+    }
+    
     // 1. Show Loading
     showDialog(
       context: context,
@@ -538,9 +546,9 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       // 2. Call API to get suggestions
       final result = await context.read<DeckProvider>().optimizeDeck(widget.deckId, archetype);
       
+      closeLoadingDialog();
+      
       if (!context.mounted) return;
-      Navigator.pop(context); // Close loading
-      isLoadingDialogOpen = false;
 
       final removals = (result['removals'] as List).cast<String>();
       final additions = (result['additions'] as List).cast<String>();
@@ -623,9 +631,9 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
         cardsToAdd: additions,
       );
       
+      closeLoadingDialog();
+      
       if (!context.mounted) return;
-      Navigator.pop(context); // Close loading
-      isLoadingDialogOpen = false;
       Navigator.pop(context); // Close Sheet
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -637,9 +645,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
 
     } catch (e) {
       // Garantir que o loading seja fechado em caso de erro
-      if (context.mounted && isLoadingDialogOpen) {
-        Navigator.pop(context);
-      }
+      closeLoadingDialog();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

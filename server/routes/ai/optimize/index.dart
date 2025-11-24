@@ -48,13 +48,23 @@ class DeckArchetypeAnalyzer {
     for (final card in cards) {
       final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
       
-      if (typeLine.contains('creature')) counts['creatures'] = counts['creatures']! + 1;
-      if (typeLine.contains('instant')) counts['instants'] = counts['instants']! + 1;
-      if (typeLine.contains('sorcery')) counts['sorceries'] = counts['sorceries']! + 1;
-      if (typeLine.contains('enchantment')) counts['enchantments'] = counts['enchantments']! + 1;
-      if (typeLine.contains('artifact')) counts['artifacts'] = counts['artifacts']! + 1;
-      if (typeLine.contains('planeswalker')) counts['planeswalkers'] = counts['planeswalkers']! + 1;
-      if (typeLine.contains('land')) counts['lands'] = counts['lands']! + 1;
+      // Sistema de prioridade: cada carta é contada apenas uma vez em seu tipo principal
+      // Prioridade: Land > Creature > Planeswalker > Instant > Sorcery > Artifact > Enchantment
+      if (typeLine.contains('land')) {
+        counts['lands'] = counts['lands']! + 1;
+      } else if (typeLine.contains('creature')) {
+        counts['creatures'] = counts['creatures']! + 1;
+      } else if (typeLine.contains('planeswalker')) {
+        counts['planeswalkers'] = counts['planeswalkers']! + 1;
+      } else if (typeLine.contains('instant')) {
+        counts['instants'] = counts['instants']! + 1;
+      } else if (typeLine.contains('sorcery')) {
+        counts['sorceries'] = counts['sorceries']! + 1;
+      } else if (typeLine.contains('artifact')) {
+        counts['artifacts'] = counts['artifacts']! + 1;
+      } else if (typeLine.contains('enchantment')) {
+        counts['enchantments'] = counts['enchantments']! + 1;
+      }
     }
     
     return counts;
