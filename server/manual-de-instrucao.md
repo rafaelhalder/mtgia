@@ -69,15 +69,87 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 - [x] **Backend:**
   - Endpoint `POST /ai/explain`: Explicação detalhada de cartas individuais.
   - Endpoint `POST /ai/archetypes`: Análise de deck existente para sugerir 3 caminhos de otimização.
+  - Endpoint `POST /ai/optimize`: Retorna sugestões específicas de cartas a adicionar/remover baseado no arquétipo.
+  - Endpoint `POST /ai/generate`: Gera um deck completo do zero baseado em descrição textual.
   - Cache de respostas da IA no banco de dados (`cards.ai_description`).
 - [x] **Frontend:**
-  - Botão "Explicar" nos detalhes da carta.
-  - Botão "Otimizar Deck" na tela de detalhes.
-  - Interface de seleção de arquétipos (Bottom Sheet).
+  - Botão "Explicar" nos detalhes da carta com modal de explicação IA.
+  - Botão "Otimizar Deck" na tela de detalhes do deck.
+  - Interface de seleção de arquétipos (Bottom Sheet com 3 opções).
+  - **NOVO (24/11/2025):** Dialog de confirmação mostrando cartas a remover/adicionar antes de aplicar.
+  - **NOVO (24/11/2025):** Sistema completo de aplicação de otimização:
+    - Lookup automático de IDs de cartas pelo nome via API.
+    - Remoção de cartas sugeridas do deck atual.
+    - Adição de novas cartas sugeridas pela IA.
+    - Atualização do deck via `PUT /decks/:id`.
+    - Refresh automático da tela após aplicação bem-sucedida.
+  - **NOVO (24/11/2025):** Tela completa de geração de decks (`DeckGenerateScreen`):
+    - Seletor de formato (Commander, Standard, Modern, etc.).
+    - Campo de texto multi-linha para descrição do deck.
+    - 6 prompts de exemplo como chips clicáveis.
+    - Loading state "A IA está pensando...".
+    - Preview do deck gerado agrupado por tipo de carta.
+    - Campo para nomear o deck antes de salvar.
+    - Botão "Salvar Deck" que cria o deck via API.
+    - Navegação integrada no AppBar da lista de decks e no empty state.
 
-### 🚧 **Em Desenvolvimento**
-- [ ] **Aplicação de Otimização:** Transformar o deck baseado no arquétipo escolhido.
-- [ ] **Gerador de Decks (Text-to-Deck):** Criar decks do zero via prompt.
+### ✅ **Completamente Implementado (Módulo IA - Geração e Otimização)**
+- [x] **Aplicação de Otimização:** Transformar o deck baseado no arquétipo escolhido - **COMPLETO**.
+- [x] **Gerador de Decks (Text-to-Deck):** Criar decks do zero via prompt - **COMPLETO**.
+
+**Detalhes Técnicos da Implementação:**
+
+#### Fluxo de Otimização de Deck (End-to-End)
+1. **Usuário clica "Otimizar Deck"** → Abre Bottom Sheet
+2. **POST /ai/archetypes** → Retorna 3 arquétipos sugeridos (ex: Aggro, Control, Combo)
+3. **Usuário seleciona arquétipo** → Loading "Analisando estratégias..."
+4. **POST /ai/optimize** → Retorna JSON:
+   ```json
+   {
+     "removals": ["Card Name 1", "Card Name 2"],
+     "additions": ["Card Name A", "Card Name B"],
+     "reasoning": "Justificativa da IA..."
+   }
+   ```
+5. **Dialog de confirmação** → Mostra cartas a remover (vermelho) e adicionar (verde)
+6. **Usuário confirma** → Sistema executa:
+   - Busca ID de cada carta via `GET /cards?name=CardName`
+   - Remove cartas da lista atual do deck
+   - Adiciona novas cartas (gerenciando quantidades)
+   - Chama `PUT /decks/:id` com nova lista de cartas
+7. **Sucesso** → Deck atualizado, tela recarrega, SnackBar verde de confirmação
+
+#### Fluxo de Geração de Deck (Text-to-Deck)
+1. **Usuário acessa `/decks/generate`** (via botão no AppBar ou empty state)
+2. **Seleciona formato** → Commander, Standard, Modern, etc.
+3. **Escreve prompt** → Ex: "Deck agressivo de goblins vermelhos"
+4. **Clica "Gerar Deck"** → Loading "A IA está pensando..."
+5. **POST /ai/generate** → Retorna JSON:
+   ```json
+   {
+     "generated_deck": {
+       "cards": [
+         {"name": "Goblin Guide", "quantity": 4},
+         {"name": "Lightning Bolt", "quantity": 4},
+         ...
+       ]
+     }
+   }
+   ```
+6. **Preview do deck** → Cards agrupados por tipo (Creatures, Instants, Lands, etc.)
+7. **Usuário nomeia o deck** → Campo editável
+8. **Clica "Salvar Deck"** → Chama `POST /decks` com nome, formato, descrição e lista de cartas
+9. **Sucesso** → Redireciona para `/decks`, SnackBar verde de confirmação
+
+**Bibliotecas Utilizadas:**
+- **Provider:** Gerenciamento de estado (`DeckProvider` com métodos `generateDeck()` e `applyOptimization()`)
+- **GoRouter:** Navegação (`/decks/generate` integrada no router)
+- **http:** Chamadas de API para IA e busca de cartas
+
+**Tratamento de Erros:**
+- ❌ Se a IA sugerir uma carta inexistente (hallucination), o lookup falha silenciosamente (logado) e a carta é ignorada.
+- ❌ Se o `POST /ai/generate` falhar, mostra SnackBar de erro com mensagem detalhada.
+- ❌ Se o `PUT /decks/:id` falhar ao aplicar otimização, rollback automático (sem mudanças no deck).
 
 ### ✅ **Implementado (CRUD de Decks)**
 1. **Gerenciamento Completo de Decks:**
@@ -1007,20 +1079,209 @@ Fornecer feedback visual e validação de regras para o usuário, garantindo que
   - **Bar Chart:** Mostra a curva de mana (distribuição de custos 0-7+).
   - **Pie Chart:** Mostra a distribuição de cores (devoção).
 
-### 3.18. Módulo 2: O Consultor Criativo (Em Andamento)
+### 3.18. Módulo 2: O Consultor Criativo (✅ COMPLETO - Atualizado 24/11/2025)
 
 **Objetivo:**
-Usar IA Generativa para explicar cartas e sugerir melhorias estratégicas nos decks.
+Usar IA Generativa para explicar cartas, sugerir melhorias estratégicas, otimizar decks existentes e gerar novos decks do zero.
 
 **Funcionalidades Implementadas:**
-1.  **Explicação de Cartas (`POST /ai/explain`):**
-    - Recebe o nome e texto da carta.
-    - Consulta a OpenAI para gerar uma explicação didática em PT-BR.
-    - **Cache:** Salva a explicação na coluna `ai_description` da tabela `cards` para economizar tokens em requisições futuras.
-2.  **Sugestão de Arquétipos (`POST /ai/archetypes`):**
-    - Analisa um deck existente (Comandante + Lista).
-    - Identifica 3 caminhos possíveis para otimização (ex: "Foco em Veneno", "Foco em Proliferar", "Superfriends").
-    - Retorna JSON estruturado com Título, Descrição e Dificuldade.
+
+#### 1. **Explicação de Cartas (`POST /ai/explain`)** ✅
+- Recebe o nome e texto da carta.
+- Consulta a OpenAI (GPT-3.5/4) para gerar uma explicação didática em PT-BR.
+- **Cache:** Salva a explicação na coluna `ai_description` da tabela `cards` para economizar tokens em requisições futuras.
+- **Frontend:** Botão "Explicar" no dialog de detalhes da carta que mostra um modal com a análise da IA.
+
+#### 2. **Sugestão de Arquétipos (`POST /ai/archetypes`)** ✅
+- Analisa um deck existente (Comandante + Lista de cartas).
+- Identifica 3 caminhos possíveis para otimização (ex: "Foco em Veneno", "Foco em Proliferar", "Superfriends").
+- Retorna JSON estruturado com Título, Descrição e Dificuldade.
+- **Frontend:** Bottom Sheet com as 3 opções quando o usuário clica "Otimizar Deck".
+
+#### 3. **Otimização de Deck (`POST /ai/optimize`)** ✅
+- Recebe `deck_id` e o `archetype` escolhido pelo usuário.
+- A IA analisa o deck atual e sugere:
+  - **Removals:** 3-5 cartas que não se encaixam na estratégia escolhida.
+  - **Additions:** 3-5 cartas que fortalecem o arquétipo.
+  - **Reasoning:** Justificativa em texto explicando as escolhas.
+- **Frontend:** Implementação completa do fluxo de aplicação:
+  1. Dialog de confirmação mostrando removals (vermelho) e additions (verde).
+  2. Sistema de lookup automático de card IDs via `GET /cards?name=`.
+  3. Remoção das cartas sugeridas da lista atual.
+  4. Adição das novas cartas (com controle de quantidade).
+  5. Chamada a `PUT /decks/:id` para persistir as mudanças.
+  6. Refresh automático da tela de detalhes do deck.
+  7. SnackBar de sucesso ou erro.
+
+**Código de Exemplo (Backend - `routes/ai/optimize/index.dart`):**
+```dart
+final prompt = '''
+Atue como um especialista em Magic: The Gathering.
+Tenho um deck de formato $deckFormat chamado "$deckName".
+Comandante(s): ${commanders.join(', ')}
+
+Quero otimizar este deck seguindo este arquétipo/estratégia: "$archetype".
+
+Lista atual de cartas (algumas): ${otherCards.take(50).join(', ')}...
+
+Sua tarefa:
+1. Identifique 3 a 5 cartas da lista atual que NÃO sinergizam bem com a estratégia "$archetype" e devem ser removidas.
+2. Sugira 3 a 5 cartas que DEVEM ser adicionadas para fortalecer essa estratégia.
+3. Forneça uma breve justificativa.
+
+Responda APENAS um JSON válido (sem markdown) no seguinte formato:
+{
+  "removals": ["Nome Exato Carta 1", "Nome Exato Carta 2"],
+  "additions": ["Nome Exato Carta A", "Nome Exato Carta B"],
+  "reasoning": "Explicação resumida..."
+}
+''';
+```
+
+**Código de Exemplo (Frontend - `DeckProvider.applyOptimization()`):**
+```dart
+Future<bool> applyOptimization({
+  required String deckId,
+  required List<String> cardsToRemove,
+  required List<String> cardsToAdd,
+}) async {
+  // 1. Buscar deck atual
+  if (_selectedDeck == null || _selectedDeck!.id != deckId) {
+    await fetchDeckDetails(deckId);
+  }
+  
+  // 2. Construir mapa de cartas atuais
+  final currentCards = <String, Map<String, dynamic>>{};
+  for (final card in _selectedDeck!.allCards) {
+    currentCards[card.id] = {
+      'card_id': card.id,
+      'quantity': card.quantity,
+      'is_commander': card.isCommander,
+    };
+  }
+  
+  // 3. Buscar IDs das cartas a adicionar
+  for (final cardName in cardsToAdd) {
+    final response = await _apiClient.get('/cards?name=$cardName&limit=1');
+    if (response.statusCode == 200 && response.data is List) {
+      final results = response.data as List;
+      if (results.isNotEmpty) {
+        final card = results[0] as Map<String, dynamic>;
+        currentCards[card['id']] = {
+          'card_id': card['id'],
+          'quantity': 1,
+          'is_commander': false,
+        };
+      }
+    }
+  }
+  
+  // 4. Remover cartas sugeridas
+  for (final cardName in cardsToRemove) {
+    final response = await _apiClient.get('/cards?name=$cardName&limit=1');
+    if (response.statusCode == 200 && response.data is List) {
+      final results = response.data as List;
+      if (results.isNotEmpty) {
+        final cardId = results[0]['id'] as String;
+        currentCards.remove(cardId);
+      }
+    }
+  }
+  
+  // 5. Atualizar deck via API
+  final response = await _apiClient.put('/decks/$deckId', {
+    'cards': currentCards.values.toList(),
+  });
+  
+  if (response.statusCode == 200) {
+    await fetchDeckDetails(deckId); // Refresh
+    return true;
+  }
+  return false;
+}
+```
+
+#### 4. **Geração de Deck do Zero (`POST /ai/generate`)** ✅
+- Recebe um `prompt` (descrição textual) e `format` (Commander, Standard, etc.).
+- A IA monta um deck completo e legal para o formato, incluindo:
+  - Criaturas, feitiços, artefatos, encantamentos.
+  - Terrenos balanceados (36-38 para Commander).
+  - Total de 100 cartas para Commander, 60 para Standard, etc.
+- **Opcional:** Sistema RAG (Retrieval-Augmented Generation) que busca decks similares no meta (`meta_decks`) para inspirar a IA.
+- **Frontend:** Tela completa de geração (`DeckGenerateScreen`):
+  1. Seletor de formato dropdown.
+  2. Campo de texto multi-linha para o prompt.
+  3. 6 exemplos de prompts clicáveis (chips).
+  4. Botão "Gerar Deck" com loading "A IA está pensando...".
+  5. Preview do deck gerado agrupado por tipo (Creatures, Instants, Lands, etc.).
+  6. Campo para nomear o deck.
+  7. Botão "Salvar Deck" que chama `POST /decks`.
+
+**Código de Exemplo (Backend - `routes/ai/generate/index.dart`):**
+```dart
+final systemPrompt = '''
+You are a world-class Magic: The Gathering deck builder.
+Your goal is to build a competitive, consistent, and legal deck for the format "$format".
+
+Rules:
+1. Return ONLY a JSON object with a "cards" field.
+2. "cards" must be a list of objects with "name" (exact English card name) and "quantity" (integer).
+3. Do not include markdown formatting. Just the raw JSON string.
+4. For Commander, ensure exactly 100 cards (1 Commander + 99 Main).
+5. Ensure a good land count (approx 36-38 for Commander).
+''';
+
+final userMessage = '''
+Build a deck based on this description: "$prompt".
+''';
+
+// Chama OpenAI GPT-4o-mini
+final response = await http.post(
+  Uri.parse('https://api.openai.com/v1/chat/completions'),
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $apiKey',
+  },
+  body: jsonEncode({
+    'model': 'gpt-4o-mini',
+    'messages': [
+      {'role': 'system', 'content': systemPrompt},
+      {'role': 'user', 'content': userMessage},
+    ],
+    'temperature': 0.7,
+  }),
+);
+```
+
+**Código de Exemplo (Frontend - `DeckGenerateScreen`):**
+```dart
+Future<void> _generateDeck() async {
+  setState(() {
+    _isGenerating = true;
+    _generatedDeck = null;
+  });
+
+  try {
+    final result = await context.read<DeckProvider>().generateDeck(
+      prompt: _promptController.text.trim(),
+      format: _selectedFormat,
+    );
+    
+    setState(() {
+      _generatedDeck = result;
+      _isGenerating = false;
+    });
+  } catch (e) {
+    // Error handling...
+  }
+}
+```
+
+**Tratamento de Erros e Edge Cases:**
+- ✅ **Hallucination Prevention:** Se a IA sugerir uma carta inexistente, o lookup via `GET /cards?name=` falha e a carta é ignorada (logada).
+- ✅ **Timeout Handling:** Se a OpenAI demorar >30s, o request falha com timeout (configurável).
+- ✅ **Mock Responses:** Se `OPENAI_API_KEY` não estiver configurada, retorna dados mockados para desenvolvimento.
+- ✅ **Validação de Formato:** O backend valida se as cartas sugeridas são legais no formato antes de salvar (usa `card_legalities`).
 
 **Próximos Passos:**
 - Implementar a "transformação" do deck: quando o usuário escolhe um arquétipo, a IA deve sugerir quais cartas remover e quais adicionar para atingir aquele objetivo.
