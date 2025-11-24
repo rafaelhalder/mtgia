@@ -13,6 +13,7 @@ import 'features/auth/providers/auth_provider.dart';
 import 'core/widgets/main_scaffold.dart';
 
 import 'features/decks/screens/deck_details_screen.dart';
+import 'features/decks/screens/deck_generate_screen.dart';
 
 import 'features/cards/providers/card_provider.dart';
 import 'features/cards/screens/card_search_screen.dart';
@@ -54,6 +55,10 @@ final _router = GoRouter(
           path: '/decks',
           builder: (context, state) => const DeckListScreen(),
           routes: [
+            GoRoute(
+              path: 'generate',
+              builder: (context, state) => const DeckGenerateScreen(),
+            ),
             GoRoute(
               path: ':id',
               builder: (context, state) {

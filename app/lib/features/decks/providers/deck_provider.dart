@@ -256,6 +256,27 @@ class DeckProvider extends ChangeNotifier {
     }
   }
 
+  /// Gera um deck do zero usando IA baseado em um prompt de texto
+  Future<Map<String, dynamic>> generateDeck({
+    required String prompt,
+    required String format,
+  }) async {
+    try {
+      final response = await _apiClient.post('/ai/generate', {
+        'prompt': prompt,
+        'format': format,
+      });
+
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      } else {
+        throw Exception('Falha ao gerar deck: ${response.statusCode}');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// Limpa o erro
   void clearError() {
     _errorMessage = null;
