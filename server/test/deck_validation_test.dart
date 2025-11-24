@@ -281,15 +281,12 @@ void main() {
     
     test('should reject banned cards regardless of quantity', () {
       final status = 'banned';
-      final quantity = 1;
       
       final shouldReject = status == 'banned';
       expect(shouldReject, isTrue);
     });
     
     test('should reject restricted cards with quantity > 1', () {
-      final status = 'restricted';
-      
       expect(1 > 1, isFalse); // 1 cópia OK
       expect(2 > 1, isTrue);  // 2 cópias violam
     });
@@ -330,7 +327,7 @@ void main() {
         'cards': [],
       };
       
-      final cards = updatePayload['cards'] as List?;
+      final cards = updatePayload['cards'];
       expect(cards, isNotNull);
       expect(cards!.isEmpty, isTrue);
     });

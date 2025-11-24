@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/deck_provider.dart';
-import '../models/deck_card_item.dart';
 
 /// Tela para gerar decks usando IA a partir de uma descrição em texto
 class DeckGenerateScreen extends StatefulWidget {
@@ -114,6 +113,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             name: deckName,
             format: _selectedFormat.toLowerCase(),
             description: _promptController.text.trim(),
+            cards: cardsToAdd.cast<Map<String, dynamic>>(),
           );
 
       if (!mounted) return;

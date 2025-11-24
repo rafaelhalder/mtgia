@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:postgres/postgres.dart';
 import 'dart:developer' as developer;
 
@@ -210,7 +209,7 @@ class CardValidationService {
     
     // Remove caracteres problemáticos mas mantém aspas e apóstrofos
     // Regex corrigido: hífen no final para evitar escape
-    cleaned = cleaned.replaceAll(RegExp(r'[^\w\s\',\-]'), '');
+    cleaned = cleaned.replaceAll(RegExp(r"[^\w\s',-]"), '');
     
     // Capitalização: primeira letra de cada palavra em maiúscula
     cleaned = cleaned.split(' ').map((word) {

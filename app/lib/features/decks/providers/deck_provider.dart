@@ -81,13 +81,14 @@ class DeckProvider extends ChangeNotifier {
     required String name,
     required String format,
     String? description,
+    List<Map<String, dynamic>>? cards,
   }) async {
     try {
       final response = await _apiClient.post('/decks', {
         'name': name,
         'format': format,
         'description': description,
-        'cards': [], // Deck vazio inicialmente
+        'cards': cards ?? [],
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {

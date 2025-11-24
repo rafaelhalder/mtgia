@@ -91,11 +91,6 @@ final _authRateLimiter = RateLimiter(
   windowSeconds: 60, // 5 requisições por minuto
 );
 
-final _generalRateLimiter = RateLimiter(
-  maxRequests: 100,
-  windowSeconds: 60, // 100 requisições por minuto
-);
-
 final _aiRateLimiter = RateLimiter(
   maxRequests: 10,
   windowSeconds: 60, // 10 requisições por minuto (IA é custosa)
