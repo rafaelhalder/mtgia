@@ -4,6 +4,7 @@ class Deck {
   final String name;
   final String format;
   final String? description;
+  final String? archetype; // Arquétipo do deck (aggro, control, midrange, combo, etc)
   final int? synergyScore;
   final String? strengths;
   final String? weaknesses;
@@ -16,6 +17,7 @@ class Deck {
     required this.name,
     required this.format,
     this.description,
+    this.archetype,
     this.synergyScore,
     this.strengths,
     this.weaknesses,
@@ -31,6 +33,7 @@ class Deck {
       name: json['name'] as String,
       format: json['format'] as String,
       description: json['description'] as String?,
+      archetype: json['archetype'] as String?,
       synergyScore: json['synergy_score'] as int?,
       strengths: json['strengths'] as String?,
       weaknesses: json['weaknesses'] as String?,
@@ -47,6 +50,7 @@ class Deck {
       'name': name,
       'format': format,
       'description': description,
+      'archetype': archetype,
       'synergy_score': synergyScore,
       'strengths': strengths,
       'weaknesses': weaknesses,
@@ -62,6 +66,7 @@ class Deck {
     String? name,
     String? format,
     String? description,
+    String? archetype,
     int? synergyScore,
     String? strengths,
     String? weaknesses,
@@ -74,6 +79,7 @@ class Deck {
       name: name ?? this.name,
       format: format ?? this.format,
       description: description ?? this.description,
+      archetype: archetype ?? this.archetype,
       synergyScore: synergyScore ?? this.synergyScore,
       strengths: strengths ?? this.strengths,
       weaknesses: weaknesses ?? this.weaknesses,

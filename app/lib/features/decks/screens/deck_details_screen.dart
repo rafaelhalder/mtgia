@@ -523,12 +523,16 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
   late Future<List<Map<String, dynamic>>> _optionsFuture;
 
   Future<void> _applyOptimization(BuildContext context, String archetype) async {
+    // Controle do estado do loading para garantir fechamento correto
+    bool isLoadingDialogOpen = false;
+    
     // 1. Show Loading
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
+    isLoadingDialogOpen = true;
 
     try {
       // 2. Call API to get suggestions
@@ -536,6 +540,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       
       if (!context.mounted) return;
       Navigator.pop(context); // Close loading
+      isLoadingDialogOpen = false;
 
       final removals = (result['removals'] as List).cast<String>();
       final additions = (result['additions'] as List).cast<String>();
@@ -609,29 +614,38 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
           ),
         ),
       );
+      isLoadingDialogOpen = true;
 
-      // TODO: Implement actual update logic in DeckProvider
-      // For now, we just simulate success to close the loop
-      await Future.delayed(const Duration(seconds: 1)); 
+      // Aplicar as mudanças via DeckProvider
+      await context.read<DeckProvider>().applyOptimization(
+        deckId: widget.deckId,
+        cardsToRemove: removals,
+        cardsToAdd: additions,
+      );
       
       if (!context.mounted) return;
       Navigator.pop(context); // Close loading
+      isLoadingDialogOpen = false;
       Navigator.pop(context); // Close Sheet
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sugestões aceitas! (Atualização automática em breve)'),
+          content: Text('Mudanças aplicadas com sucesso!'),
           backgroundColor: Colors.green,
         ),
       );
 
     } catch (e) {
+      // Garantir que o loading seja fechado em caso de erro
+      if (context.mounted && isLoadingDialogOpen) {
+        Navigator.pop(context);
+      }
       if (context.mounted) {
-        // Ensure loading is closed if open
-        // We can't easily know if loading is open, but usually it's safe to pop if we are in a dialog context
-        // A safer way is to use a state variable or just show the error
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e')),
+          SnackBar(
+            content: Text('Erro ao aplicar otimização: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

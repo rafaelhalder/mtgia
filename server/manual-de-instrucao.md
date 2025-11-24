@@ -1440,4 +1440,225 @@ return Response.json(body: {
 - ✅ Previne erros de runtime causados por cartas inexistentes
 
 **Próximos Passos:**
-- Implementar a "transformação" do deck: quando o usuário escolhe um arquétipo, a IA deve sugerir quais cartas remover e quais adicionar para atingir aquele objetivo.
+- ✅ **IMPLEMENTADO (24/11/2025):** Implementar a "transformação" do deck: quando o usuário escolhe um arquétipo, a IA deve sugerir quais cartas remover e quais adicionar para atingir aquele objetivo.
+
+---
+
+### 3.20. Correção do Bug de Loop Infinito e Refatoração do Sistema de Otimização (✅ COMPLETO - 24/11/2025)
+
+**Problema Identificado:**
+O botão "Aplicar Mudanças" na tela de otimização de deck causava um loop infinito de `CircularProgressIndicator`. O usuário não conseguia fechar o loading nem receber feedback de erro.
+
+#### **Análise da Causa Raiz:**
+
+**Bug 1: Loading Dialog Nunca Fechando**
+```dart
+// CÓDIGO COM BUG (deck_details_screen.dart - _applyOptimization)
+try {
+  showDialog(...); // Abre loading
+  await optimizeDeck(...); // Pode falhar
+  Navigator.pop(context); // Só fecha se não der erro
+  // ...
+} catch (e) {
+  // BUG: Não havia Navigator.pop() aqui!
+  // O loading ficava aberto para sempre.
+  ScaffoldMessenger.of(context).showSnackBar(...);
+}
+```
+
+**Bug 2: TODO não implementado**
+```dart
+// CÓDIGO COM BUG
+showDialog(...); // Loading "Aplicando mudanças..."
+await Future.delayed(const Duration(seconds: 1)); // Simulação!
+// TODO: Implement actual update logic in DeckProvider
+```
+
+#### **Solução Implementada:**
+
+**Correção 1: Controle de Estado do Loading**
+```dart
+// CÓDIGO CORRIGIDO
+Future<void> _applyOptimization(BuildContext context, String archetype) async {
+  bool isLoadingDialogOpen = false; // Controle de estado
+  
+  showDialog(...);
+  isLoadingDialogOpen = true;
+
+  try {
+    final result = await optimizeDeck(...);
+    
+    if (!context.mounted) return;
+    Navigator.pop(context);
+    isLoadingDialogOpen = false;
+    
+    // ... restante do código ...
+    
+  } catch (e) {
+    // CORREÇÃO: Garantir fechamento do loading em caso de erro
+    if (context.mounted && isLoadingDialogOpen) {
+      Navigator.pop(context);
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao aplicar otimização: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
+```
+
+**Correção 2: Implementação Real do Apply**
+```dart
+// Substituiu o TODO por chamada real ao DeckProvider
+await context.read<DeckProvider>().applyOptimization(
+  deckId: widget.deckId,
+  cardsToRemove: removals,
+  cardsToAdd: additions,
+);
+```
+
+#### **Refatoração do Algoritmo de Detecção de Arquétipo:**
+
+**Problema Original:**
+O código tratava todos os decks igualmente, comparando-os contra uma lista genérica de cartas "meta". Isso resultava em sugestões inadequadas (ex: sugerir carta de Control para um deck Aggro).
+
+**Solução: DeckArchetypeAnalyzer**
+
+Nova classe que implementa detecção automática de arquétipo baseada em heurísticas de MTG:
+
+```dart
+class DeckArchetypeAnalyzer {
+  final List<Map<String, dynamic>> cards;
+  final List<String> colors;
+  
+  /// Calcula CMC médio do deck (excluindo terrenos)
+  double calculateAverageCMC() { ... }
+  
+  /// Conta cartas por tipo (creatures, instants, lands, etc.)
+  Map<String, int> countCardTypes() { ... }
+  
+  /// Detecta arquétipo baseado em estatísticas
+  String detectArchetype() {
+    final avgCMC = calculateAverageCMC();
+    final typeCounts = countCardTypes();
+    final creatureRatio = typeCounts['creatures'] / totalNonLands;
+    final instantSorceryRatio = (typeCounts['instants'] + typeCounts['sorceries']) / totalNonLands;
+    
+    // Aggro: CMC baixo (< 2.5), muitas criaturas (> 40%)
+    if (avgCMC < 2.5 && creatureRatio > 0.4) return 'aggro';
+    
+    // Control: CMC alto (> 3.0), poucos criaturas (< 25%), muitos instants/sorceries
+    if (avgCMC > 3.0 && creatureRatio < 0.25 && instantSorceryRatio > 0.35) return 'control';
+    
+    // Combo: Muitos instants/sorceries (> 40%) e poucos criaturas
+    if (instantSorceryRatio > 0.4 && creatureRatio < 0.3) return 'combo';
+    
+    // Default: Midrange
+    return 'midrange';
+  }
+}
+```
+
+**Recomendações por Arquétipo:**
+
+```dart
+Map<String, List<String>> getArchetypeRecommendations(String archetype, List<String> colors) {
+  switch (archetype.toLowerCase()) {
+    case 'aggro':
+      return {
+        'staples': ['Lightning Greaves', 'Swiftfoot Boots', 'Jeska\'s Will'],
+        'avoid': ['Cartas com CMC > 5', 'Criaturas defensivas'],
+        'priority': ['Haste enablers', 'Anthems (+1/+1)', 'Card draw rápido'],
+      };
+    case 'control':
+      return {
+        'staples': ['Counterspell', 'Swords to Plowshares', 'Cyclonic Rift'],
+        'avoid': ['Criaturas vanilla', 'Cartas agressivas sem utilidade'],
+        'priority': ['Counters', 'Removal eficiente', 'Card advantage'],
+      };
+    // ... outros arquétipos
+  }
+}
+```
+
+#### **Novo Prompt para a IA:**
+
+O prompt enviado à OpenAI agora inclui:
+1. **Análise Automática:** CMC médio, distribuição de tipos, arquétipo detectado
+2. **Recomendações por Arquétipo:** Staples, cartas a evitar, prioridades
+3. **Contexto de Meta:** Decks similares do banco de dados
+4. **Regras Específicas:** Quantidade de terrenos ideal por arquétipo
+
+```dart
+final prompt = '''
+ARQUÉTIPO ALVO: $targetArchetype
+
+ANÁLISE AUTOMÁTICA DO DECK:
+- Arquétipo Detectado: $detectedArchetype
+- CMC Médio: ${deckAnalysis['average_cmc']}
+- Avaliação da Curva: ${deckAnalysis['mana_curve_assessment']}
+- Distribuição de Tipos: ${jsonEncode(deckAnalysis['type_distribution'])}
+
+RECOMENDAÇÕES PARA ARQUÉTIPO $targetArchetype:
+- Staples Recomendados: ${archetypeRecommendations['staples']}
+- Evitar: ${archetypeRecommendations['avoid']}
+- Prioridades: ${archetypeRecommendations['priority']}
+
+SUA MISSÃO (ANÁLISE CONTEXTUAL POR ARQUÉTIPO):
+1. Análise de Mana Base para arquétipo (Aggro: ~30-33, Control: ~37-40)
+2. Staples específicos do arquétipo
+3. Cortes contextuais (remover cartas que não sinergizam)
+''';
+```
+
+#### **Novo Campo no Modelo de Dados:**
+
+Adicionado campo `archetype` aos modelos `Deck` e `DeckDetails`:
+
+```dart
+// deck.dart
+class Deck {
+  final String? archetype; // 'aggro', 'control', 'midrange', 'combo', etc.
+  
+  factory Deck.fromJson(Map<String, dynamic> json) {
+    return Deck(
+      archetype: json['archetype'] as String?,
+      // ...
+    );
+  }
+}
+```
+
+**Migração do Banco de Dados:**
+```sql
+-- Executar para adicionar coluna ao banco existente
+ALTER TABLE decks ADD COLUMN IF NOT EXISTS archetype TEXT;
+```
+
+#### **Resumo das Mudanças:**
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Correção do bug de loading infinito |
+| `app/lib/features/decks/models/deck.dart` | Adição do campo `archetype` |
+| `app/lib/features/decks/models/deck_details.dart` | Adição do campo `archetype` |
+| `server/routes/ai/optimize/index.dart` | Refatoração completa com DeckArchetypeAnalyzer |
+| `server/manual-de-instrucao.md` | Esta documentação |
+
+#### **Testes Recomendados:**
+
+1. **Teste do Bug Fix:**
+   - Abrir otimização de deck
+   - Escolher arquétipo
+   - Simular erro de API (desconectar internet)
+   - Verificar que o loading fecha e mostra mensagem de erro
+
+2. **Teste de Detecção de Arquétipo:**
+   - Deck com CMC < 2.5 e 50% criaturas → Deve detectar "aggro"
+   - Deck com CMC > 3.0 e 50% instants → Deve detectar "control"
+
+3. **Teste de Aplicação:**
+   - Confirmar que cartas removidas são efetivamente removidas
+   - Confirmar que cartas adicionadas aparecem no deck
+   - Verificar refresh automático da tela
