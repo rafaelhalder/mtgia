@@ -54,9 +54,28 @@ class DeckOptimizerService {
   /// Calcula um score heurístico para identificar cartas suspeitas de serem ruins.
   /// Baseado no Rank EDHREC (se tiver no DB) e CMC.
   List<Map<String, dynamic>> _calculateEfficiencyScores(List<dynamic> cards) {
-    // Nota: Assumimos que 'edhrec_rank' vem do seu DB. Se null, assumimos rank alto (impopular).
+    // Primeiro, calcula a mediana do EDHREC rank das cartas que têm rank
+    final ranksWithValue = cards
+        .where((c) => c['edhrec_rank'] != null)
+        .map((c) => c['edhrec_rank'] as int)
+        .toList();
+    
+    // Calcula a mediana do deck (ou usa 5000 como fallback razoável)
+    // Nota: Usamos divisão inteira (~/) pois ranks são inteiros e a precisão
+    // de 1 unidade não afeta significativamente o score final
+    int medianRank = 5000;
+    if (ranksWithValue.isNotEmpty) {
+      ranksWithValue.sort();
+      final mid = ranksWithValue.length ~/ 2;
+      medianRank = ranksWithValue.length.isOdd 
+          ? ranksWithValue[mid] 
+          : ((ranksWithValue[mid - 1] + ranksWithValue[mid]) ~/ 2);
+    }
+    
     var scored = cards.map((card) {
-      final rank = (card['edhrec_rank'] as int?) ?? 15000; 
+      // Para cartas sem rank (novas ou de nicho), usa a mediana do deck
+      // Isso evita penalizar injustamente cartas recém-lançadas
+      final rank = (card['edhrec_rank'] as int?) ?? medianRank; 
       final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
       
       // Lógica: Rank baixo é bom (ex: Sol Ring é rank 1). CMC baixo é bom.

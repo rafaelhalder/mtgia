@@ -365,7 +365,7 @@ ManaAnalysis _parseManaCost(String manaCost) {
   int cmc = 0;
   final colors = <String, int>{};
 
-  // Regex para capturar símbolos como {2}, {U}, {B/G}, etc.
+  // Regex para capturar símbolos como {2}, {U}, {B/G}, {2/W}, {B/P}, etc.
   final regex = RegExp(r'\{([^}]+)\}');
   final matches = regex.allMatches(manaCost);
 
@@ -376,23 +376,38 @@ ManaAnalysis _parseManaCost(String manaCost) {
     final number = int.tryParse(symbol);
     if (number != null) {
       cmc += number;
-    } else {
-      // Se for símbolo de cor ou híbrido
-      // {U} -> cmc +1, Blue +1
-      // {2/W} -> cmc +2 (maior custo), White +1 (simplificação)
-      // {B/G} -> cmc +1, Black +1, Green +1 (simplificação para devoção)
+    } else if (symbol == 'X') {
+      // X conta como 0 para CMC na pilha/deck
+      continue;
+    } else if (symbol.contains('/')) {
+      // Símbolo híbrido: {2/W}, {B/G}, {W/P}, {B/P}, etc.
+      final parts = symbol.split('/');
       
-      if (symbol == 'X') {
-        // X conta como 0 para CMC na pilha/deck
-        continue;
+      // Para híbridos com número (ex: {2/W}), o CMC é o maior valor
+      // Para híbridos de cor (ex: {B/G}) ou Phyrexian (ex: {B/P}), o CMC é 1
+      // P (Phyrexian) não é número, então não afeta o cálculo
+      int hybridCmc = 1;
+      for (final part in parts) {
+        // Ignora 'P' (Phyrexian) ao calcular CMC numérico
+        if (part == 'P') continue;
+        final partNumber = int.tryParse(part);
+        if (partNumber != null && partNumber > hybridCmc) {
+          hybridCmc = partNumber;
+        }
       }
-
-      // Tratamento simples para símbolos híbridos ou phyrexian
-      // Removemos caracteres não alfabéticos para contar cores
-      // Ex: "B/P" (Phyrexian Black) -> "BP" -> conta B
+      cmc += hybridCmc;
       
-      cmc += 1; // Assume custo 1 para qualquer símbolo não numérico
-
+      // Conta as cores (ignorando números e 'P' para Phyrexian)
+      if (symbol.contains('W')) colors['W'] = (colors['W'] ?? 0) + 1;
+      if (symbol.contains('U')) colors['U'] = (colors['U'] ?? 0) + 1;
+      if (symbol.contains('B')) colors['B'] = (colors['B'] ?? 0) + 1;
+      if (symbol.contains('R')) colors['R'] = (colors['R'] ?? 0) + 1;
+      if (symbol.contains('G')) colors['G'] = (colors['G'] ?? 0) + 1;
+      if (symbol.contains('C')) colors['C'] = (colors['C'] ?? 0) + 1;
+    } else {
+      // Símbolo de cor simples: {U}, {B}, {R}, {G}, {W}, {C}
+      cmc += 1;
+      
       if (symbol.contains('W')) colors['W'] = (colors['W'] ?? 0) + 1;
       if (symbol.contains('U')) colors['U'] = (colors['U'] ?? 0) + 1;
       if (symbol.contains('B')) colors['B'] = (colors['B'] ?? 0) + 1;

@@ -211,6 +211,26 @@ Future<Response> _importDeck(RequestContext context) async {
     );
   }
 
+  // 6.5. Validação de Comandante para formatos que exigem
+  if (format == 'commander' || format == 'brawl') {
+    final hasCommander = cardsToInsert.any((c) => c['is_commander'] == true);
+    
+    if (!hasCommander) {
+      // Tenta detectar automaticamente um comandante baseado no tipo
+      // Procura por Legendary Creature ou Planeswalker com "can be your commander"
+      for (final card in cardsToInsert) {
+        final typeLine = (card['type_line'] as String).toLowerCase();
+        final isLegendaryCreature = typeLine.contains('legendary') && typeLine.contains('creature');
+        
+        if (isLegendaryCreature) {
+          // Marca a primeira Legendary Creature como comandante
+          card['is_commander'] = true;
+          break;
+        }
+      }
+    }
+  }
+
   // 7. Validação de Regras (Banlist e Limites)
   final limit = (format == 'commander' || format == 'brawl') ? 1 : 4;
   final cardIdsToCheck = <String>[];
@@ -304,11 +324,26 @@ Future<Response> _importDeck(RequestContext context) async {
       return deckMap;
     });
 
-    return Response.json(body: {
+    // Prepara warnings para a resposta
+    final warnings = <String>[];
+    
+    // Verifica se é formato Commander/Brawl sem comandante detectado
+    if ((format == 'commander' || format == 'brawl') && 
+        !cardsToInsert.any((c) => c['is_commander'] == true)) {
+      warnings.add('Nenhum comandante foi detectado. Considere marcar uma carta como comandante.');
+    }
+
+    final responseBody = {
       'deck': newDeck,
       'cards_imported': cardsToInsert.length,
       'not_found_lines': notFoundCards,
-    });
+    };
+    
+    if (warnings.isNotEmpty) {
+      responseBody['warnings'] = warnings;
+    }
+
+    return Response.json(body: responseBody);
 
   } catch (e) {
     return Response.json(

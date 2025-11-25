@@ -34,6 +34,7 @@ class DeckArchetypeAnalyzer {
   }
   
   /// Conta cartas por tipo
+  /// Agora conta tipos múltiplos (ex: Artifact Creature conta para ambos)
   Map<String, int> countCardTypes() {
     final counts = <String, int>{
       'creatures': 0,
@@ -43,27 +44,37 @@ class DeckArchetypeAnalyzer {
       'artifacts': 0,
       'planeswalkers': 0,
       'lands': 0,
+      'battles': 0,
     };
     
     for (final card in cards) {
       final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
       
-      // Sistema de prioridade: cada carta é contada apenas uma vez em seu tipo principal
-      // Prioridade: Land > Creature > Planeswalker > Instant > Sorcery > Artifact > Enchantment
+      // Conta TODOS os tipos presentes na carta (não apenas o principal)
+      // Isso permite estatísticas mais precisas para arquétipos
       if (typeLine.contains('land')) {
         counts['lands'] = counts['lands']! + 1;
-      } else if (typeLine.contains('creature')) {
+      }
+      if (typeLine.contains('creature')) {
         counts['creatures'] = counts['creatures']! + 1;
-      } else if (typeLine.contains('planeswalker')) {
+      }
+      if (typeLine.contains('planeswalker')) {
         counts['planeswalkers'] = counts['planeswalkers']! + 1;
-      } else if (typeLine.contains('instant')) {
+      }
+      if (typeLine.contains('instant')) {
         counts['instants'] = counts['instants']! + 1;
-      } else if (typeLine.contains('sorcery')) {
+      }
+      if (typeLine.contains('sorcery')) {
         counts['sorceries'] = counts['sorceries']! + 1;
-      } else if (typeLine.contains('artifact')) {
+      }
+      if (typeLine.contains('artifact')) {
         counts['artifacts'] = counts['artifacts']! + 1;
-      } else if (typeLine.contains('enchantment')) {
+      }
+      if (typeLine.contains('enchantment')) {
         counts['enchantments'] = counts['enchantments']! + 1;
+      }
+      if (typeLine.contains('battle')) {
+        counts['battles'] = counts['battles']! + 1;
       }
     }
     
