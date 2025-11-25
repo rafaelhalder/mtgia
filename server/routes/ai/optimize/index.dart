@@ -298,8 +298,8 @@ Future<Response> onRequest(RequestContext context) async {
         commanders: commanders,
         targetArchetype: archetype,
       );
-    } on Exception catch (e) {
-      // Tratamento de erros do Scryfall ou OpenAI
+    } catch (e) {
+      // Tratamento de erros do Scryfall, OpenAI, SocketException, TimeoutException, etc.
       print('Erro no serviço de otimização: $e');
       return Response.json(
         statusCode: HttpStatus.serviceUnavailable,

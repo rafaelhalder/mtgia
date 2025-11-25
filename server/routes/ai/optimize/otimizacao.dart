@@ -100,8 +100,9 @@ class DeckOptimizerService {
     final List<String> staples = [];
 
     // Query base: staples universais de Commander ordenados por popularidade (EDHREC)
-    final colorIdentity = colors.isNotEmpty ? 'id<=${colors.join('')}' : '';
-    final query = '$colorIdentity format:commander -is:banned';
+    // Handle empty colors case to avoid leading space in query
+    final colorIdentity = colors.isNotEmpty ? 'id<=${colors.join('')} ' : '';
+    final query = '${colorIdentity}format:commander -is:banned';
 
     try {
       final uri = Uri.https('api.scryfall.com', '/cards/search', {
@@ -113,8 +114,10 @@ class DeckOptimizerService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final cards = data['data'] as List;
-        staples.addAll(cards.take(15).map((c) => c['name'] as String));
+        final cards = data['data'] as List?;
+        if (cards != null) {
+          staples.addAll(cards.take(15).map((c) => c['name'] as String));
+        }
       }
     } catch (e) {
       print('Erro ao buscar staples no Scryfall: $e');
@@ -166,7 +169,21 @@ class DeckOptimizerService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      final content = data['choices'][0]['message']['content'] as String;
+      
+      // Safe navigation for OpenAI response structure
+      final choices = data['choices'] as List?;
+      if (choices == null || choices.isEmpty) {
+        throw Exception('OpenAI response missing choices array');
+      }
+      
+      final firstChoice = choices[0] as Map<String, dynamic>?;
+      final message = firstChoice?['message'] as Map<String, dynamic>?;
+      final content = message?['content'] as String?;
+      
+      if (content == null) {
+        throw Exception('OpenAI response missing content');
+      }
+      
       return jsonDecode(content) as Map<String, dynamic>;
     } else {
       throw Exception(
