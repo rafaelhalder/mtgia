@@ -1078,6 +1078,7 @@ Fornecer feedback visual e validação de regras para o usuário, garantindo que
   - Utiliza a biblioteca `fl_chart`.
   - **Bar Chart:** Mostra a curva de mana (distribuição de custos 0-7+).
   - **Pie Chart:** Mostra a distribuição de cores (devoção).
+  - **Tabela:** Mostra a sinergia entre cartas (se disponível).
 
 ### 3.18. Módulo 2: O Consultor Criativo (✅ COMPLETO - Atualizado 24/11/2025)
 
@@ -1198,82 +1199,6 @@ Future<bool> applyOptimization({
     return true;
   }
   return false;
-}
-```
-
-#### 4. **Geração de Deck do Zero (`POST /ai/generate`)** ✅
-- Recebe um `prompt` (descrição textual) e `format` (Commander, Standard, etc.).
-- A IA monta um deck completo e legal para o formato, incluindo:
-  - Criaturas, feitiços, artefatos, encantamentos.
-  - Terrenos balanceados (36-38 para Commander).
-  - Total de 100 cartas para Commander, 60 para Standard, etc.
-- **Opcional:** Sistema RAG (Retrieval-Augmented Generation) que busca decks similares no meta (`meta_decks`) para inspirar a IA.
-- **Frontend:** Tela completa de geração (`DeckGenerateScreen`):
-  1. Seletor de formato dropdown.
-  2. Campo de texto multi-linha para o prompt.
-  3. 6 exemplos de prompts clicáveis (chips).
-  4. Botão "Gerar Deck" com loading "A IA está pensando...".
-  5. Preview do deck gerado agrupado por tipo (Creatures, Instants, Lands, etc.).
-  6. Campo para nomear o deck.
-  7. Botão "Salvar Deck" que chama `POST /decks`.
-
-**Código de Exemplo (Backend - `routes/ai/generate/index.dart`):**
-```dart
-final systemPrompt = '''
-You are a world-class Magic: The Gathering deck builder.
-Your goal is to build a competitive, consistent, and legal deck for the format "$format".
-
-Rules:
-1. Return ONLY a JSON object with a "cards" field.
-2. "cards" must be a list of objects with "name" (exact English card name) and "quantity" (integer).
-3. Do not include markdown formatting. Just the raw JSON string.
-4. For Commander, ensure exactly 100 cards (1 Commander + 99 Main).
-5. Ensure a good land count (approx 36-38 for Commander).
-''';
-
-final userMessage = '''
-Build a deck based on this description: "$prompt".
-''';
-
-// Chama OpenAI GPT-4o-mini
-final response = await http.post(
-  Uri.parse('https://api.openai.com/v1/chat/completions'),
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer $apiKey',
-  },
-  body: jsonEncode({
-    'model': 'gpt-4o-mini',
-    'messages': [
-      {'role': 'system', 'content': systemPrompt},
-      {'role': 'user', 'content': userMessage},
-    ],
-    'temperature': 0.7,
-  }),
-);
-```
-
-**Código de Exemplo (Frontend - `DeckGenerateScreen`):**
-```dart
-Future<void> _generateDeck() async {
-  setState(() {
-    _isGenerating = true;
-    _generatedDeck = null;
-  });
-
-  try {
-    final result = await context.read<DeckProvider>().generateDeck(
-      prompt: _promptController.text.trim(),
-      format: _selectedFormat,
-    );
-    
-    setState(() {
-      _generatedDeck = result;
-      _isGenerating = false;
-    });
-  } catch (e) {
-    // Error handling...
-  }
 }
 ```
 
@@ -1805,7 +1730,8 @@ Future<Map<String, List<String>>> getArchetypeRecommendations(
   // Listas hardcoded que ficam desatualizadas
   case 'control':
     recommendations['staples']!.addAll([
-      'Counterspell', 'Swords to Plowshares', ...
+      'Counterspell', 'Swords to Plowshares', 'Path to Exile',
+      'Cyclonic Rift', 'Teferi\'s Protection'  // E se alguma for banida?
     ]);
 }
 ```
@@ -1937,3 +1863,138 @@ LIMIT 10;
 2. **Monitoramento:** Dashboard para visualizar histórico de sincronização
 3. **Alertas:** Notificação quando há novos bans detectados
 4. **Cache Inteligente:** Sincronizar apenas deltas (cartas que mudaram de rank)
+
+---
+
+## 4. Novas Funcionalidades Implementadas
+
+### ✅ **Implementado (Módulo 3: O Simulador de Probabilidade - Parcial)**
+- [x] **Backend:**
+  - **Verificação de Deck Virtual (Post-Optimization Check):**
+    - Antes de retornar sugestões de otimização, o servidor cria uma cópia "virtual" do deck aplicando as mudanças.
+    - Recalcula a análise de mana (Fontes vs Devoção) e Curva de Mana neste deck virtual.
+    - Compara com o deck original.
+    - Se a otimização piorar a base de mana (ex: remover terrenos necessários) ou quebrar a curva (ex: deixar o deck muito lento para Aggro), adiciona um aviso explícito (`validation_warnings`) na resposta.
+    - Garante que a IA não sugira "melhorias" que tornam o deck injogável matematicamente.
+
+**Exemplo de Resposta com Aviso:**
+```json
+{
+  "removals": ["Card Name 1", "Card Name 2"],
+  "additions": ["Card Name A", "Card Name B"],
+  "reasoning": "Justificativa da IA...",
+  "validation_warnings": [
+    "Remover 'Forest' pode deixar o deck sem fontes de mana verde suficientes.",
+    "Adicionar muitas cartas azuis pode atrasar a curva de mana do deck aggro."
+  ]
+}
+```
+
+**Código de Exemplo (Backend - `routes/ai/optimize/index.dart`):**
+```dart
+// 1. Criar deck virtual
+final virtualDeck = Deck.fromJson(originalDeck.toJson());
+
+// 2. Aplicar mudanças (removals/additions)
+for (final removal in removals) {
+  virtualDeck.removeCard(removal);
+}
+for (final addition in additions) {
+  virtualDeck.addCard(addition);
+}
+
+// 3. Recalcular análise de mana e curva
+final manaAnalysis = analyzeMana(virtualDeck);
+final curveAnalysis = analyzeManaCurve(virtualDeck);
+
+// 4. Comparar com o original
+if (manaAnalysis['sourcesVsDevotion'] < 0.8) {
+  warnings.add("A nova base de mana pode não suportar a devoção necessária.");
+}
+if (curveAnalysis['avgCMC'] > originalCurveAnalysis['avgCMC'] + 1) {
+  warnings.add("A curva de mana aumentou muito, o deck pode ficar lento demais.");
+}
+
+// 5. Retornar warnings na resposta
+return Response.json(body: {
+  'removals': removals,
+  'additions': additions,
+  'reasoning': reasoning,
+  'validation_warnings': warnings,
+});
+```
+
+**Notas:**
+- Essa funcionalidade evita que a IA sugira otimizações que, na verdade, pioram o desempenho do deck.
+- A validação é feita em um "sandbox" (cópia virtual do deck), garantindo que o deck original permaneça intacto até a confirmação do usuário.
+
+---
+
+## 5. Documentação Atualizada
+
+### 5.1. API Reference
+
+#### **POST /ai/optimize**
+
+**Request Body:**
+```json
+{
+  "deck_id": "550e8400-e29b-41d4-a716-446655440000",
+  "archetype": "aggro"
+}
+```
+
+**Response:**
+```json
+{
+  "removals": ["Sol Ring", "Mana Crypt"],
+  "additions": ["Lightning Bolt", "Goblin Guide"],
+  "reasoning": "Aumentar agressividade e curva de mana baixa.",
+  "validation_warnings": [
+    "Remover 'Forest' pode deixar o deck sem fontes de mana verde suficientes.",
+    "Adicionar muitas cartas azuis pode atrasar a curva de mana do deck aggro."
+  ]
+}
+```
+
+**Descrição dos Campos:**
+- `removals`: Cartas sugeridas para remoção
+- `additions`: Cartas sugeridas para adição
+- `reasoning`: Justificativa da IA
+- `validation_warnings`: Avisos sobre possíveis problemas na otimização
+
+---
+
+### 5.2. Guia de Estilo e Contribuição
+
+#### **Commit Messages:**
+- Use o tempo verbal imperativo: "Adicionar nova funcionalidade X" ao invés de "Adicionando nova funcionalidade X"
+- Comece com um verbo de ação: "Adicionar", "Remover", "Atualizar", "Fix", "Refactor", "Documentar", etc.
+- Seja breve mas descritivo. Ex: "Fix bug na tela de login" é melhor que "Correção de bug".
+
+#### **Branching Model:**
+- Use branches descritivas: `feature/novo-recurso`, `bugfix/corrigir-bug`, `hotfix/urgente`
+- Para novas funcionalidades, crie uma branch a partir da `develop`.
+- Para correções rápidas, crie uma branch a partir da `main`.
+
+#### **Pull Requests:**
+- Sempre faça PRs para `develop` para novas funcionalidades e correções.
+- PRs devem ter um título descritivo e um corpo explicando as mudanças.
+- Adicione labels apropriadas: `bug`, `feature`, `enhancement`, `documentation`, etc.
+- Solicite revisão de pelo menos uma pessoa antes de mesclar.
+
+#### **Código Limpo e Documentado:**
+- Siga as convenções de nomenclatura do projeto.
+- Mantenha o código modular e reutilizável.
+- Adicione comentários apenas quando necessário. O código deve ser auto-explicativo.
+- Atualize a documentação sempre que uma funcionalidade for alterada ou adicionada.
+
+---
+
+## 6. Considerações Finais
+
+Este documento é um living document e será continuamente atualizado conforme o projeto ManaLoom evolui. Novas funcionalidades, melhorias e correções de bugs serão documentadas aqui para manter todos os colaboradores alinhados e informados.
+
+Para qualquer dúvida ou sugestão sobre o projeto, sinta-se à vontade para abrir uma issue no repositório ou entrar em contato diretamente com os mantenedores.
+
+Obrigado por fazer parte do ManaLoom! Juntos, estamos tecendo a estratégia perfeita.
