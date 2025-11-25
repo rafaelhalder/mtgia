@@ -27,6 +27,10 @@ class FormatStaplesService {
   /// Cache de duração máxima em horas
   static const int cacheMaxAgeHours = 24;
   
+  /// Limite de EDHREC rank para considerar uma carta como staple
+  /// Cartas com rank <= 500 são consideradas staples (Top 500 mais populares)
+  static const int stapleRankThreshold = 500;
+  
   FormatStaplesService(this._pool);
 
   /// Busca staples para um formato, cores e arquétipo específicos
@@ -81,7 +85,8 @@ class FormatStaplesService {
       // Filtro de cores (se fornecido)
       if (colors != null && colors.isNotEmpty) {
         // Buscar cartas que tenham identidade de cor compatível
-        // id<= significa que a carta pode estar em decks com essas cores
+        // Usa operador PostgreSQL <@ (array containment) para verificar se a identidade 
+        // de cor da carta está contida nas cores do deck (ou é vazia/incolor)
         conditions.add('(color_identity <@ @colors OR color_identity = \'{}\')');
         parameters['colors'] = TypedValue(Type.textArray, colors);
       }
@@ -224,7 +229,7 @@ class FormatStaplesService {
           WHERE card_name = @name 
             AND format = @format 
             AND is_banned = FALSE
-            AND edhrec_rank <= 500
+            AND edhrec_rank <= $stapleRankThreshold
           LIMIT 1
         '''),
         parameters: {
