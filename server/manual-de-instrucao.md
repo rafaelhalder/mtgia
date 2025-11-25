@@ -1662,3 +1662,280 @@ ALTER TABLE decks ADD COLUMN IF NOT EXISTS archetype TEXT;
    - Confirmar que cartas removidas são efetivamente removidas
    - Confirmar que cartas adicionadas aparecem no deck
    - Verificar refresh automático da tela
+
+---
+
+### 3.21. Integração do SynergyEngine e DeckOptimizerService (✅ COMPLETO - 25/11/2025)
+
+**Objetivo:**
+Evoluir o sistema de otimização de um simples "sugeridor" para um "Otimizador de Alta Performance (cEDH/High Power)", utilizando RAG (Retrieval-Augmented Generation) e Score Estatístico.
+
+#### **Arquitetura da Solução**
+
+A nova arquitetura é composta por 3 camadas:
+
+1. **`sinergia.dart` (SynergyEngine)** - Motor de busca de sinergias via Scryfall API
+2. **`otimizacao.dart` (DeckOptimizerService)** - Orquestrador de IA com análise estatística
+3. **`index.dart` (onRequest)** - Handler HTTP que integra tudo
+
+#### **3.21.1. SynergyEngine - Busca de Sinergias Contextuais**
+
+**Padrão Utilizado:** RAG (Retrieval-Augmented Generation)
+
+**Conceito:**
+Em vez de apenas pedir à IA "cartas boas para Commander X", primeiro buscamos cartas que REALMENTE sinergizam com o comandante usando a API do Scryfall. Isso é o "Retrieval" do RAG - recuperamos dados relevantes antes de chamar o LLM.
+
+**Funcionamento:**
+1. **Obter Oracle Text:** Busca o texto oficial da carta comandante no Scryfall
+2. **Análise Semântica:** Identifica palavras-chave no texto (artifact, token, graveyard, etc.)
+3. **Tradução para Queries:** Converte palavras-chave em queries do Scryfall usando `function:` tags
+4. **Execução Paralela:** Executa até 3 queries simultaneamente para performance
+5. **Deduplicação:** Retorna lista única de cartas sinérgicas
+
+**Código de Exemplo:**
+```dart
+class SynergyEngine {
+  Future<List<String>> fetchCommanderSynergies({
+    required String commanderName,
+    required List<String> colors,
+    required String archetype,
+  }) async {
+    final commanderData = await _getCardData(commanderName);
+    final oracleText = commanderData['oracle_text'].toLowerCase();
+    
+    List<String> queries = [];
+    final colorQuery = "id<=${colors.join('')}";
+    
+    // Análise Semântica Simplificada
+    if (oracleText.contains('artifact')) {
+      queries.add('function:artifact-payoff $colorQuery');
+      queries.add('t:artifact order:edhrec $colorQuery');
+    }
+    if (oracleText.contains('create') && oracleText.contains('token')) {
+      queries.add('function:token-doubler $colorQuery');
+      queries.add('function:anthem $colorQuery');
+    }
+    // ... mais regras
+    
+    // Executa queries em paralelo
+    final results = await Future.wait(queries.take(3).map(_searchScryfall));
+    return results.expand((i) => i).toSet().toList();
+  }
+}
+```
+
+**Keywords Suportadas:**
+| Keyword no Oracle | Query Scryfall | Exemplo de Cartas |
+|-------------------|----------------|-------------------|
+| `artifact` | `function:artifact-payoff` | Urza, Breya |
+| `enchantment` | `function:enchantress` | Sythis, Zur |
+| `create token` | `function:token-doubler` | Chatterfang, Jetmir |
+| `graveyard/sacrifice` | `function:reanimate` | Muldrotha, Meren |
+| `instant/sorcery` | `function:cantrip` | Kess, Mizzix |
+
+#### **3.21.2. DeckOptimizerService - Orquestrador de IA**
+
+**Padrão Utilizado:** Service Layer + Statistical Analysis
+
+**Responsabilidades:**
+1. **Análise Quantitativa:** Calcula scores de eficiência para cada carta
+2. **Busca de Sinergias:** Usa SynergyEngine para RAG
+3. **Recuperação de Staples:** Busca cartas populares no formato
+4. **Construção de Prompt:** Monta contexto rico para o LLM
+5. **Chamada à OpenAI:** Envia prompt e processa resposta
+
+**Score de Eficiência:**
+```dart
+// Cartas com rank EDHREC alto + CMC alto = Score alto (ruim)
+// Cartas com rank EDHREC baixo + CMC baixo = Score baixo (bom)
+final score = edhrecRank * (cmc > 4 ? 1.5 : 1.0);
+```
+
+**Código de Exemplo:**
+```dart
+class DeckOptimizerService {
+  final SynergyEngine synergyEngine;
+  
+  Future<Map<String, dynamic>> optimizeDeck({
+    required Map<String, dynamic> deckData,
+    required List<String> commanders,
+    required String targetArchetype,
+  }) async {
+    // 1. Score Estatístico
+    final weakCandidates = _calculateEfficiencyScores(cards).take(15);
+    
+    // 2. RAG - Busca sinergias do Comandante
+    final synergyCards = await synergyEngine.fetchCommanderSynergies(
+      commanderName: commanders.first,
+      colors: colors,
+      archetype: targetArchetype,
+    );
+    
+    // 3. Staples de formato
+    final formatStaples = await _fetchFormatStaples(colors);
+    
+    // 4. Chama OpenAI com contexto rico
+    return await _callOpenAI(
+      weakCandidates: weakCandidates,
+      synergyPool: synergyCards,
+      staplesPool: formatStaples,
+    );
+  }
+}
+```
+
+**Sistema de Prompt:**
+```
+Você é um especialista em otimização de decks de Magic: The Gathering para formato Commander (EDH), 
+com foco especial em cEDH (Competitive EDH) e High Power.
+
+SUAS RESPONSABILIDADES:
+1. Analisar o deck atual e identificar cartas fracas ou fora da estratégia
+2. Sugerir remoções baseadas nas cartas estatisticamente fracas fornecidas
+3. Sugerir adições das pools de sinergia e staples fornecidas
+4. Manter o equilíbrio numérico (mesma quantidade de remoções e adições)
+
+REGRAS CRÍTICAS:
+- O número de removals DEVE ser IGUAL ao número de additions
+- Priorize cartas da pool de sinergias (high_synergy_options) para adições
+- Use statistically_weak_cards como guia para remoções
+- NUNCA remova staples de formato (Sol Ring, Mana Crypt, Tutors, Fetchlands)
+```
+
+#### **3.21.3. Integração no Handler (onRequest)**
+
+**Fluxo Refatorado:**
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   PostgreSQL    │───▶│ DeckArchetype    │───▶│ deck_analysis   │
+│ (Fetch Deck)    │    │ Analyzer         │    │ (para frontend) │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                       │
+┌─────────────────┐    ┌──────────────────┐           ▼
+│   Scryfall API  │◀───│ SynergyEngine    │    ┌─────────────────┐
+│ (Synergies)     │    │ (RAG)            │───▶│ DeckOptimizer   │
+└─────────────────┘    └──────────────────┘    │ Service         │
+                                               └────────┬────────┘
+┌─────────────────┐    ┌──────────────────┐           │
+│   OpenAI API    │◀───│ _callOpenAI()    │◀──────────┘
+│ (GPT-4o)        │    │                  │
+└─────────────────┘    └──────────────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │ CardValidation   │
+                       │ Service          │
+                       └────────┬─────────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │ Response JSON    │
+                       │ (validado)       │
+                       └──────────────────┘
+```
+
+**Código do Handler Refatorado:**
+```dart
+Future<Response> onRequest(RequestContext context) async {
+  // 1. Fetch Deck Data (PostgreSQL)
+  final pool = context.read<Pool>();
+  final cardsResult = await pool.execute(...);
+  
+  // 2. Análise Estatística (DeckArchetypeAnalyzer - mantido para frontend)
+  final analyzer = DeckArchetypeAnalyzer(allCardData, deckColors.toList());
+  final deckAnalysis = analyzer.generateAnalysis();
+  
+  // 3. Carregar API Key
+  final env = DotEnv(includePlatformEnvironment: true)..load();
+  final apiKey = env['OPENAI_API_KEY'];
+  
+  // 4. Instanciar e chamar DeckOptimizerService (NOVO)
+  final optimizerService = DeckOptimizerService(apiKey);
+  
+  Map<String, dynamic> optimizationResult;
+  try {
+    optimizationResult = await optimizerService.optimizeDeck(
+      deckData: deckData,
+      commanders: commanders,
+      targetArchetype: archetype,
+    );
+  } on Exception catch (e) {
+    // Tratamento robusto de erros
+    return Response.json(
+      statusCode: HttpStatus.serviceUnavailable,
+      body: {'error': 'Falha no serviço de otimização', 'deck_analysis': deckAnalysis},
+    );
+  }
+  
+  // 5. Validar cartas sugeridas (CardValidationService)
+  final validationService = CardValidationService(pool);
+  final validation = await validationService.validateCardNames(allSuggestions);
+  
+  // 6. Retornar resposta validada
+  return Response.json(body: {
+    'removals': validRemovals,
+    'additions': validAdditions,
+    'reasoning': optimizationResult['reasoning'],
+    'deck_analysis': deckAnalysis,
+  });
+}
+```
+
+#### **3.21.4. Tratamento de Erros**
+
+**Erros do Scryfall:**
+- Se a busca de sinergias falhar, o sistema continua com lista vazia
+- Fallback para staples universais se a busca de staples falhar
+- Logs detalhados para debugging
+
+**Erros da OpenAI:**
+- Exception com mensagem detalhada do status code
+- Response 503 (Service Unavailable) para o cliente
+- `deck_analysis` sempre incluído para o frontend não quebrar
+
+**Código de Exemplo:**
+```dart
+List<String> synergyCards = [];
+try {
+  synergyCards = await synergyEngine.fetchCommanderSynergies(...);
+} catch (e) {
+  print('Erro ao buscar sinergias do Scryfall: $e');
+  // Continua com lista vazia
+}
+
+List<String> formatStaples = [];
+try {
+  formatStaples = await _fetchFormatStaples(colors, targetArchetype);
+} catch (e) {
+  // Fallback seguro
+  formatStaples = ['Sol Ring', 'Arcane Signet', 'Command Tower'];
+}
+```
+
+#### **3.21.5. Arquivos Modificados**
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `server/routes/ai/optimize/index.dart` | Refatoração do handler para usar DeckOptimizerService |
+| `server/routes/ai/optimize/otimizacao.dart` | Correção do import e implementação do _fetchFormatStaples |
+| `server/routes/ai/optimize/sinergia.dart` | Sem alterações (já estava correto) |
+| `server/manual-de-instrucao.md` | Esta documentação |
+
+#### **3.21.6. Testes Recomendados**
+
+1. **Teste de Integração:**
+   - Chamar `POST /ai/optimize` com deck válido
+   - Verificar que removals e additions são retornados
+   - Verificar que deck_analysis está presente
+
+2. **Teste de Fallback (Scryfall Down):**
+   - Simular falha do Scryfall (timeout/network error)
+   - Verificar que o sistema continua funcionando com staples de fallback
+
+3. **Teste de Validação:**
+   - Verificar que cartas inexistentes são filtradas
+   - Verificar que warnings são retornados para cartas inválidas
+
+4. **Teste de Mock (Sem API Key):**
+   - Remover OPENAI_API_KEY do .env
+   - Verificar que resposta mock é retornada com `is_mock: true`
