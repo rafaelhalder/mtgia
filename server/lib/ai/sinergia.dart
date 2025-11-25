@@ -54,7 +54,7 @@ class SynergyEngine {
 
     // 3. Executar Queries em Paralelo
     final results = await Future.wait(
-      queries.take(3).map((q) => _searchScryfall(q))
+      queries.take(3).map((q) => searchScryfall(q))
     );
 
     // Flatten e retornar nomes únicos
@@ -68,10 +68,10 @@ class SynergyEngine {
     return null;
   }
 
-  Future<List<String>> _searchScryfall(String query) async {
+  Future<List<String>> searchScryfall(String query) async {
     // Query formatada para Commander, ordenada por popularidade (EDHREC)
     // e removendo banidas
-    final finalQuery = '$query format:commander -is:banned';
+    final finalQuery = query.contains('format:') ? query : '$query format:commander -is:banned';
     final uri = Uri.https('api.scryfall.com', '/cards/search', {
       'q': finalQuery,
       'order': 'edhrec', // Crucial: Traz o que os players realmente usam
@@ -81,7 +81,7 @@ class SynergyEngine {
       final response = await http.get(uri);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['data'] as List).take(10).map((c) => c['name'] as String).toList();
+        return (data['data'] as List).take(20).map((c) => c['name'] as String).toList();
       }
     } catch (e) {
       print('Erro Scryfall: $e');

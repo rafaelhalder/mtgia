@@ -1,7 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'SynergyEngine.dart'; // Arquivo auxiliar que criaremos
-
+import 'sinergia.dart';
 class DeckOptimizerService {
   final String openAiKey;
   final SynergyEngine synergyEngine;
@@ -80,10 +80,12 @@ class DeckOptimizerService {
   }
 
   Future<List<String>> _fetchFormatStaples(List<String> colors, String archetype) async {
-    // Aqui você implementaria a chamada ao Scryfall com query 'format:commander -is:banned'
-    // Similar ao que você já tem, mas focado em staples de cor (ex: Smothering Tithe para branco)
-    // Retornando lista mockada para brevidade
-    return ["Sol Ring", "Arcane Signet", "Command Tower"]; 
+    // Busca staples genéricas das cores do deck (ordenadas por EDHREC rank via _searchScryfall)
+    final colorQuery = colors.isEmpty ? "c:c" : "id<=${colors.join('')}";
+    // Ex: "format:commander -is:banned id<=UB"
+    final query = "format:commander -is:banned $colorQuery";
+    
+    return await synergyEngine.searchScryfall(query);
   }
 
   Future<Map<String, dynamic>> _callOpenAI({
@@ -94,9 +96,6 @@ class DeckOptimizerService {
     required List<String> staplesPool,
     required String archetype,
   }) async {
-    // Lendo o Prompt do sistema (em produção, carregue do arquivo .md)
-    const systemPrompt = "Voce é um especialista em otimização de decks cEDH..."; 
-
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
@@ -134,7 +133,24 @@ class DeckOptimizerService {
   }
 
   String _getSystemPrompt() {
-    // Na prática, leia do arquivo optimizer_system_prompt.md
-    return "VER ARQUIVO MARKDOWN ANEXO"; 
+    try {
+      // Tenta localizar o arquivo prompt.md relativo ao diretório de execução (server/)
+      var file = File('lib/ai/prompt.md');
+      
+      if (!file.existsSync()) {
+        // Tenta caminho alternativo caso esteja rodando da raiz
+        file = File('server/lib/ai/prompt.md');
+      }
+
+      if (file.existsSync()) {
+        return file.readAsStringSync();
+      }
+
+      print('⚠️ Aviso: Arquivo prompt.md não encontrado em ${file.path}');
+      return "Você é um especialista em otimização de decks de Magic: The Gathering.";
+    } catch (e) {
+      print('❌ Erro ao ler prompt.md: $e');
+      return "Você é um especialista em otimização de decks de Magic: The Gathering.";
+    }
   }
 }
