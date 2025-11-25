@@ -349,6 +349,7 @@ class DeckProvider extends ChangeNotifier {
                 'card_id': card['id'],
                 'quantity': 1,
                 'is_commander': false,
+                'type_line': card['type_line'] ?? '',
               };
             } else {
               debugPrint('  ❌ Não encontrado: $cardName');
@@ -365,7 +366,7 @@ class DeckProvider extends ChangeNotifier {
 
       // 4. Buscar IDs das cartas a remover pelo nome (EM PARALELO)
       debugPrint('🔍 [DeckProvider] Buscando IDs das cartas a remover...');
-      final cardsToRemoveIds = <String>{};
+      final cardsToRemoveIds = <String>[];
       
       final removeFutures = cardsToRemove.map((cardName) async {
         try {
@@ -396,18 +397,51 @@ class DeckProvider extends ChangeNotifier {
       cardsToRemoveIds.addAll(removeResults.whereType<String>());
 
       // 5. Remover as cartas da lista atual
-      debugPrint('✂️ [DeckProvider] Removendo ${cardsToRemoveIds.length} cartas...');
-      currentCards.removeWhere((key, value) => cardsToRemoveIds.contains(key));
+      debugPrint('✂️ [DeckProvider] Removendo cartas...');
+      
+      // Contar quantas cópias de cada ID devem ser removidas
+      final removalCounts = <String, int>{};
+      for (final id in cardsToRemoveIds) {
+        removalCounts[id] = (removalCounts[id] ?? 0) + 1;
+      }
+
+      // Aplicar remoção (decrementando quantidade ou removendo item)
+      for (final idToRemove in removalCounts.keys) {
+        if (currentCards.containsKey(idToRemove)) {
+          final existing = currentCards[idToRemove]!;
+          final currentQty = existing['quantity'] as int;
+          final removeQty = removalCounts[idToRemove]!;
+          
+          final newQty = currentQty - removeQty;
+          
+          if (newQty <= 0) {
+            currentCards.remove(idToRemove);
+          } else {
+            currentCards[idToRemove] = {
+              ...existing,
+              'quantity': newQty,
+            };
+          }
+        }
+      }
 
       // 6. Adicionar as novas cartas
       debugPrint('➕ [DeckProvider] Adicionando ${cardsToAddIds.length} cartas...');
+      
+      final format = _selectedDeck?.format.toLowerCase() ?? '';
+      final isCommander = format == 'commander' || format == 'brawl';
+      final defaultLimit = isCommander ? 1 : 4;
+
       for (final cardToAdd in cardsToAddIds) {
         final cardId = cardToAdd['card_id'] as String;
-        
+        final typeLine = (cardToAdd['type_line'] as String? ?? '').toLowerCase();
+        final isBasicLand = typeLine.contains('basic land');
+        final limit = isBasicLand ? 99 : defaultLimit;
+
         if (currentCards.containsKey(cardId)) {
           final existing = currentCards[cardId]!;
           final newQuantity = (existing['quantity'] as int) + 1;
-          if (newQuantity <= 4) {
+          if (newQuantity <= limit) {
             currentCards[cardId] = {
               ...existing,
               'quantity': newQuantity,
@@ -420,16 +454,23 @@ class DeckProvider extends ChangeNotifier {
 
       // 7. Atualizar o deck via API
       debugPrint('💾 [DeckProvider] Salvando alterações no servidor...');
+      final stopwatch = Stopwatch()..start();
       final response = await _apiClient.put('/decks/$deckId', {
         'cards': currentCards.values.toList(),
       });
+      stopwatch.stop();
+      debugPrint('⏱️ [DeckProvider] Tempo de resposta do servidor: ${stopwatch.elapsedMilliseconds}ms');
 
       if (response.statusCode == 200) {
         debugPrint('✅ [DeckProvider] Deck atualizado com sucesso!');
         await fetchDeckDetails(deckId);
         return true;
       } else {
-        throw Exception('Falha ao atualizar deck: ${response.statusCode}');
+        String errorMsg = 'Falha ao atualizar deck: ${response.statusCode}';
+        if (response.data is Map && response.data['error'] != null) {
+          errorMsg = response.data['error'].toString();
+        }
+        throw Exception(errorMsg);
       }
     } catch (e) {
       debugPrint('❌ [DeckProvider] Erro fatal na otimização: $e');

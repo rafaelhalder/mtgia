@@ -106,7 +106,7 @@ class FormatStaplesService {
       conditions.add("last_synced_at > NOW() - INTERVAL '$cacheMaxAgeHours hours'");
 
       final query = '''
-        SELECT DISTINCT card_name, edhrec_rank, category, color_identity, archetype
+        SELECT card_name, edhrec_rank, category, color_identity, archetype
         FROM format_staples
         WHERE ${conditions.join(' AND ')}
         ORDER BY 

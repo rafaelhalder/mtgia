@@ -394,7 +394,7 @@ Future<Response> onRequest(RequestContext context) async {
     // Get Cards with CMC for analysis
     final cardsResult = await pool.execute(
       Sql.named('''
-        SELECT c.name, dc.is_commander, c.type_line, c.mana_cost, c.colors,
+        SELECT c.name, dc.is_commander, c.type_line, c.mana_cost, c.colors, 
                COALESCE(
                  (SELECT SUM(
                    CASE 
@@ -405,7 +405,8 @@ Future<Response> onRequest(RequestContext context) async {
                    END
                  ) FROM regexp_matches(c.mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
                  0
-               ) as cmc
+               ) as cmc,
+               c.oracle_text
         FROM deck_cards dc 
         JOIN cards c ON c.id = dc.card_id 
         WHERE dc.deck_id = @id
@@ -426,6 +427,7 @@ Future<Response> onRequest(RequestContext context) async {
       final manaCost = (row[3] as String?) ?? '';
       final colors = (row[4] as List?)?.cast<String>() ?? [];
       final cmc = (row[5] as num?)?.toDouble() ?? 0.0;
+      final oracleText = (row[6] as String?) ?? '';
       
       // Coletar cores do deck
       deckColors.addAll(colors);
@@ -437,6 +439,7 @@ Future<Response> onRequest(RequestContext context) async {
         'colors': colors,
         'cmc': cmc,
         'is_commander': isCmdr,
+        'oracle_text': oracleText,
       };
       
       allCardData.add(cardData);
@@ -444,14 +447,22 @@ Future<Response> onRequest(RequestContext context) async {
       if (isCmdr) {
         commanders.add(name);
       } else {
-        otherCards.add(name);
+        // Incluir texto da carta para a IA analisar sinergia real
+        // Truncar texto muito longo para economizar tokens
+        final cleanText = oracleText.replaceAll('\n', ' ').trim();
+        final truncatedText = cleanText.length > 150 ? '${cleanText.substring(0, 147)}...' : cleanText;
+        
+        if (truncatedText.isNotEmpty) {
+          otherCards.add('$name (Type: $typeLine, Text: $truncatedText)');
+        } else {
+          otherCards.add('$name (Type: $typeLine)');
+        }
+
         if (typeLine.toLowerCase().contains('land')) {
           landCount++;
         }
       }
-    }
-
-    // 1.5 Análise de Arquétipo do Deck
+    }    // 1.5 Análise de Arquétipo do Deck
     final analyzer = DeckArchetypeAnalyzer(allCardData, deckColors.toList());
     final deckAnalysis = analyzer.generateAnalysis();
     final detectedArchetype = deckAnalysis['detected_archetype'] as String;
@@ -534,29 +545,25 @@ Future<Response> onRequest(RequestContext context) async {
     LISTA COMPLETA DO MEU DECK:
     ${otherCards.join(', ')}
     
-    SUA MISSÃO (ANÁLISE CONTEXTUAL POR ARQUÉTIPO):
-    1. **Análise de Mana Base:** Verifique se a quantidade de terrenos ($landCount) é adequada para o arquétipo $targetArchetype.
-       - Aggro: ~30-33 terrenos
-       - Midrange: ~34-37 terrenos  
-       - Control: ~37-40 terrenos
-    2. **Staples do Arquétipo:** Verifique se faltam cartas essenciais ESPECÍFICAS para $targetArchetype (listadas acima).
-    3. **Cortes Contextuais:** Remova cartas que NÃO SINERGIZAM com a estratégia $targetArchetype.
-       - Para Aggro: Remova cartas lentas (CMC > 4) que não geram valor imediato
-       - Para Control: Remova criaturas agressivas sem utilidade defensiva
-       - Para Combo: Remova cartas que não avançam a estratégia principal
+    SUA MISSÃO (OTIMIZAÇÃO VIA SUBSTITUIÇÃO DIRETA):
+    Você deve identificar pares de troca (Swap). Para cada carta forte que entra, uma carta fraca deve sair.
     
+    1. **Identifique Staples Faltantes:** Que cartas essenciais do arquétipo $targetArchetype não estão na lista?
+    2. **Encontre o Elo Mais Fraco:** Para cada staple identificada, encontre a carta no deck atual que tem função similar mas é pior, ou que não faz sentido no deck.
+    3. **Justifique a Troca:** Por que A é melhor que B neste deck?
+
     REGRAS CRÍTICAS:
-    - **EQUILÍBRIO NUMÉRICO:** O número de cartas removidas DEVE SER IGUAL ao número de cartas adicionadas.
-    - **FOCO NO ARQUÉTIPO:** Toda sugestão deve ser justificada pelo arquétipo $targetArchetype.
-    - **EXPLICAÇÃO OBRIGATÓRIA:** O campo "reasoning" deve explicar as trocas no CONTEXTO do arquétipo.
-    - **PRESERVAR STAPLES:** NUNCA sugira remover staples de formato (ex: Mana Drain, Fetch Lands, Shock Lands, Tutors, Sol Ring, Mana Crypt) a menos que sejam ilegais no formato.
-    - **SEM DUPLICATAS:** Não sugira remover ou adicionar a mesma carta mais de uma vez.
-    
+    - **SUBSTITUIÇÃO 1:1:** Gere SEMPRE pares exatos. Nunca adicione sem remover.
+    - **PRESERVAR STAPLES:** NUNCA remova staples de formato (Sol Ring, Arcane Signet, Command Tower, etc).
+    - **SEM DUPLICATAS:** Não repita cartas.
+
     Formato JSON estrito:
     {
-      "removals": ["Carta Ruim 1", "Carta Ruim 2", ...],
-      "additions": ["Carta Boa 1", "Carta Boa 2", ...],
-      "reasoning": "Explicação focada no arquétipo $targetArchetype..."
+      "changes": [
+        { "remove": "Nome da Carta a Sair", "add": "Nome da Carta a Entrar", "reason": "Motivo curto da troca" },
+        ...
+      ],
+      "reasoning": "Explicação geral da estratégia de otimização adotada."
     }
     ''';
 
@@ -596,9 +603,32 @@ Future<Response> onRequest(RequestContext context) async {
       // Validar cartas sugeridas pela IA
       final validationService = CardValidationService(pool);
       
-      // Sanitizar nomes das cartas (corrigir capitalização, etc)
-      final removals = (jsonResponse['removals'] as List?)?.cast<String>() ?? [];
-      final additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
+      List<String> removals = [];
+      List<String> additions = [];
+
+      // Suporte ao novo formato "changes" (pares de troca)
+      if (jsonResponse.containsKey('changes')) {
+        final changes = jsonResponse['changes'] as List;
+        for (var change in changes) {
+           if (change is Map) {
+             removals.add(change['remove'] as String);
+             additions.add(change['add'] as String);
+           }
+        }
+      } else {
+        // Fallback para formato antigo
+        removals = (jsonResponse['removals'] as List?)?.cast<String>() ?? [];
+        additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
+      }
+      
+      // GARANTIR EQUILÍBRIO NUMÉRICO (Regra de Ouro)
+      final minCount = removals.length < additions.length ? removals.length : additions.length;
+      
+      if (removals.length != additions.length) {
+        print('⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount');
+        removals = removals.take(minCount).toList();
+        additions = additions.take(minCount).toList();
+      }
       
       final sanitizedRemovals = removals.map(CardValidationService.sanitizeCardName).toList();
       final sanitizedAdditions = additions.map(CardValidationService.sanitizeCardName).toList();
@@ -608,17 +638,24 @@ Future<Response> onRequest(RequestContext context) async {
       final validation = await validationService.validateCardNames(allSuggestions);
       
       // Filtrar apenas cartas válidas e remover duplicatas
-      final validRemovals = sanitizedRemovals.where((name) {
+      var validRemovals = sanitizedRemovals.where((name) {
         return (validation['valid'] as List).any((card) => 
           (card['name'] as String).toLowerCase() == name.toLowerCase()
         );
       }).toSet().toList();
       
-      final validAdditions = sanitizedAdditions.where((name) {
+      var validAdditions = sanitizedAdditions.where((name) {
         return (validation['valid'] as List).any((card) => 
           (card['name'] as String).toLowerCase() == name.toLowerCase()
         );
       }).toSet().toList();
+
+      // Re-aplicar equilíbrio após validação
+      final finalMinCount = validRemovals.length < validAdditions.length ? validRemovals.length : validAdditions.length;
+      if (validRemovals.length != validAdditions.length) {
+         validRemovals = validRemovals.take(finalMinCount).toList();
+         validAdditions = validAdditions.take(finalMinCount).toList();
+      }
       
       // Preparar resposta com avisos sobre cartas inválidas
       final invalidCards = validation['invalid'] as List<String>;
@@ -628,6 +665,7 @@ Future<Response> onRequest(RequestContext context) async {
         'removals': validRemovals,
         'additions': validAdditions,
         'reasoning': jsonResponse['reasoning'],
+        'deck_analysis': deckAnalysis,
       };
       
       // Adicionar avisos se houver cartas inválidas

@@ -101,53 +101,65 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 
       // 3. Se uma nova lista de cartas for enviada, substitui a antiga
       if (cards != null) {
-        // --- VALIDAÇÃO DE REGRAS (Magic: The Gathering) ---
-        for (final card in cards) {
-           final cardId = card['card_id'];
-           final quantity = card['quantity'] as int;
-           
-           // Busca informações básicas da carta para validação
-           final cardInfo = await session.execute(
-             Sql.named('SELECT name, type_line FROM cards WHERE id = @id'),
-             parameters: {'id': cardId}
-           );
-           
-           if (cardInfo.isNotEmpty) {
-             final cardName = cardInfo.first[0] as String;
-             final typeLine = (cardInfo.first[1] as String).toLowerCase();
+        // --- VALIDAÇÃO DE REGRAS OTIMIZADA (Batch Query) ---
+        final cardIds = cards.map((c) => c['card_id']).toList();
+        
+        if (cardIds.isNotEmpty) {
+          // 1. Buscar dados de TODAS as cartas de uma vez
+          final cardsDataResult = await session.execute(
+            Sql.named('SELECT id, name, type_line FROM cards WHERE id = ANY(@ids)'),
+            parameters: {'ids': cardIds},
+          );
+          final cardsDataMap = { 
+            for (var row in cardsDataResult) row[0] as String : {'name': row[1] as String, 'type_line': row[2] as String} 
+          };
+
+          // 2. Buscar legalidades de TODAS as cartas de uma vez
+          final legalitiesResult = await session.execute(
+            Sql.named('SELECT card_id, status FROM card_legalities WHERE card_id = ANY(@ids) AND format = @format'),
+            parameters: {'ids': cardIds, 'format': currentFormat},
+          );
+          final legalitiesMap = { 
+            for (var row in legalitiesResult) row[0] as String : row[1] as String 
+          };
+
+          for (final card in cards) {
+             final cardId = card['card_id'];
+             final quantity = card['quantity'] as int;
              
-             // Regra 1: Limite de Cópias
-             // Commander/Brawl: 1 cópia. Outros: 4 cópias.
-             // Exceção: Terrenos Básicos (Basic Land) e cartas como "Relentless Rats" (não implementado aqui ainda)
-             final isBasicLand = typeLine.contains('basic land');
-             int limit = 4;
-             if (currentFormat == 'commander' || currentFormat == 'brawl') {
-               limit = 1;
-             }
+             final cardInfo = cardsDataMap[cardId];
              
-             if (!isBasicLand && quantity > limit) {
-               throw Exception('Regra violada: "$cardName" excede o limite de $limit cópia(s) para o formato $currentFormat.');
-             }
-             
-             // Regra 2: Legalidade (Banidas/Restritas)
-             final legalityCheck = await session.execute(
-               Sql.named('SELECT status FROM card_legalities WHERE card_id = @id AND format = @format'),
-               parameters: {'id': cardId, 'format': currentFormat}
-             );
-             
-             if (legalityCheck.isNotEmpty) {
-               final status = legalityCheck.first[0] as String;
-               if (status == 'banned') {
-                 throw Exception('Regra violada: "$cardName" é BANIDA no formato $currentFormat.');
+             if (cardInfo != null) {
+               final cardName = cardInfo['name'] as String;
+               final typeLine = (cardInfo['type_line'] as String).toLowerCase();
+               
+               // Regra 1: Limite de Cópias
+               final isBasicLand = typeLine.contains('basic land');
+               int limit = 4;
+               if (currentFormat == 'commander' || currentFormat == 'brawl') {
+                 limit = 1;
                }
-               if (status == 'not_legal') {
-                 throw Exception('Regra violada: "$cardName" não é válida no formato $currentFormat.');
+               
+               if (!isBasicLand && quantity > limit) {
+                 throw Exception('Regra violada: "$cardName" excede o limite de $limit cópia(s) para o formato $currentFormat.');
                }
-               if (status == 'restricted' && quantity > 1) {
-                 throw Exception('Regra violada: "$cardName" é RESTRITA no formato $currentFormat (máx. 1).');
+               
+               // Regra 2: Legalidade (Banidas/Restritas)
+               final status = legalitiesMap[cardId];
+               
+               if (status != null) {
+                 if (status == 'banned') {
+                   throw Exception('Regra violada: "$cardName" é BANIDA no formato $currentFormat.');
+                 }
+                 if (status == 'not_legal') {
+                   throw Exception('Regra violada: "$cardName" não é válida no formato $currentFormat.');
+                 }
+                 if (status == 'restricted' && quantity > 1) {
+                   throw Exception('Regra violada: "$cardName" é RESTRITA no formato $currentFormat (máx. 1).');
+                 }
                }
              }
-           }
+          }
         }
         // --- FIM DA VALIDAÇÃO ---
 
@@ -157,17 +169,31 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
           parameters: {'deckId': deckId},
         );
 
-        // Insere as novas cartas
-        final cardInsertSql = Sql.named(
-          'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES (@deckId, @cardId, @quantity, @isCommander)',
-        );
-        for (final card in cards) {
-          await session.execute(cardInsertSql, parameters: {
-            'deckId': deckId,
-            'cardId': card['card_id'],
-            'quantity': card['quantity'],
-            'isCommander': card['is_commander'] ?? false,
-          });
+        // Insere as novas cartas usando Batch Insert (MUITO MAIS RÁPIDO)
+        if (cards.isNotEmpty) {
+          // Construir query dinâmica para inserção em lote
+          // INSERT INTO deck_cards (...) VALUES ($1, $2...), ($5, $6...), ...
+          final values = <String>[];
+          final params = <String, dynamic>{'deckId': deckId};
+          
+          for (var i = 0; i < cards.length; i++) {
+            final card = cards[i];
+            final pId = 'c$i';
+            final pQty = 'q$i';
+            final pCmdr = 'cmd$i';
+            
+            values.add('(@deckId, @$pId, @$pQty, @$pCmdr)');
+            params[pId] = card['card_id'];
+            params[pQty] = card['quantity'];
+            params[pCmdr] = card['is_commander'] ?? false;
+          }
+          
+          final batchInsertSql = 'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${values.join(', ')}';
+          
+          await session.execute(
+            Sql.named(batchInsertSql),
+            parameters: params,
+          );
         }
       }
 

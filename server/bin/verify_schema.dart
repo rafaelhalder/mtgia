@@ -40,6 +40,22 @@ void main() async {
       'meta_decks': [
         'id', 'format', 'archetype', 'source_url', 'card_list', 'placement', 'created_at'
       ],
+      'format_staples': [
+        'id', 'card_name', 'format', 'archetype', 'color_identity', 'edhrec_rank', 
+        'category', 'scryfall_id', 'is_banned', 'last_synced_at', 'created_at'
+      ],
+      'sync_log': [
+        'id', 'sync_type', 'format', 'records_updated', 'records_inserted', 
+        'records_deleted', 'status', 'error_message', 'started_at', 'finished_at'
+      ],
+      'archetype_counters': [
+        'id', 'archetype', 'counter_archetype', 'hate_cards', 'priority', 'format', 
+        'color_identity', 'notes', 'effectiveness_score', 'last_synced_at', 'created_at'
+      ],
+      'deck_weakness_reports': [
+        'id', 'deck_id', 'weakness_type', 'severity', 'description', 
+        'recommendations', 'auto_detected', 'addressed', 'created_at'
+      ],
     };
 
     // Busca todas as colunas do banco

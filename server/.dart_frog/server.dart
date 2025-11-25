@@ -17,6 +17,8 @@ import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/cards/index.dart' as cards_index;
 import '../routes/auth/register.dart' as auth_register;
 import '../routes/auth/login.dart' as auth_login;
+import '../routes/ai/weakness-analysis/index.dart' as ai_weakness_analysis_index;
+import '../routes/ai/simulate-matchup/index.dart' as ai_simulate_matchup_index;
 import '../routes/ai/optimize/index.dart' as ai_optimize_index;
 import '../routes/ai/generate/index.dart' as ai_generate_index;
 import '../routes/ai/explain/index.dart' as ai_explain_index;
@@ -46,6 +48,8 @@ Handler buildRootHandler() {
     ..mount('/ai/explain', (context) => buildAiExplainHandler()(context))
     ..mount('/ai/generate', (context) => buildAiGenerateHandler()(context))
     ..mount('/ai/optimize', (context) => buildAiOptimizeHandler()(context))
+    ..mount('/ai/simulate-matchup', (context) => buildAiSimulateMatchupHandler()(context))
+    ..mount('/ai/weakness-analysis', (context) => buildAiWeaknessAnalysisHandler()(context))
     ..mount('/auth', (context) => buildAuthHandler()(context))
     ..mount('/cards', (context) => buildCardsHandler()(context))
     ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
@@ -84,6 +88,20 @@ Handler buildAiOptimizeHandler() {
   final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
   final router = Router()
     ..all('/', (context) => ai_optimize_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAiSimulateMatchupHandler() {
+  final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => ai_simulate_matchup_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAiWeaknessAnalysisHandler() {
+  final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => ai_weakness_analysis_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
