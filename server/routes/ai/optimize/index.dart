@@ -1,12 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 import '../../../lib/card_validation_service.dart';
-import '../../../lib/format_staples_service.dart';
-import '../../../lib/archetype_counters_service.dart';
+import '../../../lib/ai/otimizacao.dart';
 
 /// Classe para análise de arquétipo do deck
 /// Implementa detecção automática baseada em curva de mana, tipos de cartas e cores
@@ -265,182 +262,10 @@ class DeckArchetypeAnalyzer {
   }
 }
 
-/// Busca cartas no Scryfall ordenadas por EDHREC (popularidade)
-Future<List<String>> _fetchScryfallCards(String query, int limit) async {
-  try {
-    // Adiciona filtro de commander e remove banidas automaticamente
-    final q = query.isEmpty ? 'format:commander -is:banned' : '$query format:commander -is:banned';
-    
-    final uri = Uri.https('api.scryfall.com', '/cards/search', {
-      'q': q,
-      'order': 'edhrec',
-    });
-    
-    final response = await http.get(uri);
-    
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final List<dynamic> cards = data['data'];
-      return cards.take(limit).map<String>((c) => c['name'] as String).toList();
-    }
-  } catch (e) {
-    print('Erro ao buscar no Scryfall ($query): $e');
-  }
-  return [];
-}
 
-/// Gera recomendações específicas por arquétipo
-/// ATUALIZADO: Agora usa FormatStaplesService para buscar dados dinâmicos do banco/Scryfall
-/// Evita hardcoded staples e mantém dados sempre atualizados
-Future<Map<String, List<String>>> getArchetypeRecommendations(
-  String archetype, 
-  List<String> colors,
-  Pool pool,
-) async {
-  final recommendations = <String, List<String>>{
-    'staples': [],
-    'avoid': [],
-    'priority': [],
-  };
 
-  final staplesService = FormatStaplesService(pool);
 
-  try {
-    // 1. Buscar staples universais do formato (via DB ou Scryfall API)
-    final universalStaples = await staplesService.getStaples(
-      format: 'commander',
-      colors: colors,
-      limit: 20,
-    );
 
-    if (universalStaples.isNotEmpty) {
-      recommendations['staples']!.addAll(
-        universalStaples.map((s) => s['name'] as String)
-      );
-    } else {
-      // Fallback mínimo apenas se ambos DB e Scryfall falharem
-      recommendations['staples']!.addAll(['Sol Ring', 'Arcane Signet', 'Command Tower']);
-    }
-
-    // 2. Buscar staples específicos do arquétipo (via DB ou Scryfall API)
-    final archetypeStaples = await staplesService.getStaples(
-      format: 'commander',
-      colors: colors,
-      archetype: archetype.toLowerCase(),
-      limit: 15,
-    );
-
-    if (archetypeStaples.isNotEmpty) {
-      recommendations['staples']!.addAll(
-        archetypeStaples.map((s) => s['name'] as String)
-      );
-    }
-
-    // 3. Lógica específica para Infect (geralmente é Aggro/Combo)
-    if (archetype.toLowerCase().contains('infect')) {
-      // Busca staples de infect dinamicamente via Scryfall
-      final infectStaples = await _fetchScryfallCards('oracle:infect', 15);
-      recommendations['staples']!.addAll(infectStaples);
-
-      if (colors.contains('G')) {
-        final pumpSpells = await _fetchScryfallCards('function:pump-spell color:G', 10);
-        recommendations['priority']!.addAll(pumpSpells);
-      }
-
-      recommendations['priority']!.addAll([
-        'Protection', 'Evasion (Unblockable/Flying)'
-      ]);
-      recommendations['avoid']!.addAll([
-        'Cartas de lifegain', 'Estratégias lentas', 'Cartas que dependem de dano normal'
-      ]);
-      return recommendations;
-    }
-
-    // 4. Recomendações de "avoid" e "priority" por arquétipo
-    // Estas são heurísticas de estratégia, não listas de cartas específicas
-    switch (archetype.toLowerCase()) {
-      case 'aggro':
-        recommendations['avoid']!.addAll([
-          'Cartas com CMC > 5', 'Criaturas defensivas', 'Removal lento'
-        ]);
-        recommendations['priority']!.addAll([
-          'Haste enablers', 'Anthems (+1/+1)', 'Card draw rápido'
-        ]);
-        break;
-      case 'control':
-        recommendations['avoid']!.addAll([
-          'Criaturas vanilla', 'Cartas agressivas sem utilidade'
-        ]);
-        recommendations['priority']!.addAll([
-          'Counters', 'Removal eficiente', 'Card advantage', 'Wipes'
-        ]);
-        break;
-      case 'combo':
-        recommendations['avoid']!.addAll([
-          'Cartas que não avançam o combo', 'Creatures irrelevantes'
-        ]);
-        recommendations['priority']!.addAll([
-          'Tutors', 'Proteção de combo', 'Card draw', 'Fast mana'
-        ]);
-        break;
-      case 'midrange':
-        recommendations['avoid']!.addAll([
-          'Cartas muito situacionais', 'Win-more cards'
-        ]);
-        recommendations['priority']!.addAll([
-          'Valor creatures', 'Flexible removal', 'Card advantage engines'
-        ]);
-        break;
-      default:
-        break;
-    }
-
-    // 5. Buscar staples por categoria (ramp, draw, removal) dinamicamente
-    if (colors.isNotEmpty) {
-      final rampStaples = await staplesService.getStaplesByCategory(
-        format: 'commander',
-        category: 'ramp',
-        colors: colors,
-        limit: 5,
-      );
-      recommendations['staples']!.addAll(rampStaples);
-
-      final drawStaples = await staplesService.getStaplesByCategory(
-        format: 'commander',
-        category: 'draw',
-        colors: colors,
-        limit: 5,
-      );
-      recommendations['staples']!.addAll(drawStaples);
-    }
-
-    // 6. Buscar hate cards para arquétipos comuns (via ArchetypeCountersService)
-    final countersService = ArchetypeCountersService(pool);
-    final commonArchetypes = ['graveyard', 'artifacts', 'combo', 'tokens'];
-    
-    for (final oppArchetype in commonArchetypes) {
-      final hateCards = await countersService.getHateCards(
-        archetype: oppArchetype,
-        colors: colors,
-        priorityMax: 1, // Apenas hate cards essenciais
-      );
-      
-      if (hateCards.isNotEmpty) {
-        recommendations['hate_$oppArchetype'] = hateCards.take(3).toList();
-      }
-    }
-
-    // Remove duplicatas mantendo a ordem
-    recommendations['staples'] = recommendations['staples']!.toSet().toList();
-
-  } catch (e) {
-    print('⚠️ Erro ao buscar recomendações dinâmicas: $e');
-    // Fallback mínimo em caso de erro
-    recommendations['staples']!.addAll(['Sol Ring', 'Arcane Signet', 'Command Tower']);
-  }
-
-  return recommendations;
-}
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -472,9 +297,6 @@ Future<Response> onRequest(RequestContext context) async {
       return Response.json(statusCode: HttpStatus.notFound, body: {'error': 'Deck not found'});
     }
     
-    final deckName = deckResult.first[0] as String;
-    final deckFormat = deckResult.first[1] as String;
-
     // Get Cards with CMC for analysis
     final cardsResult = await pool.execute(
       Sql.named('''
@@ -502,7 +324,6 @@ Future<Response> onRequest(RequestContext context) async {
     final otherCards = <String>[];
     final allCardData = <Map<String, dynamic>>[];
     final deckColors = <String>{};
-    int landCount = 0;
 
     for (final row in cardsResult) {
       final name = row[0] as String;
@@ -542,152 +363,55 @@ Future<Response> onRequest(RequestContext context) async {
           otherCards.add('$name (Type: $typeLine)');
         }
 
-        if (typeLine.toLowerCase().contains('land')) {
-          landCount++;
-        }
+
       }
     }    // 1.5 Análise de Arquétipo do Deck
     final analyzer = DeckArchetypeAnalyzer(allCardData, deckColors.toList());
     final deckAnalysis = analyzer.generateAnalysis();
-    final detectedArchetype = deckAnalysis['detected_archetype'] as String;
     
-    // Usar arquétipo passado pelo usuário, mas incluir análise detectada para contexto
+    // Usar arquétipo passado pelo usuário
     final targetArchetype = archetype;
-    final archetypeRecommendations = await getArchetypeRecommendations(
-      targetArchetype, 
-      deckColors.toList(),
-      pool, // Passar pool para busca dinâmica de staples
-    );
 
-    // 1.6 Fetch Meta Decks for Context (filtrado por arquétipo)
-    String metaContext = "";
-    try {
-      final metaResult = await pool.execute(
-        Sql.named('''
-          SELECT archetype, card_list 
-          FROM meta_decks 
-          WHERE archetype ILIKE @query OR card_list ILIKE @commander
-          ORDER BY created_at DESC 
-          LIMIT 1
-        '''),
-        parameters: {
-          'query': '%$targetArchetype%',
-          'commander': '%${commanders.firstOrNull ?? "Unknown"}%'
-        },
-      );
 
-      if (metaResult.isNotEmpty) {
-        final metaDeckName = metaResult.first[0] as String;
-        final metaList = metaResult.first[1] as String;
-        final metaSample = metaList.split('\n').take(150).join(', ');
-        metaContext = "CONTEXTO DO META (Deck Top Tier encontrado: $metaDeckName): As cartas usadas neste arquétipo incluem: $metaSample...";
-      }
-    } catch (e) {
-      print('Erro ao buscar meta decks: $e');
-    }
 
-    // 2. Prepare Prompt with Archetype Context
+    // 2. Otimização via DeckOptimizerService (IA + RAG)
     final env = DotEnv(includePlatformEnvironment: true)..load();
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
-      // Mock response for development with archetype context
+      // Mock response for development
       return Response.json(body: {
         'removals': ['Basic Land', 'Weak Card'],
-        'additions': archetypeRecommendations['staples']!.take(2).toList(),
-        'reasoning': 'Mock optimization para arquétipo $targetArchetype: Adicionando staples recomendados.',
+        'additions': ['Sol Ring', 'Arcane Signet'],
+        'reasoning': 'Mock optimization (No API Key): Adicionando staples recomendados.',
         'deck_analysis': deckAnalysis,
         'is_mock': true
       });
     }
 
-    final prompt = '''
-    Atue como um Juiz e Especialista Pro Player de Magic: The Gathering.
-    Estou construindo um deck de formato $deckFormat chamado "$deckName" com Comandante: ${commanders.join(', ')}.
+    final optimizer = DeckOptimizerService(apiKey);
     
-    ARQUÉTIPO ALVO: $targetArchetype
-    
-    ANÁLISE AUTOMÁTICA DO DECK:
-    - Arquétipo Detectado: $detectedArchetype
-    - CMC Médio: ${deckAnalysis['average_cmc']}
-    - Avaliação da Curva: ${deckAnalysis['mana_curve_assessment']}
-    - Avaliação da Base de Mana: ${deckAnalysis['mana_base_assessment']}
-    - Confiança na Classificação: ${deckAnalysis['archetype_confidence']}
-    - Distribuição de Tipos: ${jsonEncode(deckAnalysis['type_distribution'])}
-    
-    ESTATÍSTICAS ATUAIS:
-    - Total de cartas na lista principal: ${otherCards.length}
-    - Total de Terrenos (Lands): $landCount
-    - Cores do Deck: ${deckColors.join(', ')}
-    
-    RECOMENDAÇÕES PARA ARQUÉTIPO $targetArchetype:
-    - Staples Recomendados: ${archetypeRecommendations['staples']!.join(', ')}
-    - Evitar: ${archetypeRecommendations['avoid']!.join(', ')}
-    - Prioridades: ${archetypeRecommendations['priority']!.join(', ')}
-    
-    $metaContext
-    
-    LISTA COMPLETA DO MEU DECK:
-    ${otherCards.join(', ')}
-    
-    SUA MISSÃO (OTIMIZAÇÃO DEFINITIVA):
-    Você é um consultor "No-Nonsense". Seu objetivo é deixar o deck Competitivo (Tier 1/2).
-    
-    1. **Avalie o Nível Atual (0-10):** Quão otimizado este deck está para o arquétipo $targetArchetype?
-    2. **Critério de Parada:** Se o deck for nota 8.5 ou superior, **NÃO SUGIRA MUDANÇAS**. Apenas elogie a construção no "reasoning".
-    3. **Upgrade Estrito (Strict Upgrade):** Só sugira trocar A por B se B for **objetivamente melhor** (mais eficiente, mais rápido ou combo piece). Não sugira trocas laterais (gosto pessoal).
-    4. **Agressividade:** Se o deck estiver fraco (nota < 6), sugira até 15 trocas de uma vez. Se estiver médio (6-8), sugira as 5-8 vitais.
+    // Preparar dados para o otimizador
+    final deckData = {
+      'cards': allCardData,
+      'colors': deckColors.toList(),
+    };
 
-    REGRAS CRÍTICAS:
-    - **SUBSTITUIÇÃO 1:1:** Gere SEMPRE pares exatos.
-    - **PRESERVAR STAPLES:** NUNCA remova staples de formato.
-    - **SEM DUPLICATAS:** Não repita cartas.
-    - **META GAME:** Use o contexto do Meta Deck acima. Se o deck do usuário não tem as "Win Conditions" do meta, sugira adicioná-las.
-
-    Formato JSON estrito:
-    {
-      "score": 8.5, // Nota do deck atual (float)
-      "changes": [
-        // Deixe vazio [] se o deck já estiver excelente.
-        { "remove": "Carta Fraca", "add": "Carta Meta", "reason": "Upgrade estrito de mana/efeito" },
-        ...
-      ],
-      "reasoning": "Seu veredito final. Se não houver mudanças, explique por que o deck está ótimo."
-    }
-    ''';
-
-    // 3. Call OpenAI
-    final response = await http.post(
-      Uri.parse('https://api.openai.com/v1/chat/completions'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode({
-        'model': 'gpt-3.5-turbo',
-        'messages': [
-          {'role': 'system', 'content': 'You are a helpful MTG deck building assistant that outputs only JSON.'},
-          {'role': 'user', 'content': prompt},
-        ],
-        'temperature': 0.7,
-      }),
-    );
-
-    if (response.statusCode != 200) {
+    Map<String, dynamic> jsonResponse;
+    try {
+      jsonResponse = await optimizer.optimizeDeck(
+        deckData: deckData,
+        commanders: commanders,
+        targetArchetype: targetArchetype,
+      );
+    } catch (e) {
       return Response.json(
         statusCode: HttpStatus.internalServerError,
-        body: {'error': 'OpenAI API error: ${response.body}'},
+        body: {'error': 'Optimization failed: $e'},
       );
     }
 
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    final content = data['choices'][0]['message']['content'] as String;
-    
-    // Clean up potential markdown code blocks if the model ignores instructions
-    final cleanContent = content.replaceAll('```json', '').replaceAll('```', '').trim();
-    
-    try {
-      final jsonResponse = jsonDecode(cleanContent) as Map<String, dynamic>;
+    // Validar cartas sugeridas pela IA
       
       // Validar cartas sugeridas pela IA
       final validationService = CardValidationService(pool);
@@ -840,12 +564,7 @@ Future<Response> onRequest(RequestContext context) async {
       }
       
       return Response.json(body: responseBody);
-    } catch (e) {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'error': 'Failed to parse AI response', 'raw': content},
-      );
-    }
+
 
   } catch (e) {
     return Response.json(
