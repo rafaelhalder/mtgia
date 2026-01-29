@@ -19,6 +19,7 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
   - `lib/auth_middleware.dart` - Middleware para proteger rotas
   - `POST /auth/login` - Login com verificação no PostgreSQL
   - `POST /auth/register` - Registro com gravação no banco
+  - `GET /auth/me` - Validar token e obter usuário (boot do app)
   - Hash de senhas com **bcrypt** (10 rounds de salt)
   - Geração e validação de **JWT tokens** (24h de validade)
   - Validação de email/username únicos
@@ -138,7 +139,9 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
    ```
 6. **Preview do deck** → Cards agrupados por tipo (Creatures, Instants, Lands, etc.)
 7. **Usuário nomeia o deck** → Campo editável
-8. **Clica "Salvar Deck"** → Chama `POST /decks` com nome, formato, descrição e lista de cartas
+8. **Clica "Salvar Deck"** → Chama `POST /decks` com nome, formato, descrição e lista de cartas  
+   - **Contrato preferido:** enviar cartas com `card_id` (UUID) + `quantity` (+ opcional `is_commander`)  
+   - **Compat/dev:** o backend também aceita `name` e resolve para `card_id` (case-insensitive)
 9. **Sucesso** → Redireciona para `/decks`, SnackBar verde de confirmação
 
 **Bibliotecas Utilizadas:**
@@ -148,7 +151,7 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 
 **Tratamento de Erros:**
 - ❌ Se a IA sugerir uma carta inexistente (hallucination), o lookup falha silenciosamente (logado) e a carta é ignorada.
-- ❌ Se o `POST /ai/generate` falhar, mostra SnackBar de erro com mensagem detalhada.
+- ⚠️ Se `OPENAI_API_KEY` não estiver configurada, `POST /ai/generate` retorna um deck mock (`is_mock: true`) para desenvolvimento.
 - ❌ Se o `PUT /decks/:id` falhar ao aplicar otimização, rollback automático (sem mudanças no deck).
 
 ### ✅ **Implementado (CRUD de Decks)**
@@ -1042,7 +1045,7 @@ Future<Response> onRequest(RequestContext context) async {
 - ✅ Chave secreta em variável de ambiente (`JWT_SECRET`)
 - ✅ Validação de unicidade (username/email)
 - ✅ Mensagens de erro genéricas (evita enumeration attack)
-- ⚠️ **TODO:** Implementar rate limiting (evitar força bruta no login)
+- ✅ Rate limiting em auth/IA (evita brute force e abuso)
 - ⚠️ **TODO:** HTTPS obrigatório em produção
 - ⚠️ **TODO:** Refresh tokens (renovar sem pedir senha novamente)
 
@@ -1227,12 +1230,14 @@ Proteger o sistema contra abuso, ataques de força bruta e uso excessivo de recu
 **Limites Aplicados:**
 ```dart
 // Auth endpoints (routes/auth/*)
-authRateLimit() -> 5 requisições/minuto
+authRateLimit() -> 5 requisições/minuto (production)
+authRateLimit() -> 200 requisições/minuto (development/test)
   - Previne brute force em login
   - Previne credential stuffing em register
   
 // AI endpoints (routes/ai/*)
-aiRateLimit() -> 10 requisições/minuto
+aiRateLimit() -> 10 requisições/minuto (production)
+aiRateLimit() -> 60 requisições/minuto (development/test)
   - Controla custos da OpenAI API ($$$)
   - Previne uso abusivo de recursos caros
   

@@ -187,7 +187,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             Text('Formato:', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _selectedFormat,
+              initialValue: _selectedFormat,
               decoration: InputDecoration(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -250,7 +250,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                       _promptController.text = example;
                     });
                   },
-                  backgroundColor: theme.colorScheme.surfaceVariant,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                 );
               }).toList(),
             ),

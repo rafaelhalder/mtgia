@@ -16,6 +16,7 @@ import '../routes/decks/[id]/recommendations/index.dart' as decks_$id_recommenda
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/cards/index.dart' as cards_index;
 import '../routes/auth/register.dart' as auth_register;
+import '../routes/auth/me.dart' as auth_me;
 import '../routes/auth/login.dart' as auth_login;
 import '../routes/ai/weakness-analysis/index.dart' as ai_weakness_analysis_index;
 import '../routes/ai/simulate-matchup/index.dart' as ai_simulate_matchup_index;
@@ -108,7 +109,7 @@ Handler buildAiWeaknessAnalysisHandler() {
 Handler buildAuthHandler() {
   final pipeline = const Pipeline().addMiddleware(auth_middleware.middleware);
   final router = Router()
-    ..all('/register', (context) => auth_register.onRequest(context,))..all('/login', (context) => auth_login.onRequest(context,));
+    ..all('/register', (context) => auth_register.onRequest(context,))..all('/me', (context) => auth_me.onRequest(context,))..all('/login', (context) => auth_login.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

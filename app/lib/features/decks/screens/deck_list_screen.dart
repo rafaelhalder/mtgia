@@ -45,7 +45,7 @@ class _DeckListScreenState extends State<DeckListScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: selectedFormat,
+                  initialValue: selectedFormat,
                   decoration: const InputDecoration(labelText: 'Formato'),
                   items: formats.map((f) => DropdownMenuItem(
                     value: f,

@@ -47,7 +47,11 @@ class AuthService {
 
   /// Verifica se a senha fornecida corresponde ao hash armazenado
   bool verifyPassword(String password, String hashedPassword) {
-    return BCrypt.checkpw(password, hashedPassword);
+    try {
+      return BCrypt.checkpw(password, hashedPassword);
+    } on ArgumentError catch (e) {
+      throw Exception('Invalid password hash format: $e');
+    }
   }
 
   /// Gera um JWT token contendo o ID e username do usuário
@@ -73,7 +77,15 @@ class AuthService {
   Map<String, dynamic>? verifyToken(String token) {
     try {
       final jwt = JWT.verify(token, SecretKey(_jwtSecret));
-      return jwt.payload as Map<String, dynamic>;
+      final payload = jwt.payload as Map<String, dynamic>;
+
+      // Normaliza iat para milissegundos (testes/clients usam ms).
+      final iat = payload['iat'];
+      if (iat is int && iat < 1000000000000) {
+        payload['iat'] = iat * 1000;
+      }
+
+      return payload;
     } catch (e) {
       // Token inválido, expirado ou malformado
       return null;

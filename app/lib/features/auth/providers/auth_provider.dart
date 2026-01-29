@@ -35,8 +35,14 @@ class AuthProvider extends ChangeNotifier {
       if (savedToken != null && savedUserJson != null) {
         _token = savedToken;
         _user = User.fromJson(jsonDecode(savedUserJson));
-        // TODO: Validar token com backend
-        _status = AuthStatus.authenticated;
+        final isValid = await _validateTokenWithBackend();
+        _status = isValid ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+        if (!isValid) {
+          await prefs.remove('auth_token');
+          await prefs.remove('user_data');
+          _token = null;
+          _user = null;
+        }
       } else {
         _status = AuthStatus.unauthenticated;
       }
@@ -71,7 +77,11 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = 'Credenciais inválidas';
+        if (response.data is Map && response.data['message'] != null) {
+          _errorMessage = response.data['message'].toString();
+        } else {
+          _errorMessage = 'Credenciais inválidas';
+        }
         _status = AuthStatus.unauthenticated;
         notifyListeners();
         return false;
@@ -112,7 +122,11 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = response.data['message'] ?? 'Erro ao criar conta';
+        if (response.data is Map && response.data['message'] != null) {
+          _errorMessage = response.data['message'].toString();
+        } else {
+          _errorMessage = 'Erro ao criar conta';
+        }
         _status = AuthStatus.unauthenticated;
         notifyListeners();
         return false;
@@ -149,5 +163,14 @@ class AuthProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<bool> _validateTokenWithBackend() async {
+    try {
+      final response = await _apiClient.get('/auth/me');
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 }

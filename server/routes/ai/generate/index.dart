@@ -28,10 +28,22 @@ Future<Response> onRequest(RequestContext context) async {
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'error': 'OpenAI API Key not configured'},
-      );
+      final mockCards = _mockDeckCards(format);
+      return Response.json(body: {
+        'prompt': prompt,
+        'format': format,
+        'generated_deck': {'cards': mockCards},
+        'meta_context_used': false,
+        'is_mock': true,
+        'stats': {
+          'total_suggested': mockCards.length,
+          'valid_cards': mockCards.length,
+          'invalid_cards': 0,
+        },
+        'warnings': {
+          'message': 'OPENAI_API_KEY não configurada. Retornando deck mock para desenvolvimento.',
+        },
+      });
     }
 
     // 1. RAG: Buscar contexto no Meta (Opcional, mas recomendado)
@@ -188,4 +200,28 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'error': 'Failed to generate deck: $e'},
     );
   }
+}
+
+List<Map<String, dynamic>> _mockDeckCards(String format) {
+  final normalized = format.trim().toLowerCase();
+  final isCommander = normalized == 'commander' || normalized == 'edh' || normalized == 'brawl';
+  final total = isCommander ? 100 : 60;
+
+  final basics = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
+  final per = (total / basics.length).floor();
+  final cards = <Map<String, dynamic>>[];
+
+  for (final land in basics) {
+    cards.add({'name': land, 'quantity': per});
+  }
+
+  var current = cards.fold<int>(0, (sum, c) => sum + (c['quantity'] as int));
+  var i = 0;
+  while (current < total) {
+    cards[i % basics.length]['quantity'] = (cards[i % basics.length]['quantity'] as int) + 1;
+    current++;
+    i++;
+  }
+
+  return cards;
 }

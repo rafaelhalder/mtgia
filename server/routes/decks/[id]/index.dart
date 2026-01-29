@@ -74,7 +74,7 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
     final updatedDeck = await conn.runTx((session) async {
       // 1. Verifica se o deck existe e pertence ao usuário
       final deckCheck = await session.execute(
-        Sql.named('SELECT id, format FROM decks WHERE id = @deckId AND user_id = @userId'),
+        Sql.named('SELECT id, name, format, description FROM decks WHERE id = @deckId AND user_id = @userId'),
         parameters: {'deckId': deckId, 'userId': userId},
       );
 
@@ -82,7 +82,15 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
         throw Exception('Deck not found or permission denied.');
       }
 
-      final currentFormat = (format ?? deckCheck.first[1] as String).toLowerCase();
+      final existingName = deckCheck.first[1] as String;
+      final existingFormat = deckCheck.first[2] as String;
+      final existingDescription = deckCheck.first[3] as String?;
+
+      final nextName = name ?? existingName;
+      final nextFormat = format ?? existingFormat;
+      final nextDescription = description ?? existingDescription;
+
+      final currentFormat = nextFormat.toLowerCase();
 
       // 2. Atualiza os dados do deck
       if (name != null || format != null || description != null) {
@@ -91,9 +99,9 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             'UPDATE decks SET name = @name, format = @format, description = @desc WHERE id = @deckId',
           ),
           parameters: {
-            'name': name,
-            'format': format,
-            'desc': description,
+            'name': nextName,
+            'format': nextFormat,
+            'desc': nextDescription,
             'deckId': deckId,
           },
         );

@@ -5,6 +5,17 @@ applyTo: '**'
 
 Este arquivo define as regras estritas, a filosofia e o fluxo de trabalho para o desenvolvimento deste projeto.
 
+## ⚠️ Estado Atual (importante para manutenção)
+Este repositório é **full-stack**:
+- `app/`: Flutter (Provider + GoRouter) consumindo API HTTP em `http://localhost:8080` (ou `10.0.2.2:8080` no Android emulator).
+- `server/`: Dart Frog + PostgreSQL (JWT + validações de deck + endpoints de IA).
+
+### Pontos críticos identificados (dev/QA)
+- **POST /decks**: cartas devem ser enviadas por **ID** (`card_id`). Se o fluxo tiver só `name`, ele precisa resolver para IDs via `/cards?name=...` (ou o backend precisa aceitar `name` como fallback).
+- **Deep link /decks/:id/search**: “Adicionar carta” deve funcionar mesmo se o deck ainda não foi carregado no provider (garantir `fetchDeckDetails`).
+- **Rate limiting em auth**: em dev/test, limites agressivos podem bloquear QA e a suíte de testes (especialmente quando o identificador cai em `anonymous` por ausência de IP/headers).
+- **IA (OpenAI)**: manter comportamento consistente entre endpoints (fallback/mock em dev quando `OPENAI_API_KEY` não estiver configurada, para não quebrar UI).
+
 ## 1. Objetivo do Projeto
 Desenvolver um aplicativo de Deck Builder de Magic: The Gathering (MTG) revolucionário, focado em inteligência artificial e automação.
 
@@ -93,7 +104,33 @@ Para garantir consistência, consulte sempre as colunas existentes antes de cria
 - `turns_played` (INTEGER): Duração.
 - `game_log` (JSONB): Log completo turno-a-turno para treino da IA.
 
-## 3. Regra de Ouro: Documentação Contínua (Manual de Instrução)
+## 3. Contratos de API (payloads reais)
+**Regra:** o app deve falar com o server usando o contrato abaixo. Se for necessário suportar variantes por compatibilidade, documente e mantenha validações.
+
+### Auth
+- `POST /auth/login` → body: `{ "email": "...", "password": "..." }` → 200: `{ token, user: { id, username, email } }`
+- `POST /auth/register` → body: `{ "username": "...", "email": "...", "password": "..." }` → 201: `{ token, user: { id, username, email } }`
+- `GET /auth/me` → valida token e retorna `{ user: { id, username, email } }` (recomendado para boot do app).
+
+### Decks
+- `GET /decks` (JWT obrigatório) → lista decks do usuário.
+- `POST /decks` (JWT obrigatório) → cria deck:
+  - obrigatórios: `name`, `format`
+  - opcional: `description`
+  - `cards`: lista de `{ card_id, quantity, is_commander? }`
+- `GET /decks/:id` (JWT obrigatório) → detalhes + cartas, com `is_commander`.
+- `PUT /decks/:id` (JWT obrigatório) → atualiza campos e/ou substitui lista de `cards` (mesmo formato do `POST`).
+
+### Cards
+- `GET /cards?name=...&limit=...&page=...` → `{ data: [...], page, limit, total_returned }`
+
+### IA
+- `POST /ai/explain` (JWT obrigatório) → pode retornar fallback em dev quando sem `OPENAI_API_KEY`.
+- `POST /ai/archetypes` (JWT obrigatório) → tem fallback/mock quando sem `OPENAI_API_KEY`.
+- `POST /ai/optimize` (JWT obrigatório) → retorna removals/additions + análises; pode incluir warnings.
+- `POST /ai/generate` (JWT obrigatório) → ideal ter fallback/mock quando sem `OPENAI_API_KEY` para não quebrar UI em dev.
+
+## 4. Regra de Ouro: Documentação Contínua (Manual de Instrução)
 **CRÍTICO:** Para CADA alteração significativa, nova funcionalidade, adição de biblioteca ou decisão arquitetural, você DEVE atualizar o arquivo `manual-de-instrucao.md` na raiz do servidor.
 
 O `manual-de-instrucao.md` deve conter:
@@ -103,25 +140,32 @@ O `manual-de-instrucao.md` deve conter:
 - **Padrões:** Como o Clean Code ou Clean Architecture foi aplicado naquele trecho.
 - **Exemplos:** Snippets de código mostrando como o usuário pode replicar ou estender a funcionalidade seguindo o padrão.
 
-## 3. Padrões de Código e Arquitetura
+## 5. Padrões de Código e Arquitetura
 - **Clean Architecture:** Manter separação clara de responsabilidades (Data, Domain, Presentation/Routes).
 - **Clean Code:** Variáveis com nomes descritivos, funções pequenas e com responsabilidade única, comentários explicativos onde a lógica for complexa.
 - **Segurança:** Nunca commitar credenciais. Usar sempre variáveis de ambiente (`.env`).
 - **Tratamento de Erros:** Blocos try-catch explícitos e mensagens de erro claras.
 
-## 4. Fluxo de Trabalho
+## 6. Fluxo de Trabalho
 1.  **Entender:** Analisar o pedido do usuário.
 2.  **Planejar:** Definir quais arquivos serão criados/alterados.
 3.  **Executar:** Escrever o código seguindo os padrões acima.
 4.  **Documentar:** Atualizar IMEDIATAMENTE o `manual-de-instrucao.md` com os detalhes do que foi feito.
 
-## 5. Stack Tecnológica (Backend)
+## 7. Stack Tecnológica (Backend)
 - **Framework:** Dart Frog.
 - **DB Driver:** `postgres` (v3.x).
 - **Env:** `dotenv`.
 - **Http:** `http` (para requisições externas).
 
-## 6. Roadmap de Implementação da IA (MVP)
+## 8. Segurança e rate limiting (dev vs produção)
+- `.env` nunca deve ser commitado (use `.env.example`).
+- JWT: obrigatório em rotas protegidas (`/decks`, `/ai/*`, `/import`).
+- Rate limiting:
+  - Auth deve ser restritivo em produção (brute force).
+  - Em **development/test**, o rate limiting não pode impedir QA e suíte de testes. Preferir limites maiores em dev.
+
+## 9. Roadmap de Implementação da IA (MVP)
 
 Para transformar o projeto em um "Deck Builder Inteligente", seguiremos este roteiro de implementação, dividindo a IA em três módulos de complexidade crescente.
 

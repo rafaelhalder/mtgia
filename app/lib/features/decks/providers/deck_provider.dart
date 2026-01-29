@@ -84,11 +84,12 @@ class DeckProvider extends ChangeNotifier {
     List<Map<String, dynamic>>? cards,
   }) async {
     try {
+      final normalizedCards = await _normalizeCreateDeckCards(cards ?? []);
       final response = await _apiClient.post('/decks', {
         'name': name,
         'format': format,
         'description': description,
-        'cards': cards ?? [],
+        'cards': normalizedCards,
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -108,6 +109,75 @@ class DeckProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _normalizeCreateDeckCards(
+    List<Map<String, dynamic>> cards,
+  ) async {
+    if (cards.isEmpty) return const [];
+
+    final hasCardId = cards.any((c) => c['card_id'] != null);
+    final hasName = cards.any((c) => c['name'] != null);
+
+    if (hasCardId && !hasName) {
+      return cards;
+    }
+
+    final aggregatedByName = <String, Map<String, dynamic>>{};
+    for (final card in cards) {
+      final name = (card['name'] as String?)?.trim();
+      if (name == null || name.isEmpty) continue;
+
+      final quantity = (card['quantity'] as int?) ?? 1;
+      final isCommander = (card['is_commander'] as bool?) ?? false;
+
+      final key = '${name.toLowerCase()}::$isCommander';
+      final existing = aggregatedByName[key];
+      if (existing == null) {
+        aggregatedByName[key] = {
+          'name': name,
+          'quantity': quantity,
+          'is_commander': isCommander,
+        };
+      } else {
+        aggregatedByName[key] = {
+          ...existing,
+          'quantity': (existing['quantity'] as int) + quantity,
+        };
+      }
+    }
+
+    final lookups = aggregatedByName.values.map((card) async {
+      final name = card['name'] as String;
+      final encodedName = Uri.encodeQueryComponent(name);
+      final response = await _apiClient.get('/cards?name=$encodedName&limit=1');
+
+      if (response.statusCode != 200) return null;
+
+      final data = response.data;
+      final List results;
+      if (data is Map && data['data'] is List) {
+        results = data['data'] as List;
+      } else if (data is List) {
+        results = data;
+      } else {
+        results = const [];
+      }
+
+      if (results.isEmpty) return null;
+      final cardJson = results.first as Map<String, dynamic>;
+      final cardId = cardJson['id'] as String?;
+      if (cardId == null || cardId.isEmpty) return null;
+
+      return {
+        'card_id': cardId,
+        'quantity': card['quantity'] ?? 1,
+        'is_commander': card['is_commander'] ?? false,
+      };
+    });
+
+    final resolved = await Future.wait(lookups);
+    return resolved.whereType<Map<String, dynamic>>().toList();
   }
 
   /// Deleta um deck
@@ -133,7 +203,11 @@ class DeckProvider extends ChangeNotifier {
   /// Adiciona uma carta ao deck
   Future<bool> addCardToDeck(String deckId, DeckCardItem card, int quantity, {bool isCommander = false}) async {
     if (_selectedDeck == null || _selectedDeck!.id != deckId) {
-      // Se o deck não estiver carregado, não podemos adicionar (segurança)
+      await fetchDeckDetails(deckId);
+    }
+    if (_selectedDeck == null || _selectedDeck!.id != deckId) {
+      _errorMessage = 'Deck não carregado. Abra os detalhes do deck e tente novamente.';
+      notifyListeners();
       return false;
     }
 

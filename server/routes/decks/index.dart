@@ -77,7 +77,7 @@ Future<Response> _createDeck(RequestContext context) async {
   final body = await context.request.json();
   final name = body['name'] as String?;
   final format = body['format'] as String?;
-  final cards = body['cards'] as List? ?? []; // Ex: [{'card_id': 'uuid', 'quantity': 2}]
+  final cards = body['cards'] as List? ?? []; // Ex: [{'card_id': 'uuid', 'quantity': 2, 'is_commander': false}]
 
   if (name == null || format == null) {
     return Response.json(
@@ -113,21 +113,44 @@ Future<Response> _createDeck(RequestContext context) async {
 
       // Prepara a inserção das cartas do deck
       final cardInsertSql = Sql.named(
-        'INSERT INTO deck_cards (deck_id, card_id, quantity) VALUES (@deckId, @cardId, @quantity)',
+        'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES (@deckId, @cardId, @quantity, @isCommander)',
       );
 
       for (final card in cards) {
-        final cardId = card['card_id'] as String?;
-        final quantity = card['quantity'] as int?;
+        if (card is! Map) {
+          throw Exception('Each card must be an object.');
+        }
 
-        if (cardId == null || quantity == null) {
-          throw Exception('Each card must have a card_id and quantity.');
+        String? cardId = card['card_id'] as String?;
+        final cardName = card['name'] as String?;
+        final quantity = card['quantity'] as int?;
+        final isCommander = card['is_commander'] as bool? ?? false;
+
+        if ((cardId == null || cardId.isEmpty) && (cardName == null || cardName.trim().isEmpty)) {
+          throw Exception('Each card must have a card_id or name.');
+        }
+
+        if (quantity == null || quantity <= 0) {
+          throw Exception('Each card must have a positive quantity.');
+        }
+
+        // Fallback: aceitar "name" e resolver para id (útil para fluxos de IA/preview)
+        if (cardId == null || cardId.isEmpty) {
+          final lookup = await session.execute(
+            Sql.named('SELECT id FROM cards WHERE LOWER(name) = LOWER(@name) LIMIT 1'),
+            parameters: {'name': cardName!.trim()},
+          );
+          if (lookup.isEmpty) {
+            throw Exception('Card not found: ${cardName.trim()}');
+          }
+          cardId = lookup.first[0] as String;
         }
 
         await session.execute(cardInsertSql, parameters: {
           'deckId': newDeckId,
           'cardId': cardId,
           'quantity': quantity,
+          'isCommander': isCommander,
         });
       }
       

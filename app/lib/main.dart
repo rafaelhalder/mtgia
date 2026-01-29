@@ -22,76 +22,111 @@ void main() {
   runApp(const ManaLoomApp());
 }
 
-final _router = GoRouter(
-  initialLocation: '/',
-  routes: [
-    // Splash Screen
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const SplashScreen(),
-    ),
-    
-    // Auth Routes
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
-    GoRoute(
-      path: '/register',
-      builder: (context, state) => const RegisterScreen(),
-    ),
-    
-    // Protected Routes (com Bottom Navigation)
-    ShellRoute(
-      builder: (context, state, child) {
-        return MainScaffold(child: child);
+class ManaLoomApp extends StatefulWidget {
+  const ManaLoomApp({super.key});
+
+  @override
+  State<ManaLoomApp> createState() => _ManaLoomAppState();
+}
+
+class _ManaLoomAppState extends State<ManaLoomApp> {
+  late final AuthProvider _authProvider;
+  late final DeckProvider _deckProvider;
+  late final CardProvider _cardProvider;
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _authProvider = AuthProvider();
+    _deckProvider = DeckProvider();
+    _cardProvider = CardProvider();
+
+    _router = GoRouter(
+      initialLocation: '/',
+      refreshListenable: _authProvider,
+      redirect: (context, state) {
+        final location = state.matchedLocation;
+
+        // Sempre permite a Splash (ela decide para onde ir).
+        if (location == '/') return null;
+
+        final isAuthRoute = location == '/login' || location == '/register';
+        final isProtectedRoute = location.startsWith('/home') || location.startsWith('/decks');
+
+        if (isProtectedRoute && !_authProvider.isAuthenticated) {
+          return '/login';
+        }
+
+        if (isAuthRoute && _authProvider.isAuthenticated) {
+          return '/home';
+        }
+
+        return null;
       },
       routes: [
         GoRoute(
-          path: '/home',
-          builder: (context, state) => const HomeScreen(),
+          path: '/',
+          builder: (context, state) => const SplashScreen(),
+        ),
+
+        GoRoute(
+          path: '/login',
+          builder: (context, state) => const LoginScreen(),
         ),
         GoRoute(
-          path: '/decks',
-          builder: (context, state) => const DeckListScreen(),
+          path: '/register',
+          builder: (context, state) => const RegisterScreen(),
+        ),
+
+        ShellRoute(
+          builder: (context, state, child) {
+            return MainScaffold(child: child);
+          },
           routes: [
             GoRoute(
-              path: 'generate',
-              builder: (context, state) => const DeckGenerateScreen(),
+              path: '/home',
+              builder: (context, state) => const HomeScreen(),
             ),
             GoRoute(
-              path: ':id',
-              builder: (context, state) {
-                final id = state.pathParameters['id']!;
-                return DeckDetailsScreen(deckId: id);
-              },
+              path: '/decks',
+              builder: (context, state) => const DeckListScreen(),
               routes: [
                 GoRoute(
-                  path: 'search',
+                  path: 'generate',
+                  builder: (context, state) => const DeckGenerateScreen(),
+                ),
+                GoRoute(
+                  path: ':id',
                   builder: (context, state) {
                     final id = state.pathParameters['id']!;
-                    return CardSearchScreen(deckId: id);
+                    return DeckDetailsScreen(deckId: id);
                   },
+                  routes: [
+                    GoRoute(
+                      path: 'search',
+                      builder: (context, state) {
+                        final id = state.pathParameters['id']!;
+                        return CardSearchScreen(deckId: id);
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
           ],
         ),
       ],
-    ),
-  ],
-);
-
-class ManaLoomApp extends StatelessWidget {
-  const ManaLoomApp({super.key});
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => DeckProvider()),
-        ChangeNotifierProvider(create: (_) => CardProvider()),
+        ChangeNotifierProvider.value(value: _authProvider),
+        ChangeNotifierProvider.value(value: _deckProvider),
+        ChangeNotifierProvider.value(value: _cardProvider),
       ],
       child: MaterialApp.router(
         title: 'ManaLoom - AI Deck Builder',
