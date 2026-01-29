@@ -17,6 +17,7 @@ import 'features/decks/screens/deck_generate_screen.dart';
 
 import 'features/cards/providers/card_provider.dart';
 import 'features/cards/screens/card_search_screen.dart';
+import 'features/profile/profile_screen.dart';
 
 void main() {
   runApp(const ManaLoomApp());
@@ -113,6 +114,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
                   ],
                 ),
               ],
+            ),
+            GoRoute(
+              path: '/profile',
+              builder: (context, state) => const ProfileScreen(),
             ),
           ],
         ),

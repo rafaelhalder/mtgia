@@ -7,6 +7,8 @@ import 'package:dart_frog/dart_frog.dart';
 
 
 import '../routes/index.dart' as index;
+import '../routes/users/me/index.dart' as users_me_index;
+import '../routes/sets/index.dart' as sets_index;
 import '../routes/rules/index.dart' as rules_index;
 import '../routes/import/index.dart' as import_index;
 import '../routes/health/index.dart' as health_index;
@@ -27,6 +29,7 @@ import '../routes/ai/explain/index.dart' as ai_explain_index;
 import '../routes/ai/archetypes/index.dart' as ai_archetypes_index;
 
 import '../routes/_middleware.dart' as middleware;
+import '../routes/users/_middleware.dart' as users_middleware;
 import '../routes/import/_middleware.dart' as import_middleware;
 import '../routes/decks/_middleware.dart' as decks_middleware;
 import '../routes/auth/_middleware.dart' as auth_middleware;
@@ -62,6 +65,8 @@ Handler buildRootHandler() {
     ..mount('/health', (context) => buildHealthHandler()(context))
     ..mount('/import', (context) => buildImportHandler()(context))
     ..mount('/rules', (context) => buildRulesHandler()(context))
+    ..mount('/sets', (context) => buildSetsHandler()(context))
+    ..mount('/users/me', (context) => buildUsersMeHandler()(context))
     ..mount('/', (context) => buildHandler()(context));
   return pipeline.addHandler(router);
 }
@@ -175,6 +180,20 @@ Handler buildRulesHandler() {
   final pipeline = const Pipeline();
   final router = Router()
     ..all('/', (context) => rules_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildSetsHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => sets_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildUsersMeHandler() {
+  final pipeline = const Pipeline().addMiddleware(users_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => users_me_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

@@ -113,7 +113,11 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                     ? Image.network(card.imageUrl!, width: 40)
                     : const Icon(Icons.image_not_supported),
                 title: Text(card.name),
-                subtitle: Text(card.typeLine),
+                subtitle: Text([
+                  card.typeLine,
+                  if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
+                  if ((card.setReleaseDate ?? '').trim().isNotEmpty) card.setReleaseDate!,
+                ].join(' • ')),
                 trailing: IconButton(
                   icon: const Icon(Icons.add_circle_outline),
                   onPressed: () => _addCardToDeck(card),

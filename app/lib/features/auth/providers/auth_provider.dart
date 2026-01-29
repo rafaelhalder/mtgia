@@ -168,8 +168,65 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> _validateTokenWithBackend() async {
     try {
       final response = await _apiClient.get('/auth/me');
-      return response.statusCode == 200;
+      if (response.statusCode != 200) return false;
+      if (response.data is Map && (response.data as Map).containsKey('user')) {
+        final userJson = (response.data as Map)['user'];
+        if (userJson is Map<String, dynamic>) {
+          _user = User.fromJson(userJson);
+          await _saveCredentials();
+        }
+      }
+      return true;
     } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> refreshProfile() async {
+    try {
+      final response = await _apiClient.get('/users/me');
+      if (response.statusCode != 200) return false;
+      final data = response.data;
+      if (data is Map && data['user'] is Map<String, dynamic>) {
+        _user = User.fromJson((data['user'] as Map<String, dynamic>));
+        await _saveCredentials();
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateProfile({String? displayName, String? avatarUrl}) async {
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.patch('/users/me', {
+        if (displayName != null) 'display_name': displayName,
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+      });
+      if (response.statusCode != 200) {
+        if (response.data is Map && response.data['error'] != null) {
+          _errorMessage = response.data['error'].toString();
+        } else {
+          _errorMessage = 'Falha ao atualizar perfil';
+        }
+        notifyListeners();
+        return false;
+      }
+      final data = response.data;
+      if (data is Map && data['user'] is Map<String, dynamic>) {
+        _user = User.fromJson((data['user'] as Map<String, dynamic>));
+        await _saveCredentials();
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _errorMessage = 'Erro de conexão: $e';
+      notifyListeners();
       return false;
     }
   }

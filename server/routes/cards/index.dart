@@ -12,6 +12,7 @@ Future<Response> onRequest(RequestContext context) async {
 
   final params = context.request.uri.queryParameters;
   final nameFilter = params['name'];
+  final setFilter = params['set']?.trim();
   
   // Paginação
   final limit = int.tryParse(params['limit'] ?? '50') ?? 50;
@@ -19,7 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
   final offset = (page - 1) * limit;
 
   try {
-    final query = _buildQuery(nameFilter, limit, offset);
+    final query = _buildQuery(nameFilter, setFilter, limit, offset);
     
     final queryResult = await conn.execute(
       Sql.named(query.sql),
@@ -39,6 +40,8 @@ Future<Response> onRequest(RequestContext context) async {
         'colors': map['colors'],
         'image_url': map['image_url'],
         'set_code': map['set_code'],
+        'set_name': map['set_name'],
+        'set_release_date': (map['set_release_date'] as DateTime?)?.toIso8601String().split('T').first,
         'rarity': map['rarity'],
       };
     }).toList();
@@ -64,8 +67,15 @@ class _QueryBuilder {
   _QueryBuilder(this.sql, this.parameters);
 }
 
-_QueryBuilder _buildQuery(String? nameFilter, int limit, int offset) {
-  var sql = 'SELECT * FROM cards';
+_QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int offset) {
+  var sql = '''
+    SELECT
+      c.*,
+      s.name AS set_name,
+      s.release_date AS set_release_date
+    FROM cards c
+    LEFT JOIN sets s ON s.code = c.set_code
+  ''';
   final params = <String, dynamic>{};
   final conditions = <String>[];
 
@@ -74,11 +84,16 @@ _QueryBuilder _buildQuery(String? nameFilter, int limit, int offset) {
     params['name'] = '%$nameFilter%';
   }
 
+  if (setFilter != null && setFilter.isNotEmpty) {
+    conditions.add('set_code = @set');
+    params['set'] = setFilter;
+  }
+
   if (conditions.isNotEmpty) {
     sql += ' WHERE ${conditions.join(' AND ')}';
   }
 
-  sql += ' ORDER BY name ASC LIMIT @limit OFFSET @offset';
+  sql += ' ORDER BY c.name ASC LIMIT @limit OFFSET @offset';
   params['limit'] = limit;
   params['offset'] = offset;
 

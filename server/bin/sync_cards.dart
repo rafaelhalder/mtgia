@@ -61,6 +61,8 @@ Opções:
   final startedAt = DateTime.now();
   try {
     await _ensureSyncStateTable(pool);
+    await _ensureSetsTable(pool);
+    await _syncSetsFromSetList(pool);
 
     final meta = await _fetchMtgJsonMeta();
     final remoteVersion = (meta['version'] ?? '').toString().trim();
@@ -278,6 +280,78 @@ Future<void> _ensureSyncStateTable(Pool pool) async {
       )
     '''),
   );
+}
+
+Future<void> _ensureSetsTable(Pool pool) async {
+  await pool.execute(
+    Sql.named('''
+      CREATE TABLE IF NOT EXISTS sets (
+        code TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        release_date DATE,
+        type TEXT,
+        block TEXT,
+        is_online_only BOOLEAN,
+        is_foreign_only BOOLEAN,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    '''),
+  );
+}
+
+Future<void> _syncSetsFromSetList(Pool pool) async {
+  final res = await http.get(Uri.parse(_setListUrl));
+  if (res.statusCode != 200) {
+    throw Exception('Falha ao baixar SetList.json: ${res.statusCode}');
+  }
+  final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  final data = decoded['data'];
+  if (data is! List) {
+    throw Exception('SetList.json inesperado: campo data inválido');
+  }
+
+  await pool.runTx((session) async {
+    final stmt = await session.prepare('''
+      INSERT INTO sets (
+        code, name, release_date, type, block, is_online_only, is_foreign_only, updated_at
+      ) VALUES (
+        \$1, \$2, \$3, \$4, \$5, \$6, \$7, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (code) DO UPDATE SET
+        name = EXCLUDED.name,
+        release_date = EXCLUDED.release_date,
+        type = EXCLUDED.type,
+        block = EXCLUDED.block,
+        is_online_only = EXCLUDED.is_online_only,
+        is_foreign_only = EXCLUDED.is_foreign_only,
+        updated_at = CURRENT_TIMESTAMP
+    ''');
+
+    try {
+      for (final item in data) {
+        if (item is! Map) continue;
+        final code = item['code']?.toString().trim();
+        final name = item['name']?.toString().trim();
+        if (code == null || code.isEmpty || name == null || name.isEmpty) continue;
+
+        final releaseDateStr = item['releaseDate']?.toString();
+        final releaseDate = releaseDateStr != null ? DateTime.tryParse(releaseDateStr) : null;
+
+        await stmt.run([
+          code,
+          name,
+          releaseDate?.toIso8601String().split('T').first,
+          item['type']?.toString(),
+          item['block']?.toString(),
+          item['isOnlineOnly'] as bool?,
+          item['isForeignOnly'] as bool?,
+        ]);
+      }
+    } finally {
+      await stmt.dispose();
+    }
+  });
 }
 
 Future<String?> _getSyncState(Pool pool, String key) async {

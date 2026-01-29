@@ -9,8 +9,16 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL, -- Nunca salvar senha em texto puro!
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    display_name TEXT,
+    avatar_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Para bancos existentes (idempotente)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
 
 -- 2. Tabela de Cartas (Otimizada para busca e dados do MTGJSON)
 CREATE TABLE IF NOT EXISTS cards (
@@ -31,6 +39,22 @@ CREATE TABLE IF NOT EXISTS cards (
 
 -- Índice para busca rápida por nome
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards (name);
+
+-- 2.1. Tabela de Sets/Edições (para exibir nome e data da edição)
+-- Fonte: MTGJSON SetList.json
+CREATE TABLE IF NOT EXISTS sets (
+    code TEXT PRIMARY KEY, -- Ex: 'UNH'
+    name TEXT NOT NULL, -- Ex: 'Unhinged'
+    release_date DATE, -- Ex: 2004-11-20
+    type TEXT, -- Ex: 'expansion', 'promo'
+    block TEXT, -- Ex: 'Ravnica'
+    is_online_only BOOLEAN,
+    is_foreign_only BOOLEAN,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sets_name ON sets (name);
 
 -- 3. Tabela de Legalidade/Banidas (Relacionamento 1:N com Cartas)
 -- Ex: Card X -> Commander: Banned

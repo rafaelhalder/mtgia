@@ -272,6 +272,18 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
                         color: Colors.grey[400],
                       ),
                     ),
+                    if ((card.setName ?? '').trim().isNotEmpty || (card.setReleaseDate ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        [
+                          if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
+                          if ((card.setReleaseDate ?? '').trim().isNotEmpty) card.setReleaseDate!,
+                        ].join(' • '),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey[500],
+                            ),
+                      ),
+                    ],
                     
                     const SizedBox(height: 8),
                     InkWell(

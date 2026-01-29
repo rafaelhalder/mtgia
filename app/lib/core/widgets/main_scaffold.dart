@@ -29,10 +29,9 @@ class MainScaffold extends StatelessWidget {
             case 1:
               context.go('/decks');
               break;
-            // Futuro: Perfil/Configurações
-            // case 2:
-            //   context.go('/profile');
-            //   break;
+            case 2:
+              context.go('/profile');
+              break;
           }
         },
         destinations: const [
@@ -46,11 +45,11 @@ class MainScaffold extends StatelessWidget {
             selectedIcon: Icon(Icons.style),
             label: 'Decks',
           ),
-          // NavigationDestination(
-          //   icon: Icon(Icons.person_outline),
-          //   selectedIcon: Icon(Icons.person),
-          //   label: 'Perfil',
-          // ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Perfil',
+          ),
         ],
       ),
     );

@@ -220,7 +220,7 @@ class AuthService {
     final conn = db.connection;
 
     final result = await conn.execute(
-      Sql.named('SELECT id, username, email FROM users WHERE id = @userId'),
+      Sql.named('SELECT id, username, email, display_name, avatar_url FROM users WHERE id = @userId'),
       parameters: {'userId': userId},
     );
 
@@ -231,6 +231,8 @@ class AuthService {
       'id': row[0] as String,
       'username': row[1] as String,
       'email': row[2] as String,
+      'display_name': row[3] as String?,
+      'avatar_url': row[4] as String?,
     };
   }
 }
