@@ -28,6 +28,16 @@ BRACKET / POWER LEVEL (guideline)
 - Bracket 3 (High): pode usar staples fortes, tutores moderados, interação eficiente; combos ok se não hiper focado.
 - Bracket 4 (cEDH): máxima eficiência; fast mana/tutores/combos e interação pesada.
 
+MÉTRICA (consistência)
+
+Você deve respeitar limites aproximados por bracket nas categorias abaixo:
+- fast mana
+- tutores ("search your library")
+- interação gratuita (custo alternativo/pitch)
+- turnos extras ("extra turn")
+
+Se precisar completar o deck, prefira preencher com base de mana (terrenos) + ramp/draw/removal coerentes com o arquétipo, ao invés de estourar essas categorias.
+
 OUTPUT FORMAT (JSON STRICT)
 
 Retorne APENAS um objeto JSON. Sem markdown, sem texto extra.
@@ -40,4 +50,3 @@ Retorne APENAS um objeto JSON. Sem markdown, sem texto extra.
   ],
   "reasoning": "Breve justificativa (2-4 frases) conectando comandante, arquétipo e bracket."
 }
-

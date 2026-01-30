@@ -6,6 +6,7 @@ import '../../../lib/color_identity.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
 import '../../../lib/logger.dart';
+import '../../../lib/edh_bracket_policy.dart';
 
 /// Classe para análise de arquétipo do deck
 /// Implementa detecção automática baseada em curva de mana, tipos de cartas e cores
@@ -482,20 +483,24 @@ Future<Response> onRequest(RequestContext context) async {
       }
 
       // Suporte ao modo "complete"
-      if (jsonResponse['mode'] == 'complete') {
+      final isComplete = jsonResponse['mode'] == 'complete';
+      if (isComplete) {
         removals = [];
         additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
       }
       
       // GARANTIR EQUILÍBRIO NUMÉRICO (Regra de Ouro)
-      final minCount = removals.length < additions.length ? removals.length : additions.length;
-      
-      if (removals.length != additions.length) {
-        Log.w(
-          '⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount',
-        );
-        removals = removals.take(minCount).toList();
-        additions = additions.take(minCount).toList();
+      if (!isComplete) {
+        final minCount =
+            removals.length < additions.length ? removals.length : additions.length;
+
+        if (removals.length != additions.length) {
+          Log.w(
+            '⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount',
+          );
+          removals = removals.take(minCount).toList();
+          additions = additions.take(minCount).toList();
+        }
       }
       
       final sanitizedRemovals = removals.map(CardValidationService.sanitizeCardName).toList();
@@ -556,6 +561,40 @@ Future<Response> onRequest(RequestContext context) async {
           if (!ok) filteredByColorIdentity.add(name);
           return ok;
         }).toList();
+      }
+
+      // Bracket policy (intermediário): bloqueia cartas "acima do bracket" baseado no deck atual.
+      // Aplica somente em Commander/Brawl, quando bracket foi enviado.
+      final blockedByBracket = <Map<String, dynamic>>[];
+      if (bracket != null &&
+          commanders.isNotEmpty &&
+          validAdditions.isNotEmpty) {
+        // Dados atuais do deck (já temos oracle/type em allCardData + quantity)
+        final additionsInfoResult = await pool.execute(
+          Sql.named('''
+            SELECT name, type_line, oracle_text
+            FROM cards
+            WHERE name = ANY(@names)
+          '''),
+          parameters: {'names': validAdditions},
+        );
+        final additionsInfo = additionsInfoResult
+            .map((r) => {
+                  'name': r[0] as String,
+                  'type_line': r[1] as String? ?? '',
+                  'oracle_text': r[2] as String? ?? '',
+                  'quantity': 1,
+                })
+            .toList();
+
+        final decision = applyBracketPolicyToAdditions(
+          bracket: bracket,
+          currentDeckCards: allCardData,
+          additionsCardsData: additionsInfo,
+        );
+
+        blockedByBracket.addAll(decision.blocked);
+        validAdditions = decision.allowed;
       }
 
       // Re-aplicar equilíbrio após validação
@@ -684,6 +723,15 @@ Future<Response> onRequest(RequestContext context) async {
           'removed_additions': filteredByColorIdentity,
           'message':
               'Algumas adições sugeridas pela IA foram removidas por estarem fora da identidade de cor do comandante.',
+        };
+      }
+
+      if (blockedByBracket.isNotEmpty) {
+        warnings['blocked_by_bracket'] = {
+          'bracket': bracket,
+          'blocked_additions': blockedByBracket,
+          'message':
+              'Algumas adições sugeridas foram bloqueadas por exceder limites do bracket.',
         };
       }
 

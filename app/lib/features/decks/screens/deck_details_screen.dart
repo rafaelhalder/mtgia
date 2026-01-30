@@ -850,6 +850,13 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                             '• Algumas adições foram removidas por estarem fora da identidade do comandante.',
                           ),
                         ),
+                      if (warnings['blocked_by_bracket'] is Map)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            '• Algumas adições foram bloqueadas por exceder limites do bracket.',
+                          ),
+                        ),
                       if (warnings['invalid_cards'] != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
