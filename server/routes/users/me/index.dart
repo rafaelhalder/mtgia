@@ -19,6 +19,7 @@ Future<Response> onRequest(RequestContext context) async {
 Future<Response> _getMe(RequestContext context) async {
   final userId = getUserId(context);
   final pool = context.read<Pool>();
+  await _ensureUserProfileColumns(pool);
 
   try {
     final result = await pool.execute(
@@ -60,6 +61,7 @@ Future<Response> _getMe(RequestContext context) async {
 Future<Response> _patchMe(RequestContext context) async {
   final userId = getUserId(context);
   final pool = context.read<Pool>();
+  await _ensureUserProfileColumns(pool);
 
   Map<String, dynamic> body;
   try {
@@ -140,3 +142,11 @@ Future<Response> _patchMe(RequestContext context) async {
   }
 }
 
+Future<void> _ensureUserProfileColumns(Pool pool) async {
+  // Idempotente e rápido; evita quebrar deploys onde o schema ainda não foi aplicado.
+  await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT'));
+  await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT'));
+  await pool.execute(
+    Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP'),
+  );
+}

@@ -12,11 +12,14 @@ void main() async {
     // Definição do schema esperado (Tabela -> Lista de Colunas)
     final expectedSchema = {
       'users': [
-        'id', 'username', 'email', 'password_hash', 'created_at'
+        'id', 'username', 'email', 'password_hash', 'display_name', 'avatar_url', 'created_at', 'updated_at'
       ],
       'cards': [
         'id', 'scryfall_id', 'name', 'mana_cost', 'type_line', 'oracle_text', 
         'colors', 'image_url', 'set_code', 'rarity', 'ai_description', 'price', 'created_at'
+      ],
+      'sets': [
+        'code', 'name', 'release_date', 'type', 'block', 'is_online_only', 'is_foreign_only', 'created_at', 'updated_at'
       ],
       'card_legalities': [
         'id', 'card_id', 'format', 'status'

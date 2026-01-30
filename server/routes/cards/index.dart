@@ -9,6 +9,7 @@ Future<Response> onRequest(RequestContext context) async {
 
   // Acessa a conexão do banco de dados fornecida pelo middleware
   final conn = context.read<Pool>();
+  final hasSets = await _hasTable(conn, 'sets');
 
   final params = context.request.uri.queryParameters;
   final nameFilter = params['name'];
@@ -20,7 +21,7 @@ Future<Response> onRequest(RequestContext context) async {
   final offset = (page - 1) * limit;
 
   try {
-    final query = _buildQuery(nameFilter, setFilter, limit, offset);
+    final query = _buildQuery(nameFilter, setFilter, limit, offset, includeSetInfo: hasSets);
     
     final queryResult = await conn.execute(
       Sql.named(query.sql),
@@ -40,8 +41,8 @@ Future<Response> onRequest(RequestContext context) async {
         'colors': map['colors'],
         'image_url': map['image_url'],
         'set_code': map['set_code'],
-        'set_name': map['set_name'],
-        'set_release_date': (map['set_release_date'] as DateTime?)?.toIso8601String().split('T').first,
+        if (hasSets) 'set_name': map['set_name'],
+        if (hasSets) 'set_release_date': (map['set_release_date'] as DateTime?)?.toIso8601String().split('T').first,
         'rarity': map['rarity'],
       };
     }).toList();
@@ -67,15 +68,17 @@ class _QueryBuilder {
   _QueryBuilder(this.sql, this.parameters);
 }
 
-_QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int offset) {
-  var sql = '''
+_QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int offset, {required bool includeSetInfo}) {
+  var sql = includeSetInfo
+      ? '''
     SELECT
       c.*,
       s.name AS set_name,
       s.release_date AS set_release_date
     FROM cards c
     LEFT JOIN sets s ON s.code = c.set_code
-  ''';
+  '''
+      : 'SELECT c.* FROM cards c';
   final params = <String, dynamic>{};
   final conditions = <String>[];
 
@@ -98,4 +101,17 @@ _QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int 
   params['offset'] = offset;
 
   return _QueryBuilder(sql, params);
+}
+
+Future<bool> _hasTable(Pool pool, String tableName) async {
+  try {
+    final result = await pool.execute(
+      Sql.named('SELECT to_regclass(@name)::text'),
+      parameters: {'name': 'public.$tableName'},
+    );
+    final value = result.isNotEmpty ? result.first[0] : null;
+    return value != null;
+  } catch (_) {
+    return false;
+  }
 }
