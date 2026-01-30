@@ -26,8 +26,11 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 
   try {
     final deckResult = await pool.execute(
-      Sql.named(
-          'SELECT id FROM decks WHERE id = @deckId AND user_id = @userId'),
+      Sql.named('''
+        SELECT id
+        FROM decks
+        WHERE id = @deckId AND user_id = @userId
+      '''),
       parameters: {'deckId': deckId, 'userId': userId},
     );
     if (deckResult.isEmpty) {
@@ -65,8 +68,9 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       final price = (m['price'] as num?)?.toDouble();
       final updatedAt = m['price_updated_at'] as DateTime?;
 
+      // Sempre manter preço atualizado: por padrão, atualiza diariamente.
       final isStale = updatedAt == null ||
-          DateTime.now().toUtc().difference(updatedAt.toUtc()).inDays >= 14;
+          DateTime.now().toUtc().difference(updatedAt.toUtc()).inHours >= 24;
 
       double? finalPrice = price;
       if (force || finalPrice == null || isStale) {
@@ -113,6 +117,25 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         'line_total_usd': finalPrice == null ? null : (finalPrice * qty),
       });
     }
+
+    // Salva snapshot no deck (para exibir sem recalcular).
+    await pool.execute(
+      Sql.named('''
+        UPDATE decks
+        SET pricing_currency = @currency,
+            pricing_total = @total,
+            pricing_missing_cards = @missing,
+            pricing_updated_at = NOW()
+        WHERE id = @deckId AND user_id = @userId
+      '''),
+      parameters: {
+        'currency': 'USD',
+        'total': double.parse(total.toStringAsFixed(2)),
+        'missing': missing,
+        'deckId': deckId,
+        'userId': userId,
+      },
+    );
 
     return Response.json(
       body: {

@@ -25,6 +25,27 @@ Future<bool> _hasDeckMetaColumns(Pool pool) async {
   return _hasDeckMetaColumnsCache!;
 }
 
+bool? _hasDeckPricingColumnsCache;
+Future<bool> _hasDeckPricingColumns(Pool pool) async {
+  if (_hasDeckPricingColumnsCache != null) return _hasDeckPricingColumnsCache!;
+  try {
+    final result = await pool.execute(
+      Sql.named('''
+        SELECT COUNT(*)::int
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'decks'
+          AND column_name IN ('pricing_currency','pricing_total','pricing_missing_cards','pricing_updated_at')
+      '''),
+    );
+    final count = (result.first[0] as int?) ?? 0;
+    _hasDeckPricingColumnsCache = count >= 4;
+  } catch (_) {
+    _hasDeckPricingColumnsCache = false;
+  }
+  return _hasDeckPricingColumnsCache!;
+}
+
 Future<Response> onRequest(RequestContext context, String deckId) async {
   if (context.request.method == HttpMethod.get) {
     return _getDeckById(context, deckId);
@@ -104,10 +125,9 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
     final updatedDeck = await conn.runTx((session) async {
       // 1. Verifica se o deck existe e pertence ao usuário
       final deckCheck = await session.execute(
-        Sql.named(
-            hasMeta
-                ? 'SELECT id, name, format, description, archetype, bracket FROM decks WHERE id = @deckId AND user_id = @userId'
-                : 'SELECT id, name, format, description, NULL::text as archetype, NULL::int as bracket FROM decks WHERE id = @deckId AND user_id = @userId'),
+        Sql.named(hasMeta
+            ? 'SELECT id, name, format, description, archetype, bracket FROM decks WHERE id = @deckId AND user_id = @userId'
+            : 'SELECT id, name, format, description, NULL::text as archetype, NULL::int as bracket FROM decks WHERE id = @deckId AND user_id = @userId'),
         parameters: {'deckId': deckId, 'userId': userId},
       );
 
@@ -230,14 +250,24 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
   final userId = context.read<String>();
   final conn = context.read<Pool>();
   final hasMeta = await _hasDeckMetaColumns(conn);
+  final hasPricing = await _hasDeckPricingColumns(conn);
 
   try {
     // 1. Buscar os detalhes do deck e verificar se pertence ao usuário
     final deckResult = await conn.execute(
       Sql.named(
-        hasMeta
-            ? 'SELECT id, name, format, description, archetype, bracket, synergy_score, strengths, weaknesses, created_at FROM decks WHERE id = @deckId AND user_id = @userId'
-            : 'SELECT id, name, format, description, NULL::text as archetype, NULL::int as bracket, synergy_score, strengths, weaknesses, created_at FROM decks WHERE id = @deckId AND user_id = @userId',
+        [
+          'SELECT id, name, format, description,',
+          hasMeta
+              ? 'archetype, bracket,'
+              : 'NULL::text as archetype, NULL::int as bracket,',
+          'synergy_score, strengths, weaknesses,',
+          hasPricing
+              ? 'pricing_currency, pricing_total, pricing_missing_cards, pricing_updated_at,'
+              : "NULL::text as pricing_currency, NULL::numeric as pricing_total, 0::int as pricing_missing_cards, NULL::timestamptz as pricing_updated_at,",
+          'created_at',
+          'FROM decks WHERE id = @deckId AND user_id = @userId',
+        ].join(' '),
       ),
       parameters: {
         'deckId': deckId,
@@ -258,6 +288,10 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     if (deckInfo['created_at'] is DateTime) {
       deckInfo['created_at'] =
           (deckInfo['created_at'] as DateTime).toIso8601String();
+    }
+    if (deckInfo['pricing_updated_at'] is DateTime) {
+      deckInfo['pricing_updated_at'] =
+          (deckInfo['pricing_updated_at'] as DateTime).toIso8601String();
     }
 
     // 2. Buscar todas as cartas associadas a esse deck com detalhes

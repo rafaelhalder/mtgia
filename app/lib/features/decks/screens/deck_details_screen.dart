@@ -36,6 +36,18 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     });
   }
 
+  Map<String, dynamic>? _pricingFromDeck(DeckDetails deck) {
+    if (deck.pricingTotal == null) return null;
+    return {
+      'deck_id': deck.id,
+      'currency': deck.pricingCurrency ?? 'USD',
+      'estimated_total_usd': deck.pricingTotal,
+      'missing_price_cards': deck.pricingMissingCards ?? 0,
+      'items': const [],
+      'pricing_updated_at': deck.pricingUpdatedAt?.toIso8601String(),
+    };
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -120,6 +132,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
           if (deck == null) {
             return const Center(child: Text('Deck não encontrado'));
           }
+          _pricing ??= _pricingFromDeck(deck);
           final format = deck.format.toLowerCase();
           final isCommanderFormat = format == 'commander' || format == 'brawl';
           final maxCards =
@@ -149,7 +162,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     _PricingRow(
                       pricing: _pricing,
                       isLoading: _isPricingLoading,
-                      onPressed: () => _loadPricing(force: false),
+                      onPressed: () => _loadPricing(force: true),
                       onForceRefresh: () => _loadPricing(force: true),
                       onShowDetails:
                           (_pricing == null)

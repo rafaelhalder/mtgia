@@ -277,6 +277,23 @@ Exemplo (Linux/macOS) para rodar 1x/dia às 03:00:
 0 3 * * * cd /caminho/para/mtgia/server && /usr/bin/dart run bin/sync_cards.dart >> sync_cards.log 2>&1
 ```
 
+### Preços (Scryfall)
+
+O projeto mantém `cards.price` e `cards.price_updated_at` para permitir:
+- Custo estimado do deck sem travar a UI
+- Futuro “budget” (montar/filtrar por orçamento)
+
+Rodar manualmente:
+```bash
+cd server
+dart run bin/sync_prices.dart --limit=2000 --stale-hours=24
+```
+
+Automatizar (cron) — recomendado rodar diário (ou 6/12h):
+```cron
+30 3 * * * cd /caminho/para/mtgia/server && /usr/bin/dart run bin/sync_prices.dart --limit=2000 --stale-hours=24 >> sync_prices.log 2>&1
+```
+
 #### Recomendado no Droplet com Easypanel (cron chamando o container)
 
 Use o script `server/bin/cron_sync_cards.sh` (evita nome hardcoded do container do Easypanel):
@@ -293,6 +310,7 @@ Crontab (roda todo dia 03:00 e grava log):
 
 ```cron
 0 3 * * * /caminho/para/mtgia/server/bin/cron_sync_cards.sh >> /var/log/mtgia-sync_cards.log 2>&1
+30 3 * * * /caminho/para/mtgia/server/bin/cron_sync_prices.sh >> /var/log/mtgia-sync_prices.log 2>&1
 ```
 
 Se o nome do serviço/projeto no Easypanel for diferente, ajuste o pattern:

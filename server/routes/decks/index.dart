@@ -26,6 +26,27 @@ Future<bool> _hasDeckMetaColumns(Pool pool) async {
   return _hasDeckMetaColumnsCache!;
 }
 
+bool? _hasDeckPricingColumnsCache;
+Future<bool> _hasDeckPricingColumns(Pool pool) async {
+  if (_hasDeckPricingColumnsCache != null) return _hasDeckPricingColumnsCache!;
+  try {
+    final result = await pool.execute(
+      Sql.named('''
+        SELECT COUNT(*)::int
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'decks'
+          AND column_name IN ('pricing_currency','pricing_total','pricing_missing_cards','pricing_updated_at')
+      '''),
+    );
+    final count = (result.first[0] as int?) ?? 0;
+    _hasDeckPricingColumnsCache = count >= 4;
+  } catch (_) {
+    _hasDeckPricingColumnsCache = false;
+  }
+  return _hasDeckPricingColumnsCache!;
+}
+
 Future<Response> onRequest(RequestContext context) async {
   // Este arquivo vai lidar com diferentes métodos HTTP para a rota /decks
   if (context.request.method == HttpMethod.post) {
@@ -53,9 +74,10 @@ Future<Response> _listDecks(RequestContext context) async {
 
     Log.d('🔍 Executando query SELECT...');
     final hasMeta = await _hasDeckMetaColumns(conn);
-    final result = await conn.execute(
-      Sql.named(hasMeta
-          ? '''
+    final hasPricing = await _hasDeckPricingColumns(conn);
+    final sql = hasMeta
+        ? (hasPricing
+            ? '''
         SELECT 
           d.id, 
           d.name, 
@@ -64,6 +86,10 @@ Future<Response> _listDecks(RequestContext context) async {
           d.archetype,
           d.bracket,
           d.synergy_score, 
+          d.pricing_currency,
+          d.pricing_total,
+          d.pricing_missing_cards,
+          d.pricing_updated_at,
           d.created_at,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
@@ -72,7 +98,29 @@ Future<Response> _listDecks(RequestContext context) async {
         GROUP BY d.id
         ORDER BY d.created_at DESC
       '''
-          : '''
+            : '''
+        SELECT 
+          d.id, 
+          d.name, 
+          d.format, 
+          d.description, 
+          d.archetype,
+          d.bracket,
+          d.synergy_score, 
+          NULL::text as pricing_currency,
+          NULL::numeric as pricing_total,
+          0::int as pricing_missing_cards,
+          NULL::timestamptz as pricing_updated_at,
+          d.created_at,
+          COALESCE(SUM(dc.quantity), 0)::int as card_count
+        FROM decks d
+        LEFT JOIN deck_cards dc ON d.id = dc.deck_id
+        WHERE d.user_id = @userId
+        GROUP BY d.id
+        ORDER BY d.created_at DESC
+      ''')
+        : (hasPricing
+            ? '''
         SELECT 
           d.id, 
           d.name, 
@@ -81,6 +129,10 @@ Future<Response> _listDecks(RequestContext context) async {
           NULL::text as archetype,
           NULL::int as bracket,
           d.synergy_score, 
+          d.pricing_currency,
+          d.pricing_total,
+          d.pricing_missing_cards,
+          d.pricing_updated_at,
           d.created_at,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
@@ -88,7 +140,31 @@ Future<Response> _listDecks(RequestContext context) async {
         WHERE d.user_id = @userId
         GROUP BY d.id
         ORDER BY d.created_at DESC
-      '''),
+      '''
+            : '''
+        SELECT 
+          d.id, 
+          d.name, 
+          d.format, 
+          d.description, 
+          NULL::text as archetype,
+          NULL::int as bracket,
+          d.synergy_score, 
+          NULL::text as pricing_currency,
+          NULL::numeric as pricing_total,
+          0::int as pricing_missing_cards,
+          NULL::timestamptz as pricing_updated_at,
+          d.created_at,
+          COALESCE(SUM(dc.quantity), 0)::int as card_count
+        FROM decks d
+        LEFT JOIN deck_cards dc ON d.id = dc.deck_id
+        WHERE d.user_id = @userId
+        GROUP BY d.id
+        ORDER BY d.created_at DESC
+      ''');
+
+    final result = await conn.execute(
+      Sql.named(sql),
       parameters: {'userId': userId},
     );
     Log.d('✅ Query executada. Encontrados ${result.length} decks.');
@@ -97,6 +173,10 @@ Future<Response> _listDecks(RequestContext context) async {
       final map = row.toColumnMap();
       if (map['created_at'] is DateTime) {
         map['created_at'] = (map['created_at'] as DateTime).toIso8601String();
+      }
+      if (map['pricing_updated_at'] is DateTime) {
+        map['pricing_updated_at'] =
+            (map['pricing_updated_at'] as DateTime).toIso8601String();
       }
       return map;
     }).toList();
@@ -124,7 +204,8 @@ Future<Response> _createDeck(RequestContext context) async {
   final format = body['format'] as String?;
   final archetype = body['archetype'] as String?;
   final bracketRaw = body['bracket'];
-  final bracket = bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
+  final bracket =
+      bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
   final cards = body['cards'] as List? ??
       []; // Ex: [{'card_id': 'uuid', 'quantity': 2, 'is_commander': false}]
 

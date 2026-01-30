@@ -89,30 +89,40 @@ CREATE INDEX IF NOT EXISTS idx_rules_title ON rules (title);
 CREATE INDEX IF NOT EXISTS idx_rules_category ON rules (category);
 
 -- 5. Tabela de Decks
-CREATE TABLE IF NOT EXISTS decks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    format TEXT NOT NULL,
-    description TEXT,
-    is_public BOOLEAN DEFAULT FALSE,
+	CREATE TABLE IF NOT EXISTS decks (
+	    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+	    name TEXT NOT NULL,
+	    format TEXT NOT NULL,
+	    description TEXT,
+	    is_public BOOLEAN DEFAULT FALSE,
 
     -- Preferências do usuário (UX)
     archetype TEXT, -- Ex: "Goblin Tribal", "Voltron", etc.
     bracket INTEGER, -- 1..4 (EDH bracket / power level)
     
-    -- Campos de Análise da IA
-    synergy_score INTEGER DEFAULT 0, -- 0 a 100: Quão consolidado/sinérgico é o deck
-    strengths TEXT, -- Ex: "Ramp rápido, Proteção contra anulações"
-    weaknesses TEXT, -- Ex: "Vulnerável a board wipes, Falta de card draw"
-    
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE -- Soft delete
-);
+	    -- Campos de Análise da IA
+	    synergy_score INTEGER DEFAULT 0, -- 0 a 100: Quão consolidado/sinérgico é o deck
+	    strengths TEXT, -- Ex: "Ramp rápido, Proteção contra anulações"
+	    weaknesses TEXT, -- Ex: "Vulnerável a board wipes, Falta de card draw"
+
+	    -- Snapshot de custo (UX)
+	    pricing_currency TEXT DEFAULT 'USD',
+	    pricing_total NUMERIC(10,2),
+	    pricing_missing_cards INTEGER DEFAULT 0,
+	    pricing_updated_at TIMESTAMP WITH TIME ZONE,
+	    
+	    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	    deleted_at TIMESTAMP WITH TIME ZONE -- Soft delete
+	);
 
 -- Backfill/compat: adiciona colunas se o banco já existir (idempotente)
-ALTER TABLE decks ADD COLUMN IF NOT EXISTS archetype TEXT;
-ALTER TABLE decks ADD COLUMN IF NOT EXISTS bracket INTEGER;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS archetype TEXT;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS bracket INTEGER;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_currency TEXT DEFAULT 'USD';
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_total NUMERIC(10,2);
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_missing_cards INTEGER DEFAULT 0;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_updated_at TIMESTAMP WITH TIME ZONE;
 
 -- 6. Tabela de Itens do Deck (Relacionamento N:N entre Deck e Cartas)
 CREATE TABLE IF NOT EXISTS deck_cards (
