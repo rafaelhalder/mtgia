@@ -5,7 +5,7 @@ import 'package:dotenv/dotenv.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 
 void main() async {
-  final env = DotEnv(includePlatformEnvironment: true)..load();
+  final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
   final host = env['DB_HOST']!;
   final port = int.parse(env['DB_PORT']!);
   final database = env['DB_NAME']!;

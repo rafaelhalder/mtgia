@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+.git/
+.github/
+.env
+AtomicCards.json
+*.log

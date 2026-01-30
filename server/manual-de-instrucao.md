@@ -19,14 +19,19 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
   - `lib/auth_middleware.dart` - Middleware para proteger rotas
   - `POST /auth/login` - Login com verificação no PostgreSQL
   - `POST /auth/register` - Registro com gravação no banco
+  - `GET /auth/me` - Validar token e obter usuário (boot do app)
   - Hash de senhas com **bcrypt** (10 rounds de salt)
   - Geração e validação de **JWT tokens** (24h de validade)
   - Validação de email/username únicos
 - [x] Estrutura de rotas para decks (`routes/decks/`)
 - [x] Scripts utilitários:
   - `bin/fetch_meta.dart` - Download de JSON do MTGJSON
-  - `bin/load_cards.dart` - Importação de cartas para o banco
-  - `bin/load_rules.dart` - Importação de regras oficiais
+  - `bin/seed_database.dart` - Seed de cartas via MTGJSON (AtomicCards.json)
+  - `bin/seed_legalities_optimized.dart` - Seed/atualização de legalidades via AtomicCards.json
+  - `bin/seed_rules.dart` - Importação de regras oficiais (modo legado via `magicrules.txt`)
+  - `bin/sync_cards.dart` - Sync idempotente (cartas + legalidades) com checkpoint
+  - `bin/sync_rules.dart` - Sync idempotente das Comprehensive Rules (baixa o .txt mais recente da Wizards)
+  - `bin/setup_database.dart` - Cria schema inicial
 - [x] Schema do banco de dados completo (`database_setup.sql`)
 
 ### ✅ **Implementado (Frontend - Flutter)**
@@ -138,7 +143,9 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
    ```
 6. **Preview do deck** → Cards agrupados por tipo (Creatures, Instants, Lands, etc.)
 7. **Usuário nomeia o deck** → Campo editável
-8. **Clica "Salvar Deck"** → Chama `POST /decks` com nome, formato, descrição e lista de cartas
+8. **Clica "Salvar Deck"** → Chama `POST /decks` com nome, formato, descrição e lista de cartas  
+   - **Contrato preferido:** enviar cartas com `card_id` (UUID) + `quantity` (+ opcional `is_commander`)  
+   - **Compat/dev:** o backend também aceita `name` e resolve para `card_id` (case-insensitive)
 9. **Sucesso** → Redireciona para `/decks`, SnackBar verde de confirmação
 
 **Bibliotecas Utilizadas:**
@@ -148,7 +155,7 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 
 **Tratamento de Erros:**
 - ❌ Se a IA sugerir uma carta inexistente (hallucination), o lookup falha silenciosamente (logado) e a carta é ignorada.
-- ❌ Se o `POST /ai/generate` falhar, mostra SnackBar de erro com mensagem detalhada.
+- ⚠️ Se `OPENAI_API_KEY` não estiver configurada, `POST /ai/generate` retorna um deck mock (`is_mock: true`) para desenvolvimento.
 - ❌ Se o `PUT /decks/:id` falhar ao aplicar otimização, rollback automático (sem mudanças no deck).
 
 ### ✅ **Implementado (CRUD de Decks)**
@@ -230,6 +237,87 @@ dart test
 ```
 
 **Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
+
+---
+
+## 🔄 Atualização contínua de cartas (novas coleções)
+
+### Objetivo
+Manter `cards` e `card_legalities` atualizados quando novas coleções/sets são lançados.
+
+### Ferramenta oficial do projeto
+Use o script `bin/sync_cards.dart`:
+- Faz download do `Meta.json` e do `AtomicCards.json` (MTGJSON).
+- Faz **UPSERT** de cartas por `cards.scryfall_id` (Oracle ID).
+- Faz **UPSERT** de legalidades por `(card_id, format)`.
+- Mantém um checkpoint em `sync_state` (`mtgjson_meta_version`, `mtgjson_meta_date`, `cards_last_sync_at`).
+- Registra execução no `sync_log` (quando disponível).
+
+### Rodar manualmente
+```bash
+cd server
+
+# Sync incremental (sets novos desde o último sync)
+dart run bin/sync_cards.dart
+
+# Opcional: se não existir checkpoint em `sync_state` (ex.: DB já seeded),
+# o incremental usa uma janela de dias (default: 45) para detectar sets recentes.
+dart run bin/sync_cards.dart --since-days=90
+
+# Forçar download + reprocessar tudo
+dart run bin/sync_cards.dart --full --force
+
+# Ver status do checkpoint/log
+dart run bin/sync_status.dart
+```
+
+### Automatizar (cron)
+Exemplo (Linux/macOS) para rodar 1x/dia às 03:00:
+```cron
+0 3 * * * cd /caminho/para/mtgia/server && /usr/bin/dart run bin/sync_cards.dart >> sync_cards.log 2>&1
+```
+
+### Preços (Scryfall)
+
+O projeto mantém `cards.price` e `cards.price_updated_at` para permitir:
+- Custo estimado do deck sem travar a UI
+- Futuro “budget” (montar/filtrar por orçamento)
+
+Rodar manualmente:
+```bash
+cd server
+dart run bin/sync_prices.dart --limit=2000 --stale-hours=24
+```
+
+Automatizar (cron) — recomendado rodar diário (ou 6/12h):
+```cron
+30 3 * * * cd /caminho/para/mtgia/server && /usr/bin/dart run bin/sync_prices.dart --limit=2000 --stale-hours=24 >> sync_prices.log 2>&1
+```
+
+#### Recomendado no Droplet com Easypanel (cron chamando o container)
+
+Use o script `server/bin/cron_sync_cards.sh` (evita nome hardcoded do container do Easypanel):
+
+```bash
+# dentro do Droplet
+chmod +x /caminho/para/mtgia/server/bin/cron_sync_cards.sh
+
+# validar manualmente (deve imprimir o container encontrado e rodar o sync)
+/caminho/para/mtgia/server/bin/cron_sync_cards.sh
+```
+
+Crontab (roda todo dia 03:00 e grava log):
+
+```cron
+0 3 * * * /caminho/para/mtgia/server/bin/cron_sync_cards.sh >> /var/log/mtgia-sync_cards.log 2>&1
+30 3 * * * /caminho/para/mtgia/server/bin/cron_sync_prices.sh >> /var/log/mtgia-sync_prices.log 2>&1
+```
+
+Se o nome do serviço/projeto no Easypanel for diferente, ajuste o pattern:
+
+```cron
+0 3 * * * CONTAINER_PATTERN='^evolution_cartinhas\\.' /caminho/para/mtgia/server/bin/cron_sync_cards.sh >> /var/log/mtgia-sync_cards.log 2>&1
+```
 
 **Cobertura Estimada:**
 - `lib/auth_service.dart`: ~90%
@@ -678,6 +766,10 @@ class Database {
 **Por que usamos variáveis de ambiente?**
 No método `connect()`, usamos `DotEnv` para ler `DB_HOST`, `DB_PASS`, etc. Isso segue o princípio de **12-Factor App** (Configuração separada do Código). Isso permite que você mude o banco de dados sem tocar em uma linha de código, apenas alterando o arquivo `.env`.
 
+**SSL do banco (Postgres)**
+- Por padrão: `ENVIRONMENT=production` → `sslMode=require`, senão → `sslMode=disable`.
+- Override explícito: `DB_SSL_MODE=disable|require|verifyFull`.
+
 ### 3.2. Setup Inicial do Banco (`bin/setup_database.dart`)
 
 **Objetivo:**
@@ -1042,7 +1134,7 @@ Future<Response> onRequest(RequestContext context) async {
 - ✅ Chave secreta em variável de ambiente (`JWT_SECRET`)
 - ✅ Validação de unicidade (username/email)
 - ✅ Mensagens de erro genéricas (evita enumeration attack)
-- ⚠️ **TODO:** Implementar rate limiting (evitar força bruta no login)
+- ✅ Rate limiting em auth/IA (evita brute force e abuso)
 - ⚠️ **TODO:** HTTPS obrigatório em produção
 - ⚠️ **TODO:** Refresh tokens (renovar sem pedir senha novamente)
 
@@ -1227,12 +1319,14 @@ Proteger o sistema contra abuso, ataques de força bruta e uso excessivo de recu
 **Limites Aplicados:**
 ```dart
 // Auth endpoints (routes/auth/*)
-authRateLimit() -> 5 requisições/minuto
+authRateLimit() -> 5 requisições/minuto (production)
+authRateLimit() -> 200 requisições/minuto (development/test)
   - Previne brute force em login
   - Previne credential stuffing em register
   
 // AI endpoints (routes/ai/*)
-aiRateLimit() -> 10 requisições/minuto
+aiRateLimit() -> 10 requisições/minuto (production)
+aiRateLimit() -> 60 requisições/minuto (development/test)
   - Controla custos da OpenAI API ($$$)
   - Previne uso abusivo de recursos caros
   

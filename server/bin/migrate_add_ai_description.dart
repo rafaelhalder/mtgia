@@ -2,7 +2,7 @@ import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
 
 void main() async {
-  var env = DotEnv(includePlatformEnvironment: true)..load();
+  var env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
 
   final host = env['DB_HOST'] ?? 'localhost';
   final port = int.tryParse(env['DB_PORT'] ?? '5432') ?? 5432;

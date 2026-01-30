@@ -18,7 +18,7 @@ class AuthService {
   late final String _jwtSecret;
 
   AuthService._internal() {
-    final env = DotEnv(includePlatformEnvironment: true)..load();
+    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
     final secret = env['JWT_SECRET'] ?? Platform.environment['JWT_SECRET'];
     
     if (secret == null || secret.isEmpty) {
@@ -47,7 +47,11 @@ class AuthService {
 
   /// Verifica se a senha fornecida corresponde ao hash armazenado
   bool verifyPassword(String password, String hashedPassword) {
-    return BCrypt.checkpw(password, hashedPassword);
+    try {
+      return BCrypt.checkpw(password, hashedPassword);
+    } on ArgumentError catch (e) {
+      throw Exception('Invalid password hash format: $e');
+    }
   }
 
   /// Gera um JWT token contendo o ID e username do usuário
@@ -73,7 +77,15 @@ class AuthService {
   Map<String, dynamic>? verifyToken(String token) {
     try {
       final jwt = JWT.verify(token, SecretKey(_jwtSecret));
-      return jwt.payload as Map<String, dynamic>;
+      final payload = jwt.payload as Map<String, dynamic>;
+
+      // Normaliza iat para milissegundos (testes/clients usam ms).
+      final iat = payload['iat'];
+      if (iat is int && iat < 1000000000000) {
+        payload['iat'] = iat * 1000;
+      }
+
+      return payload;
     } catch (e) {
       // Token inválido, expirado ou malformado
       return null;
@@ -208,7 +220,7 @@ class AuthService {
     final conn = db.connection;
 
     final result = await conn.execute(
-      Sql.named('SELECT id, username, email FROM users WHERE id = @userId'),
+      Sql.named('SELECT id, username, email, display_name, avatar_url FROM users WHERE id = @userId'),
       parameters: {'userId': userId},
     );
 
@@ -219,6 +231,8 @@ class AuthService {
       'id': row[0] as String,
       'username': row[1] as String,
       'email': row[2] as String,
+      'display_name': row[3] as String?,
+      'avatar_url': row[4] as String?,
     };
   }
 }

@@ -35,8 +35,14 @@ class AuthProvider extends ChangeNotifier {
       if (savedToken != null && savedUserJson != null) {
         _token = savedToken;
         _user = User.fromJson(jsonDecode(savedUserJson));
-        // TODO: Validar token com backend
-        _status = AuthStatus.authenticated;
+        final isValid = await _validateTokenWithBackend();
+        _status = isValid ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+        if (!isValid) {
+          await prefs.remove('auth_token');
+          await prefs.remove('user_data');
+          _token = null;
+          _user = null;
+        }
       } else {
         _status = AuthStatus.unauthenticated;
       }
@@ -71,7 +77,11 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = 'Credenciais inválidas';
+        if (response.data is Map && response.data['message'] != null) {
+          _errorMessage = response.data['message'].toString();
+        } else {
+          _errorMessage = 'Credenciais inválidas';
+        }
         _status = AuthStatus.unauthenticated;
         notifyListeners();
         return false;
@@ -112,7 +122,11 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage = response.data['message'] ?? 'Erro ao criar conta';
+        if (response.data is Map && response.data['message'] != null) {
+          _errorMessage = response.data['message'].toString();
+        } else {
+          _errorMessage = 'Erro ao criar conta';
+        }
         _status = AuthStatus.unauthenticated;
         notifyListeners();
         return false;
@@ -149,5 +163,71 @@ class AuthProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<bool> _validateTokenWithBackend() async {
+    try {
+      final response = await _apiClient.get('/auth/me');
+      if (response.statusCode != 200) return false;
+      if (response.data is Map && (response.data as Map).containsKey('user')) {
+        final userJson = (response.data as Map)['user'];
+        if (userJson is Map<String, dynamic>) {
+          _user = User.fromJson(userJson);
+          await _saveCredentials();
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> refreshProfile() async {
+    try {
+      final response = await _apiClient.get('/users/me');
+      if (response.statusCode != 200) return false;
+      final data = response.data;
+      if (data is Map && data['user'] is Map<String, dynamic>) {
+        _user = User.fromJson((data['user'] as Map<String, dynamic>));
+        await _saveCredentials();
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateProfile({String? displayName, String? avatarUrl}) async {
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.patch('/users/me', {
+        if (displayName != null) 'display_name': displayName,
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+      });
+      if (response.statusCode != 200) {
+        if (response.data is Map && response.data['error'] != null) {
+          _errorMessage = response.data['error'].toString();
+        } else {
+          _errorMessage = 'Falha ao atualizar perfil';
+        }
+        notifyListeners();
+        return false;
+      }
+      final data = response.data;
+      if (data is Map && data['user'] is Map<String, dynamic>) {
+        _user = User.fromJson((data['user'] as Map<String, dynamic>));
+        await _saveCredentials();
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _errorMessage = 'Erro de conexão: $e';
+      notifyListeners();
+      return false;
+    }
   }
 }

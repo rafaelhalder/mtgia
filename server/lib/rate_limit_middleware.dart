@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
+import 'package:dotenv/dotenv.dart';
 
 /// Rate Limiter Middleware para prevenir abuso de endpoints
 /// 
@@ -91,10 +92,26 @@ final _authRateLimiter = RateLimiter(
   windowSeconds: 60, // 5 requisições por minuto
 );
 
+final _authRateLimiterDev = RateLimiter(
+  maxRequests: 200,
+  windowSeconds: 60, // Mais permissivo em dev/test
+);
+
 final _aiRateLimiter = RateLimiter(
   maxRequests: 10,
   windowSeconds: 60, // 10 requisições por minuto (IA é custosa)
 );
+
+final _aiRateLimiterDev = RateLimiter(
+  maxRequests: 60,
+  windowSeconds: 60,
+);
+
+bool _isProduction() {
+  final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+  final mode = (env['ENVIRONMENT'] ?? Platform.environment['ENVIRONMENT'] ?? 'development').toLowerCase();
+  return mode == 'production';
+}
 
 /// Middleware factory para diferentes níveis de rate limiting
 Middleware rateLimitMiddleware({
@@ -150,9 +167,10 @@ Middleware rateLimitMiddleware({
 Middleware authRateLimit() {
   return (handler) {
     return (context) async {
+      final limiter = _isProduction() ? _authRateLimiter : _authRateLimiterDev;
       final clientId = RateLimiter._defaultIdentifier(context);
 
-      if (!_authRateLimiter.isAllowed(clientId)) {
+      if (!limiter.isAllowed(clientId)) {
         return Response.json(
           statusCode: HttpStatus.tooManyRequests,
           body: {
@@ -173,9 +191,10 @@ Middleware authRateLimit() {
 Middleware aiRateLimit() {
   return (handler) {
     return (context) async {
+      final limiter = _isProduction() ? _aiRateLimiter : _aiRateLimiterDev;
       final clientId = RateLimiter._defaultIdentifier(context);
 
-      if (!_aiRateLimiter.isAllowed(clientId)) {
+      if (!limiter.isAllowed(clientId)) {
         return Response.json(
           statusCode: HttpStatus.tooManyRequests,
           body: {

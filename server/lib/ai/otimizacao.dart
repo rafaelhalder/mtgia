@@ -13,6 +13,7 @@ class DeckOptimizerService {
     required Map<String, dynamic> deckData,
     required List<String> commanders,
     required String targetArchetype,
+    int? bracket,
   }) async {
     final List<dynamic> currentCards = deckData['cards'];
     final List<String> colors = List<String>.from(deckData['colors']);
@@ -46,9 +47,42 @@ class DeckOptimizerService {
       synergyPool: synergyCards,
       staplesPool: formatStaples,
       archetype: targetArchetype,
+      bracket: bracket,
     );
 
     return optimizationResult;
+  }
+
+  /// Completa um deck incompleto (gera apenas adições).
+  Future<Map<String, dynamic>> completeDeck({
+    required Map<String, dynamic> deckData,
+    required List<String> commanders,
+    required String targetArchetype,
+    required int targetAdditions,
+    int? bracket,
+  }) async {
+    final List<dynamic> currentCards = deckData['cards'];
+    final List<String> colors = List<String>.from(deckData['colors']);
+
+    final synergyCards = await synergyEngine.fetchCommanderSynergies(
+      commanderName: commanders.first,
+      colors: colors,
+      archetype: targetArchetype,
+    );
+
+    final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
+
+    final completionResult = await _callOpenAIComplete(
+      deckList: currentCards.map((c) => c['name'].toString()).toList(),
+      commanders: commanders,
+      synergyPool: synergyCards,
+      staplesPool: formatStaples,
+      archetype: targetArchetype,
+      bracket: bracket,
+      targetAdditions: targetAdditions,
+    );
+
+    return completionResult;
   }
 
   /// Calcula um score heurístico para identificar cartas suspeitas de serem ruins.
@@ -114,10 +148,12 @@ class DeckOptimizerService {
     required List<String> synergyPool,
     required List<String> staplesPool,
     required String archetype,
+    int? bracket,
   }) async {
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
+      "bracket": bracket,
       "context": {
         "statistically_weak_cards": weakCandidates, // A IA vai olhar isso com carinho para cortar
         "high_synergy_options": synergyPool, // A IA vai escolher daqui para adicionar
@@ -170,6 +206,66 @@ class DeckOptimizerService {
     } catch (e) {
       print('❌ Erro ao ler prompt.md: $e');
       return "Você é um especialista em otimização de decks de Magic: The Gathering.";
+    }
+  }
+
+  Future<Map<String, dynamic>> _callOpenAIComplete({
+    required List<String> deckList,
+    required List<String> commanders,
+    required List<String> synergyPool,
+    required List<String> staplesPool,
+    required String archetype,
+    required int targetAdditions,
+    int? bracket,
+  }) async {
+    final userPrompt = jsonEncode({
+      "commander": commanders.join(" & "),
+      "archetype": archetype,
+      "bracket": bracket,
+      "target_additions": targetAdditions,
+      "context": {
+        "high_synergy_options": synergyPool,
+        "format_staples": staplesPool
+      },
+      "current_decklist": deckList
+    });
+
+    final response = await http.post(
+      Uri.parse('https://api.openai.com/v1/chat/completions'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $openAiKey',
+      },
+      body: jsonEncode({
+        'model': 'gpt-4o',
+        'messages': [
+          {'role': 'system', 'content': _getSystemPromptComplete()},
+          {'role': 'user', 'content': userPrompt},
+        ],
+        'temperature': 0.4,
+        'response_format': {"type": "json_object"}
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      return jsonDecode(data['choices'][0]['message']['content']);
+    }
+    throw Exception('Failed to complete deck');
+  }
+
+  String _getSystemPromptComplete() {
+    try {
+      var file = File('lib/ai/prompt_complete.md');
+      if (!file.existsSync()) {
+        file = File('server/lib/ai/prompt_complete.md');
+      }
+      if (file.existsSync()) {
+        return file.readAsStringSync();
+      }
+      return 'Você é um especialista em construção de decks de Magic: The Gathering.';
+    } catch (_) {
+      return 'Você é um especialista em construção de decks de Magic: The Gathering.';
     }
   }
 }

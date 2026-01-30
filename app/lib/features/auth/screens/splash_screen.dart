@@ -14,6 +14,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  late final AuthProvider _authProvider;
 
   @override
   void initState() {
@@ -34,14 +35,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.forward();
 
-    _initializeApp();
+    _authProvider = context.read<AuthProvider>();
+    _initializeApp(_authProvider);
   }
 
-  Future<void> _initializeApp() async {
+  Future<void> _initializeApp(AuthProvider authProvider) async {
     // Wait for animation to start
     await Future.delayed(const Duration(milliseconds: 100));
-    
-    final authProvider = context.read<AuthProvider>();
     await authProvider.initialize();
 
     await Future.delayed(const Duration(seconds: 3));

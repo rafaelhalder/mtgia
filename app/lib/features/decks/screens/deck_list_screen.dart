@@ -25,84 +25,112 @@ class _DeckListScreenState extends State<DeckListScreen> {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     String selectedFormat = 'commander';
-    final formats = ['commander', 'standard', 'modern', 'pioneer', 'legacy', 'vintage', 'pauper'];
+    final formats = [
+      'commander',
+      'standard',
+      'modern',
+      'pioneer',
+      'legacy',
+      'vintage',
+      'pauper',
+    ];
 
     return showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Novo Deck'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome do Deck',
-                    hintText: 'Ex: Goblins Aggro',
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setState) => AlertDialog(
+                  title: const Text('Novo Deck'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Nome do Deck',
+                            hintText: 'Ex: Goblins Aggro',
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedFormat,
+                          decoration: const InputDecoration(
+                            labelText: 'Formato',
+                          ),
+                          items:
+                              formats
+                                  .map(
+                                    (f) => DropdownMenuItem(
+                                      value: f,
+                                      child: Text(
+                                        f[0].toUpperCase() + f.substring(1),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => selectedFormat = value);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: descriptionController,
+                          decoration: const InputDecoration(
+                            labelText: 'Descrição (Opcional)',
+                            hintText: 'Ex: Deck focado em tokens...',
+                          ),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedFormat,
-                  decoration: const InputDecoration(labelText: 'Formato'),
-                  items: formats.map((f) => DropdownMenuItem(
-                    value: f,
-                    child: Text(f[0].toUpperCase() + f.substring(1)),
-                  )).toList(),
-                  onChanged: (value) {
-                    if (value != null) setState(() => selectedFormat = value);
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição (Opcional)',
-                    hintText: 'Ex: Deck focado em tokens...',
-                  ),
-                  maxLines: 3,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameController.text.isEmpty) return;
-                
-                final success = await context.read<DeckProvider>().createDeck(
-                  name: nameController.text,
-                  format: selectedFormat,
-                  description: descriptionController.text,
-                );
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancelar'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (nameController.text.isEmpty) return;
 
-                if (context.mounted) {
-                  if (success) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Deck criado com sucesso!')),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(context.read<DeckProvider>().errorMessage ?? 'Erro ao criar deck'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-              child: const Text('Criar'),
-            ),
-          ],
-        ),
-      ),
+                        final success = await context
+                            .read<DeckProvider>()
+                            .createDeck(
+                              name: nameController.text,
+                              format: selectedFormat,
+                              description: descriptionController.text,
+                            );
+
+                        if (context.mounted) {
+                          if (success) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Deck criado com sucesso!'),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  context.read<DeckProvider>().errorMessage ??
+                                      'Erro ao criar deck',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Criar'),
+                    ),
+                  ],
+                ),
+          ),
     );
   }
 
@@ -117,7 +145,7 @@ class _DeckListScreenState extends State<DeckListScreen> {
           IconButton(
             icon: const Icon(Icons.auto_awesome),
             onPressed: () => context.go('/decks/generate'),
-            tooltip: 'Gerar Deck com IA',
+            tooltip: 'Gerar Deck',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -134,14 +162,9 @@ class _DeckListScreenState extends State<DeckListScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(
-                    color: theme.colorScheme.primary,
-                  ),
+                  CircularProgressIndicator(color: theme.colorScheme.primary),
                   const SizedBox(height: 16),
-                  Text(
-                    'Carregando decks...',
-                    style: theme.textTheme.bodyLarge,
-                  ),
+                  Text('Carregando decks...', style: theme.textTheme.bodyLarge),
                 ],
               ),
             );
@@ -207,18 +230,24 @@ class _DeckListScreenState extends State<DeckListScreen> {
                         icon: const Icon(Icons.add),
                         label: const Text('Criar Deck'),
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
                       ElevatedButton.icon(
                         onPressed: () => context.go('/decks/generate'),
                         icon: const Icon(Icons.auto_awesome),
-                        label: const Text('Gerar com IA'),
+                        label: const Text('Gerar'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.colorScheme.secondary,
                           foregroundColor: theme.colorScheme.onSecondary,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -262,23 +291,24 @@ class _DeckListScreenState extends State<DeckListScreen> {
   Future<bool?> _showDeleteDialog(BuildContext context, String deckName) {
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Deletar Deck'),
-        content: Text('Tem certeza que deseja deletar "$deckName"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Deletar Deck'),
+            content: Text('Tem certeza que deseja deletar "$deckName"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                ),
+                child: const Text('Deletar'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Deletar'),
-          ),
-        ],
-      ),
     );
   }
 }

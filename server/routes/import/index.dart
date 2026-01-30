@@ -11,7 +11,7 @@ Future<Response> onRequest(RequestContext context) async {
 
 Future<Response> _importDeck(RequestContext context) async {
   final userId = context.read<String>();
-  final conn = context.read<Connection>();
+  final pool = context.read<Pool>();
 
   final body = await context.request.json();
   final name = body['name'] as String?;
@@ -92,7 +92,7 @@ Future<Response> _importDeck(RequestContext context) async {
   final foundCardsMap = <String, Map<String, dynamic>>{};
   
   if (namesToQuery.isNotEmpty) {
-    final result = await conn.execute(
+    final result = await pool.execute(
       Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
       parameters: {'names': TypedValue(Type.textArray, namesToQuery.toList())},
     );
@@ -124,7 +124,7 @@ Future<Response> _importDeck(RequestContext context) async {
 
   // 4. Busca em lote para os Fallbacks
   if (cleanNamesToQuery.isNotEmpty) {
-    final result = await conn.execute(
+    final result = await pool.execute(
       Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
       parameters: {'names': TypedValue(Type.textArray, cleanNamesToQuery.toList())},
     );
@@ -151,7 +151,7 @@ Future<Response> _importDeck(RequestContext context) async {
   }
 
   if (splitPatternsToQuery.isNotEmpty) {
-      final result = await conn.execute(
+      final result = await pool.execute(
         Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) LIKE ANY(@patterns)'),
         parameters: {'patterns': TypedValue(Type.textArray, splitPatternsToQuery)},
       );
@@ -251,7 +251,7 @@ Future<Response> _importDeck(RequestContext context) async {
   }
 
   if (cardIdsToCheck.isNotEmpty) {
-    final legalityResult = await conn.execute(
+    final legalityResult = await pool.execute(
       Sql.named(
         'SELECT c.name, cl.status FROM card_legalities cl JOIN cards c ON c.id = cl.card_id WHERE cl.card_id = ANY(@ids) AND cl.format = @format'
       ),
@@ -277,7 +277,7 @@ Future<Response> _importDeck(RequestContext context) async {
   }
 
   try {
-    final newDeck = await conn.runTx((session) async {
+    final newDeck = await pool.runTx((session) async {
       // 1. Criar o Deck
       final deckResult = await session.execute(
         Sql.named(

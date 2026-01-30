@@ -9,28 +9,61 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL, -- Nunca salvar senha em texto puro!
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    display_name TEXT,
+    avatar_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Para bancos existentes (idempotente)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
 -- 2. Tabela de Cartas (Otimizada para busca e dados do MTGJSON)
-CREATE TABLE IF NOT EXISTS cards (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    scryfall_id UUID UNIQUE NOT NULL, -- ID oficial da carta (Oracle ID)
-    name TEXT NOT NULL,
-    mana_cost TEXT,
-    type_line TEXT,
-    oracle_text TEXT,
-    colors TEXT[], -- Array de cores ex: {'W', 'U'}
-    image_url TEXT, -- URL da imagem na Scryfall
-    set_code TEXT,
-    rarity TEXT,
-    ai_description TEXT, -- Cache de explicações da IA
-    price DECIMAL(10,2), -- Preço da carta (integração Scryfall)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+	CREATE TABLE IF NOT EXISTS cards (
+	    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	    scryfall_id UUID UNIQUE NOT NULL, -- ID oficial da carta (Oracle ID)
+	    name TEXT NOT NULL,
+	    mana_cost TEXT,
+	    type_line TEXT,
+	    oracle_text TEXT,
+	    colors TEXT[], -- Array de cores ex: {'W', 'U'}
+	    color_identity TEXT[], -- Identidade de cor (Commander), ex: {'W','U'}
+	    image_url TEXT, -- URL da imagem na Scryfall
+	    set_code TEXT,
+	    rarity TEXT,
+	    ai_description TEXT, -- Cache de explicações da IA
+	    price DECIMAL(10,2), -- Preço da carta (integração Scryfall)
+	    price_updated_at TIMESTAMP WITH TIME ZONE,
+	    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	);
+
+-- Para bancos existentes (idempotente)
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_description TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS price DECIMAL(10,2);
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_updated_at TIMESTAMP WITH TIME ZONE;
 
 -- Índice para busca rápida por nome
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards (name);
+-- Índice GIN para buscas por identidade (Commander/Brawl)
+CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN (color_identity);
+
+-- 2.1. Tabela de Sets/Edições (para exibir nome e data da edição)
+-- Fonte: MTGJSON SetList.json
+CREATE TABLE IF NOT EXISTS sets (
+    code TEXT PRIMARY KEY, -- Ex: 'UNH'
+    name TEXT NOT NULL, -- Ex: 'Unhinged'
+    release_date DATE, -- Ex: 2004-11-20
+    type TEXT, -- Ex: 'expansion', 'promo'
+    block TEXT, -- Ex: 'Ravnica'
+    is_online_only BOOLEAN,
+    is_foreign_only BOOLEAN,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sets_name ON sets (name);
 
 -- 3. Tabela de Legalidade/Banidas (Relacionamento 1:N com Cartas)
 -- Ex: Card X -> Commander: Banned
@@ -51,23 +84,45 @@ CREATE TABLE IF NOT EXISTS rules (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Índices para busca rápida de regras
+CREATE INDEX IF NOT EXISTS idx_rules_title ON rules (title);
+CREATE INDEX IF NOT EXISTS idx_rules_category ON rules (category);
+
 -- 5. Tabela de Decks
-CREATE TABLE IF NOT EXISTS decks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    format TEXT NOT NULL,
-    description TEXT,
-    is_public BOOLEAN DEFAULT FALSE,
+	CREATE TABLE IF NOT EXISTS decks (
+	    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+	    name TEXT NOT NULL,
+	    format TEXT NOT NULL,
+	    description TEXT,
+	    is_public BOOLEAN DEFAULT FALSE,
+
+    -- Preferências do usuário (UX)
+    archetype TEXT, -- Ex: "Goblin Tribal", "Voltron", etc.
+    bracket INTEGER, -- 1..4 (EDH bracket / power level)
     
-    -- Campos de Análise da IA
-    synergy_score INTEGER DEFAULT 0, -- 0 a 100: Quão consolidado/sinérgico é o deck
-    strengths TEXT, -- Ex: "Ramp rápido, Proteção contra anulações"
-    weaknesses TEXT, -- Ex: "Vulnerável a board wipes, Falta de card draw"
-    
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE -- Soft delete
-);
+	    -- Campos de Análise da IA
+	    synergy_score INTEGER DEFAULT 0, -- 0 a 100: Quão consolidado/sinérgico é o deck
+	    strengths TEXT, -- Ex: "Ramp rápido, Proteção contra anulações"
+	    weaknesses TEXT, -- Ex: "Vulnerável a board wipes, Falta de card draw"
+
+	    -- Snapshot de custo (UX)
+	    pricing_currency TEXT DEFAULT 'USD',
+	    pricing_total NUMERIC(10,2),
+	    pricing_missing_cards INTEGER DEFAULT 0,
+	    pricing_updated_at TIMESTAMP WITH TIME ZONE,
+	    
+	    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+	    deleted_at TIMESTAMP WITH TIME ZONE -- Soft delete
+	);
+
+-- Backfill/compat: adiciona colunas se o banco já existir (idempotente)
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS archetype TEXT;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS bracket INTEGER;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_currency TEXT DEFAULT 'USD';
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_total NUMERIC(10,2);
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_missing_cards INTEGER DEFAULT 0;
+	ALTER TABLE decks ADD COLUMN IF NOT EXISTS pricing_updated_at TIMESTAMP WITH TIME ZONE;
 
 -- 6. Tabela de Itens do Deck (Relacionamento N:N entre Deck e Cartas)
 CREATE TABLE IF NOT EXISTS deck_cards (
@@ -153,6 +208,14 @@ CREATE TABLE IF NOT EXISTS sync_log (
     error_message TEXT,                    -- Mensagem de erro se houver
     started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 11.1. Sync State (Checkpoint do último sync)
+-- Armazena estado simples (key/value) para sincronizações incrementais.
+CREATE TABLE IF NOT EXISTS sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 12. Tabela de Counters por Arquétipo (Hate Cards e Counter-Strategies)

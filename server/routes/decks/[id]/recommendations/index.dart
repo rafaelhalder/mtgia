@@ -13,8 +13,8 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 }
 
 Future<Response> _generateRecommendations(RequestContext context, String deckId) async {
-  final conn = context.read<Connection>();
-  final env = DotEnv(includePlatformEnvironment: true)..load();
+  final pool = context.read<Pool>();
+  final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
   final apiKey = env['OPENAI_API_KEY'];
 
   if (apiKey == null) {
@@ -26,7 +26,7 @@ Future<Response> _generateRecommendations(RequestContext context, String deckId)
 
   try {
     // 1. Buscar dados do deck
-    final deckResult = await conn.execute(
+    final deckResult = await pool.execute(
       Sql.named('SELECT name, format, description FROM decks WHERE id = @deckId'),
       parameters: {'deckId': deckId},
     );
@@ -41,7 +41,7 @@ Future<Response> _generateRecommendations(RequestContext context, String deckId)
     final description = deck['description'] ?? '';
 
     // 2. Buscar lista de cartas (apenas nomes para economizar tokens)
-    final cardsResult = await conn.execute(
+    final cardsResult = await pool.execute(
       Sql.named('''
         SELECT c.name, dc.quantity 
         FROM deck_cards dc

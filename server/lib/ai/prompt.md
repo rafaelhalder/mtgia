@@ -50,6 +50,16 @@ Sinergia do Comandante:
 
 Prefira cartas que ativam a habilidade do comandante.
 
+BRACKET / POWER LEVEL (consistência)
+
+Se o campo `bracket` vier preenchido:
+- Bracket 1: minimize fast mana e tutores; evite interação “pitch” e turnos extras.
+- Bracket 2: uso moderado de tutores/fast mana; evite excesso de interações gratuitas.
+- Bracket 3: staples fortes e tutores moderados; combos ok.
+- Bracket 4: cEDH (máxima eficiência).
+
+Mantenha as trocas dentro do bracket escolhido. Se um upgrade subir muito o power level, escolha uma alternativa mais “justa”.
+
 OUTPUT FORMAT (JSON STRICT)
 
 Retorne APENAS um objeto JSON. Sem markdown, sem intro.

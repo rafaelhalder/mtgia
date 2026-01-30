@@ -3,11 +3,14 @@ import 'package:provider/provider.dart';
 import '../providers/card_provider.dart';
 import '../../decks/providers/deck_provider.dart';
 import '../../decks/models/deck_card_item.dart';
+import '../../decks/models/deck_details.dart';
+import 'dart:async';
 
 class CardSearchScreen extends StatefulWidget {
   final String deckId;
+  final String? mode;
 
-  const CardSearchScreen({super.key, required this.deckId});
+  const CardSearchScreen({super.key, required this.deckId, this.mode});
 
   @override
   State<CardSearchScreen> createState() => _CardSearchScreenState();
@@ -15,70 +18,152 @@ class CardSearchScreen extends StatefulWidget {
 
 class _CardSearchScreenState extends State<CardSearchScreen> {
   final _searchController = TextEditingController();
-  
+  Timer? _debounce;
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final deckProvider = context.read<DeckProvider>();
+      if (deckProvider.selectedDeck?.id != widget.deckId) {
+        await deckProvider.fetchDeckDetails(widget.deckId);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged(String query) {
-    // Debounce simples poderia ser adicionado aqui
-    if (query.length > 2) {
-      context.read<CardProvider>().searchCards(query);
+  void _onScroll() {
+    final provider = context.read<CardProvider>();
+    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore) return;
+    final position = _scrollController.position;
+    if (!position.hasPixels) return;
+    if (position.pixels >= position.maxScrollExtent - 240) {
+      provider.loadMore();
     }
   }
 
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    final q = query.trim();
+    if (q.length < 3) {
+      context.read<CardProvider>().clearSearch();
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      context.read<CardProvider>().searchCards(q);
+    });
+  }
+
   void _addCardToDeck(DeckCardItem card) {
+    final deck = context.read<DeckProvider>().selectedDeck;
+    final format = deck?.format.toLowerCase();
+    final isCommanderFormat = format == 'commander' || format == 'brawl';
+
+    final commanderIdentity = _computeCommanderIdentity(deck);
+    final mustPickCommanderFirst =
+        isCommanderFormat && (deck?.commander.isEmpty ?? true);
+    final isCommanderEligible = _isCommanderEligible(card);
+
+    final isAllowedByCommander =
+        !isCommanderFormat ||
+        commanderIdentity == null ||
+        _isSubset(card.colorIdentity, commanderIdentity);
+
+    final isCommanderMode = (widget.mode ?? '').toLowerCase() == 'commander';
+    final canOpenAddDialog =
+        isCommanderMode
+            ? isCommanderEligible
+            : (!mustPickCommanderFirst
+                ? isAllowedByCommander
+                : isCommanderEligible);
+
     // Mostra dialog para escolher quantidade
     showDialog(
       context: context,
-      builder: (context) => _AddCardDialog(
-        card: card,
-        onConfirm: (quantity, isCommander) async {
-          final provider = context.read<DeckProvider>();
-          final success = await provider.addCardToDeck(
-            widget.deckId,
-            card,
-            quantity,
-            isCommander: isCommander,
-          );
-          
-          if (!context.mounted) return;
-          Navigator.pop(context);
+      builder:
+          (context) => _AddCardDialog(
+            card: card,
+            deckFormat: format,
+            hasCommanderSelected: (deck?.commander.isNotEmpty ?? false),
+            forceCommander: mustPickCommanderFirst || isCommanderMode,
+            canAddByCommanderIdentity: canOpenAddDialog,
+            onConfirm: (quantity, isCommander) async {
+              final provider = context.read<DeckProvider>();
+              final success = await provider.addCardToDeck(
+                widget.deckId,
+                card,
+                quantity,
+                isCommander: isCommander,
+              );
 
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${card.name} adicionada ao deck!')),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(provider.errorMessage ?? 'Erro ao adicionar carta'),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          }
-        },
-      ),
+              if (!context.mounted) return;
+              Navigator.pop(context);
+
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${card.name} adicionada ao deck!')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      provider.errorMessage ?? 'Erro ao adicionar carta',
+                    ),
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                );
+              }
+            },
+          ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final deck = context.watch<DeckProvider>().selectedDeck;
+    final format = deck?.format.toLowerCase();
+    final isCommanderFormat = format == 'commander' || format == 'brawl';
+    final commanderIdentity = _computeCommanderIdentity(deck);
+    final mustPickCommanderFirst =
+        isCommanderFormat && (deck?.commander.isEmpty ?? true);
+    final isCommanderMode = (widget.mode ?? '').toLowerCase() == 'commander';
+
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _searchController,
-          onChanged: _onSearchChanged,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Buscar cartas...',
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: Colors.white70),
-          ),
-          style: const TextStyle(color: Colors.white),
-          cursorColor: Colors.white,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText:
+                    isCommanderMode
+                        ? 'Buscar comandante...'
+                        : 'Buscar cartas...',
+                border: InputBorder.none,
+                hintStyle: const TextStyle(color: Colors.white70),
+              ),
+              style: const TextStyle(color: Colors.white),
+              cursorColor: Colors.white,
+            ),
+            if (isCommanderMode)
+              const Text(
+                'Modo comandante',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+          ],
         ),
       ),
       body: Consumer<CardProvider>(
@@ -104,19 +189,55 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
             );
           }
 
+          final totalItems =
+              provider.searchResults.length + (provider.hasMore ? 1 : 0);
+
           return ListView.builder(
-            itemCount: provider.searchResults.length,
+            controller: _scrollController,
+            itemCount: totalItems,
             itemBuilder: (context, index) {
+              if (index >= provider.searchResults.length) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
               final card = provider.searchResults[index];
+              final isCommanderEligible = _isCommanderEligible(card);
+              final allowedByIdentity =
+                  !isCommanderFormat ||
+                  commanderIdentity == null ||
+                  _isSubset(card.colorIdentity, commanderIdentity);
+              final canAdd =
+                  isCommanderMode
+                      ? isCommanderEligible
+                      : (mustPickCommanderFirst
+                          ? isCommanderEligible
+                          : allowedByIdentity);
               return ListTile(
-                leading: card.imageUrl != null
-                    ? Image.network(card.imageUrl!, width: 40)
-                    : const Icon(Icons.image_not_supported),
+                leading:
+                    card.imageUrl != null
+                        ? Image.network(card.imageUrl!, width: 40)
+                        : const Icon(Icons.image_not_supported),
                 title: Text(card.name),
-                subtitle: Text(card.typeLine),
+                subtitle: Text(
+                  [
+                    card.typeLine,
+                    if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
+                    if ((card.setReleaseDate ?? '').trim().isNotEmpty)
+                      card.setReleaseDate!,
+                    if (mustPickCommanderFirst && !isCommanderEligible)
+                      'Selecione um comandante primeiro',
+                    if (!mustPickCommanderFirst &&
+                        isCommanderFormat &&
+                        commanderIdentity != null &&
+                        !allowedByIdentity)
+                      'Fora da identidade do comandante',
+                  ].join(' • '),
+                ),
                 trailing: IconButton(
                   icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => _addCardToDeck(card),
+                  onPressed: canAdd ? () => _addCardToDeck(card) : null,
                 ),
               );
             },
@@ -129,9 +250,20 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
 class _AddCardDialog extends StatefulWidget {
   final DeckCardItem card;
+  final String? deckFormat;
+  final bool hasCommanderSelected;
+  final bool forceCommander;
+  final bool canAddByCommanderIdentity;
   final Function(int quantity, bool isCommander) onConfirm;
 
-  const _AddCardDialog({required this.card, required this.onConfirm});
+  const _AddCardDialog({
+    required this.card,
+    required this.deckFormat,
+    required this.hasCommanderSelected,
+    required this.forceCommander,
+    required this.canAddByCommanderIdentity,
+    required this.onConfirm,
+  });
 
   @override
   State<_AddCardDialog> createState() => _AddCardDialogState();
@@ -140,14 +272,40 @@ class _AddCardDialog extends StatefulWidget {
 class _AddCardDialogState extends State<_AddCardDialog> {
   int _quantity = 1;
   bool _isCommander = false;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.forceCommander) {
+      _isCommander = true;
+      _quantity = 1;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final format = widget.deckFormat?.toLowerCase();
+    final isCommanderFormat = format == 'commander' || format == 'brawl';
+    final isBasicLand = widget.card.typeLine.toLowerCase().contains(
+      'basic land',
+    );
+    final canIncreaseQuantity = !isCommanderFormat || isBasicLand;
+    final isCommanderEligible = _isCommanderEligible(widget.card);
+
     return AlertDialog(
       title: Text('Adicionar ${widget.card.name}'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (!widget.canAddByCommanderIdentity)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Essa carta está fora da identidade de cor do comandante.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -156,36 +314,105 @@ class _AddCardDialogState extends State<_AddCardDialog> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.remove),
-                    onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                    onPressed:
+                        _isSubmitting
+                            ? null
+                            : _quantity > 1
+                            ? () => setState(() => _quantity--)
+                            : null,
                   ),
                   Text('$_quantity', style: const TextStyle(fontSize: 18)),
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () => setState(() => _quantity++),
+                    onPressed:
+                        _isSubmitting
+                            ? null
+                            : canIncreaseQuantity
+                            ? () => setState(() => _quantity++)
+                            : null,
                   ),
                 ],
               ),
             ],
           ),
-          if (widget.card.typeLine.toLowerCase().contains('legendary creature') || 
-              widget.card.oracleText?.toLowerCase().contains('can be your commander') == true)
+          if (isCommanderFormat &&
+              isCommanderEligible &&
+              !widget.hasCommanderSelected &&
+              !widget.forceCommander)
             CheckboxListTile(
               title: const Text('É Comandante?'),
               value: _isCommander,
-              onChanged: (val) => setState(() => _isCommander = val ?? false),
+              onChanged:
+                  _isSubmitting
+                      ? null
+                      : (val) => setState(() {
+                        _isCommander = val ?? false;
+                        if (_isCommander) _quantity = 1;
+                      }),
+            ),
+          if (widget.forceCommander)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Esse deck precisa de um comandante. Esta carta será definida como comandante.',
+              ),
+            ),
+          if (_isSubmitting)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
         ],
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
         ElevatedButton(
-          onPressed: () => widget.onConfirm(_quantity, _isCommander),
+          onPressed:
+              _isSubmitting || !widget.canAddByCommanderIdentity
+                  ? null
+                  : () async {
+                    setState(() => _isSubmitting = true);
+                    await widget.onConfirm(
+                      _quantity,
+                      widget.forceCommander ? true : _isCommander,
+                    );
+                    if (mounted) setState(() => _isSubmitting = false);
+                  },
           child: const Text('Adicionar'),
         ),
       ],
     );
   }
+}
+
+Set<String>? _computeCommanderIdentity(DeckDetails? deck) {
+  if (deck == null) return null;
+  if (deck.commander.isEmpty) return null;
+  final commander = deck.commander.first;
+  final identity =
+      commander.colorIdentity.isNotEmpty
+          ? commander.colorIdentity
+          : commander.colors;
+  return identity.map((e) => e.toUpperCase()).toSet();
+}
+
+bool _isSubset(List<String> cardIdentity, Set<String> commanderIdentity) {
+  for (final c in cardIdentity) {
+    if (!commanderIdentity.contains(c.toUpperCase())) return false;
+  }
+  return true;
+}
+
+bool _isCommanderEligible(DeckCardItem card) {
+  final typeLine = card.typeLine.toLowerCase();
+  final oracle = (card.oracleText ?? '').toLowerCase();
+  return typeLine.contains('legendary creature') ||
+      oracle.contains('can be your commander');
 }

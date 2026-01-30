@@ -4,10 +4,16 @@ class Deck {
   final String name;
   final String format;
   final String? description;
-  final String? archetype; // Arquétipo do deck (aggro, control, midrange, combo, etc)
+  final String?
+  archetype; // Arquétipo do deck (aggro, control, midrange, combo, etc)
+  final int? bracket; // 1..4 (EDH bracket)
   final int? synergyScore;
   final String? strengths;
   final String? weaknesses;
+  final String? pricingCurrency;
+  final double? pricingTotal;
+  final int? pricingMissingCards;
+  final DateTime? pricingUpdatedAt;
   final bool isPublic;
   final DateTime createdAt;
   final int cardCount;
@@ -18,9 +24,14 @@ class Deck {
     required this.format,
     this.description,
     this.archetype,
+    this.bracket,
     this.synergyScore,
     this.strengths,
     this.weaknesses,
+    this.pricingCurrency,
+    this.pricingTotal,
+    this.pricingMissingCards,
+    this.pricingUpdatedAt,
     required this.isPublic,
     required this.createdAt,
     this.cardCount = 0,
@@ -34,9 +45,17 @@ class Deck {
       format: json['format'] as String,
       description: json['description'] as String?,
       archetype: json['archetype'] as String?,
+      bracket: json['bracket'] as int?,
       synergyScore: json['synergy_score'] as int?,
       strengths: json['strengths'] as String?,
       weaknesses: json['weaknesses'] as String?,
+      pricingCurrency: json['pricing_currency'] as String?,
+      pricingTotal: (json['pricing_total'] as num?)?.toDouble(),
+      pricingMissingCards: json['pricing_missing_cards'] as int?,
+      pricingUpdatedAt:
+          (json['pricing_updated_at'] != null)
+              ? DateTime.tryParse(json['pricing_updated_at'] as String)
+              : null,
       isPublic: json['is_public'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       cardCount: json['card_count'] as int? ?? 0,
@@ -51,9 +70,14 @@ class Deck {
       'format': format,
       'description': description,
       'archetype': archetype,
+      'bracket': bracket,
       'synergy_score': synergyScore,
       'strengths': strengths,
       'weaknesses': weaknesses,
+      'pricing_currency': pricingCurrency,
+      'pricing_total': pricingTotal,
+      'pricing_missing_cards': pricingMissingCards,
+      'pricing_updated_at': pricingUpdatedAt?.toIso8601String(),
       'is_public': isPublic,
       'created_at': createdAt.toIso8601String(),
       'card_count': cardCount,
@@ -67,9 +91,14 @@ class Deck {
     String? format,
     String? description,
     String? archetype,
+    int? bracket,
     int? synergyScore,
     String? strengths,
     String? weaknesses,
+    String? pricingCurrency,
+    double? pricingTotal,
+    int? pricingMissingCards,
+    DateTime? pricingUpdatedAt,
     bool? isPublic,
     DateTime? createdAt,
     int? cardCount,
@@ -80,9 +109,14 @@ class Deck {
       format: format ?? this.format,
       description: description ?? this.description,
       archetype: archetype ?? this.archetype,
+      bracket: bracket ?? this.bracket,
       synergyScore: synergyScore ?? this.synergyScore,
       strengths: strengths ?? this.strengths,
       weaknesses: weaknesses ?? this.weaknesses,
+      pricingCurrency: pricingCurrency ?? this.pricingCurrency,
+      pricingTotal: pricingTotal ?? this.pricingTotal,
+      pricingMissingCards: pricingMissingCards ?? this.pricingMissingCards,
+      pricingUpdatedAt: pricingUpdatedAt ?? this.pricingUpdatedAt,
       isPublic: isPublic ?? this.isPublic,
       createdAt: createdAt ?? this.createdAt,
       cardCount: cardCount ?? this.cardCount,

@@ -1,21 +1,56 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/utils/mana_helper.dart';
+import '../providers/deck_provider.dart';
 import '../models/deck_details.dart';
 
-class DeckAnalysisTab extends StatelessWidget {
+class DeckAnalysisTab extends StatefulWidget {
   final DeckDetails deck;
 
   const DeckAnalysisTab({super.key, required this.deck});
 
   @override
+  State<DeckAnalysisTab> createState() => _DeckAnalysisTabState();
+}
+
+class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
+  bool _isRefreshingAi = false;
+
+  Future<void> _refreshAi({bool force = false}) async {
+    if (_isRefreshingAi) return;
+    setState(() => _isRefreshingAi = true);
+
+    try {
+      await context.read<DeckProvider>().refreshAiAnalysis(
+        widget.deck.id,
+        force: force,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingAi = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+    final deck = context.select<DeckProvider, DeckDetails?>(
+      (p) => p.selectedDeck,
+    );
+    final effectiveDeck =
+        (deck != null && deck.id == widget.deck.id) ? deck : widget.deck;
+
     // Prepara dados
     final allCards = [
-      ...deck.commander,
-      ...deck.mainBoard.values.expand((l) => l),
+      ...effectiveDeck.commander,
+      ...effectiveDeck.mainBoard.values.expand((l) => l),
     ];
 
     // 1. Curva de Mana
@@ -33,14 +68,20 @@ class DeckAnalysisTab extends StatelessWidget {
 
     // 2. Distribuição de Cores (Pips)
     final colorCounts = <String, int>{
-      'W': 0, 'U': 0, 'B': 0, 'R': 0, 'G': 0, 'C': 0
+      'W': 0,
+      'U': 0,
+      'B': 0,
+      'R': 0,
+      'G': 0,
+      'C': 0,
     };
     for (var card in allCards) {
       if (card.typeLine.toLowerCase().contains('land')) continue;
       final pips = ManaHelper.countColorPips(card.manaCost);
       pips.forEach((color, count) {
         if (colorCounts.containsKey(color)) {
-          colorCounts[color] = (colorCounts[color] ?? 0) + (count * card.quantity);
+          colorCounts[color] =
+              (colorCounts[color] ?? 0) + (count * card.quantity);
         }
       });
     }
@@ -50,25 +91,61 @@ class DeckAnalysisTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Seção de IA (Existente)
-          if (deck.synergyScore != null) ...[
-            _AnalysisCard(
-              title: 'Sinergia (IA)',
-              score: deck.synergyScore!,
-              color: Colors.purple,
-            ),
+          // Seção de IA
+          Row(
+            children: [
+              Expanded(
+                child: Text('Sinergia', style: theme.textTheme.titleLarge),
+              ),
+              IconButton(
+                tooltip: 'Atualizar análise',
+                onPressed:
+                    _isRefreshingAi ? null : () => _refreshAi(force: true),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          if (_isRefreshingAi) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+            const SizedBox(height: 8),
+            Text('Analisando o deck...', style: theme.textTheme.bodySmall),
             const SizedBox(height: 16),
           ],
-          if (deck.strengths != null) ...[
-            Text('Pontos Fortes', style: theme.textTheme.titleLarge),
+          if ((effectiveDeck.synergyScore ?? 0) > 0 ||
+              ((effectiveDeck.strengths ?? '').trim().isNotEmpty) ||
+              ((effectiveDeck.weaknesses ?? '').trim().isNotEmpty)) ...[
+            if (effectiveDeck.synergyScore != null) ...[
+              _AnalysisCard(
+                title: 'Score de sinergia',
+                score: effectiveDeck.synergyScore!,
+                color: Colors.purple,
+              ),
+              const SizedBox(height: 16),
+            ],
+            if ((effectiveDeck.strengths ?? '').trim().isNotEmpty) ...[
+              Text('Pontos Fortes', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(effectiveDeck.strengths!),
+              const SizedBox(height: 16),
+            ],
+            if ((effectiveDeck.weaknesses ?? '').trim().isNotEmpty) ...[
+              Text('Pontos Fracos', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(effectiveDeck.weaknesses!),
+              const SizedBox(height: 16),
+            ],
+          ] else ...[
+            Text(
+              'Ainda não existe uma análise de sinergia para este deck.',
+              style: theme.textTheme.bodyMedium,
+            ),
             const SizedBox(height: 8),
-            Text(deck.strengths!),
-            const SizedBox(height: 24),
-          ],
-          if (deck.weaknesses != null) ...[
-            Text('Pontos Fracos', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(deck.weaknesses!),
+            ElevatedButton.icon(
+              onPressed: _isRefreshingAi ? null : () => _refreshAi(),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Gerar análise'),
+            ),
             const SizedBox(height: 24),
           ],
 
@@ -88,7 +165,8 @@ class DeckAnalysisTab extends StatelessWidget {
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: (manaCurve.reduce((a, b) => a > b ? a : b) + 1).toDouble(),
+                maxY:
+                    (manaCurve.reduce((a, b) => a > b ? a : b) + 1).toDouble(),
                 barTouchData: BarTouchData(
                   enabled: true,
                   touchTooltipData: BarTouchTooltipData(
@@ -107,9 +185,15 @@ class DeckAnalysisTab extends StatelessWidget {
                       },
                     ),
                   ),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(show: false),
@@ -121,7 +205,9 @@ class DeckAnalysisTab extends StatelessWidget {
                         toY: manaCurve[index].toDouble(),
                         color: theme.colorScheme.primary,
                         width: 16,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(4),
+                        ),
                       ),
                     ],
                   );
@@ -204,7 +290,7 @@ class DeckAnalysisTab extends StatelessWidget {
       'G': 'Verde',
       'C': 'Incolor',
     };
-    
+
     final colorsMap = {
       'W': const Color(0xFFF0F2C0),
       'U': const Color(0xFFB3CEEA),

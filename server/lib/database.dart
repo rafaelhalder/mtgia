@@ -28,14 +28,14 @@ class Database {
     if (_connected) return;
 
     // Carrega as variáveis de ambiente do arquivo .env
-    final env = DotEnv(includePlatformEnvironment: true)..load();
+    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
 
     final host = env['DB_HOST'];
     final port = int.tryParse(env['DB_PORT'] ?? '');
     final database = env['DB_NAME'];
     final username = env['DB_USER'];
     final password = env['DB_PASS'];
-    final environment = env['ENVIRONMENT'] ?? 'development';
+    final environment = (env['ENVIRONMENT'] ?? 'development').toLowerCase();
 
     if (host == null || port == null || database == null || username == null || password == null) {
       print('Erro: As variáveis de ambiente do banco de dados não estão configuradas no arquivo .env');
@@ -45,9 +45,7 @@ class Database {
     // Determina o modo SSL baseado no ambiente
     // Produção: SSL obrigatório para segurança
     // Desenvolvimento: SSL desabilitado para facilitar setup local
-    final sslMode = environment == 'production' 
-        ? SslMode.require 
-        : SslMode.disable;
+    final sslMode = _parseSslMode(env['DB_SSL_MODE']) ?? (environment == 'production' ? SslMode.require : SslMode.disable);
 
     _pool = Pool.withEndpoints(
       [
@@ -66,7 +64,7 @@ class Database {
     );
 
     _connected = true;
-    print('✅ Pool de conexões com o banco de dados inicializado (SSL: ${sslMode == SslMode.require ? "HABILITADO" : "DESABILITADO"}).');
+    print('✅ Pool de conexões com o banco de dados inicializado (SSL: ${sslMode.name}).');
   }
 
   /// Fecha a conexão com o banco de dados.
@@ -76,4 +74,15 @@ class Database {
     _connected = false;
     print('Conexão com o PostgreSQL fechada.');
   }
+}
+
+SslMode? _parseSslMode(String? raw) {
+  if (raw == null) return null;
+  final value = raw.trim().toLowerCase();
+  return switch (value) {
+    'disable' || 'off' || 'false' || '0' => SslMode.disable,
+    'require' || 'on' || 'true' || '1' => SslMode.require,
+    'verifyfull' || 'verify_full' || 'verify-full' => SslMode.verifyFull,
+    _ => null,
+  };
 }

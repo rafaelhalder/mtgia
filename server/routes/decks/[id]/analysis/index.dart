@@ -10,11 +10,11 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 }
 
 Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
-  final conn = context.read<Connection>();
+  final pool = context.read<Pool>();
 
   try {
     // 1. Buscar informações do deck (formato)
-    final deckResult = await conn.execute(
+    final deckResult = await pool.execute(
       Sql.named('SELECT format FROM decks WHERE id = @deckId'),
       parameters: {'deckId': deckId},
     );
@@ -26,7 +26,7 @@ Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
     final format = deckResult.first[0] as String;
 
     // 2. Buscar cartas do deck
-    final cardsResult = await conn.execute(
+    final cardsResult = await pool.execute(
       Sql.named('''
         SELECT c.id, c.name, c.mana_cost, c.type_line, c.oracle_text, c.price, dc.quantity
         FROM deck_cards dc
@@ -122,7 +122,7 @@ Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
     
     if (cardIds.isNotEmpty) {
       // Busca o status de legalidade de todas as cartas do deck para o formato
-      final legalityResult = await conn.execute(
+      final legalityResult = await pool.execute(
         Sql.named(
           'SELECT card_id, status FROM card_legalities WHERE format = @format AND card_id = ANY(@ids)',
         ),
@@ -266,7 +266,7 @@ Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
     
     try {
       // Busca os últimos 50 decks do meta desse formato
-      final metaDecksResult = await conn.execute(
+      final metaDecksResult = await pool.execute(
         Sql.named('SELECT archetype, card_list, source_url FROM meta_decks WHERE format = @format ORDER BY created_at DESC LIMIT 50'),
         parameters: {'format': format.toLowerCase() == 'commander' ? 'EDH' : (format == 'standard' ? 'ST' : format)},
       );

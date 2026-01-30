@@ -11,11 +11,11 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 }
 
 Future<Response> _simulateDeck(RequestContext context, String deckId) async {
-  final conn = context.read<Connection>();
+  final pool = context.read<Pool>();
 
   try {
     // 1. Buscar cartas do deck
-    final cardsResult = await conn.execute(
+    final cardsResult = await pool.execute(
       Sql.named('''
         SELECT c.name, c.mana_cost, c.type_line, dc.quantity, dc.is_commander
         FROM deck_cards dc
