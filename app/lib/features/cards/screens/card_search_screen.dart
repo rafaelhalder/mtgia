@@ -4,6 +4,7 @@ import '../providers/card_provider.dart';
 import '../../decks/providers/deck_provider.dart';
 import '../../decks/models/deck_card_item.dart';
 import '../../decks/models/deck_details.dart';
+import 'dart:async';
 
 class CardSearchScreen extends StatefulWidget {
   final String deckId;
@@ -17,10 +18,13 @@ class CardSearchScreen extends StatefulWidget {
 
 class _CardSearchScreenState extends State<CardSearchScreen> {
   final _searchController = TextEditingController();
+  Timer? _debounce;
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final deckProvider = context.read<DeckProvider>();
       if (deckProvider.selectedDeck?.id != widget.deckId) {
@@ -31,15 +35,33 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onSearchChanged(String query) {
-    // Debounce simples poderia ser adicionado aqui
-    if (query.length > 2) {
-      context.read<CardProvider>().searchCards(query);
+  void _onScroll() {
+    final provider = context.read<CardProvider>();
+    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore) return;
+    final position = _scrollController.position;
+    if (!position.hasPixels) return;
+    if (position.pixels >= position.maxScrollExtent - 240) {
+      provider.loadMore();
     }
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    final q = query.trim();
+    if (q.length < 3) {
+      context.read<CardProvider>().clearSearch();
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      context.read<CardProvider>().searchCards(q);
+    });
   }
 
   void _addCardToDeck(DeckCardItem card) {
@@ -167,9 +189,19 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
             );
           }
 
+          final totalItems =
+              provider.searchResults.length + (provider.hasMore ? 1 : 0);
+
           return ListView.builder(
-            itemCount: provider.searchResults.length,
+            controller: _scrollController,
+            itemCount: totalItems,
             itemBuilder: (context, index) {
+              if (index >= provider.searchResults.length) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
               final card = provider.searchResults[index];
               final isCommanderEligible = _isCommanderEligible(card);
               final allowedByIdentity =
@@ -240,6 +272,7 @@ class _AddCardDialog extends StatefulWidget {
 class _AddCardDialogState extends State<_AddCardDialog> {
   int _quantity = 1;
   bool _isCommander = false;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -282,7 +315,9 @@ class _AddCardDialogState extends State<_AddCardDialog> {
                   IconButton(
                     icon: const Icon(Icons.remove),
                     onPressed:
-                        _quantity > 1
+                        _isSubmitting
+                            ? null
+                            : _quantity > 1
                             ? () => setState(() => _quantity--)
                             : null,
                   ),
@@ -290,7 +325,9 @@ class _AddCardDialogState extends State<_AddCardDialog> {
                   IconButton(
                     icon: const Icon(Icons.add),
                     onPressed:
-                        canIncreaseQuantity
+                        _isSubmitting
+                            ? null
+                            : canIncreaseQuantity
                             ? () => setState(() => _quantity++)
                             : null,
                   ),
@@ -306,10 +343,12 @@ class _AddCardDialogState extends State<_AddCardDialog> {
               title: const Text('É Comandante?'),
               value: _isCommander,
               onChanged:
-                  (val) => setState(() {
-                    _isCommander = val ?? false;
-                    if (_isCommander) _quantity = 1;
-                  }),
+                  _isSubmitting
+                      ? null
+                      : (val) => setState(() {
+                        _isCommander = val ?? false;
+                        if (_isCommander) _quantity = 1;
+                      }),
             ),
           if (widget.forceCommander)
             const Padding(
@@ -318,21 +357,34 @@ class _AddCardDialogState extends State<_AddCardDialog> {
                 'Esse deck precisa de um comandante. Esta carta será definida como comandante.',
               ),
             ),
+          if (_isSubmitting)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
         ],
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
         ElevatedButton(
           onPressed:
-              widget.canAddByCommanderIdentity
-                  ? () => widget.onConfirm(
-                    _quantity,
-                    widget.forceCommander ? true : _isCommander,
-                  )
-                  : null,
+              _isSubmitting || !widget.canAddByCommanderIdentity
+                  ? null
+                  : () async {
+                    setState(() => _isSubmitting = true);
+                    await widget.onConfirm(
+                      _quantity,
+                      widget.forceCommander ? true : _isCommander,
+                    );
+                    if (mounted) setState(() => _isSubmitting = false);
+                  },
           child: const Text('Adicionar'),
         ),
       ],

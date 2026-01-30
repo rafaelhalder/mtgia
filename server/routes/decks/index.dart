@@ -3,6 +3,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../lib/deck_rules_service.dart';
+import '../../lib/logger.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   // Este arquivo vai lidar com diferentes métodos HTTP para a rota /decks
@@ -20,16 +21,16 @@ Future<Response> onRequest(RequestContext context) async {
 
 /// Lista os decks do usuário autenticado.
 Future<Response> _listDecks(RequestContext context) async {
-  print('📥 [GET /decks] Iniciando listagem de decks...');
+  Log.d('📥 [GET /decks] Iniciando listagem de decks...');
 
   try {
     final userId = context.read<String>();
-    print('👤 User ID identificado: $userId');
+    Log.d('👤 User ID identificado: $userId');
 
     final conn = context.read<Pool>();
-    print('🔌 Conexão com banco obtida.');
+    Log.d('🔌 Conexão com banco obtida.');
 
-    print('🔍 Executando query SELECT...');
+    Log.d('🔍 Executando query SELECT...');
     final result = await conn.execute(
       Sql.named('''
         SELECT 
@@ -48,7 +49,7 @@ Future<Response> _listDecks(RequestContext context) async {
       '''),
       parameters: {'userId': userId},
     );
-    print('✅ Query executada. Encontrados ${result.length} decks.');
+    Log.d('✅ Query executada. Encontrados ${result.length} decks.');
 
     final decks = result.map((row) {
       final map = row.toColumnMap();
@@ -58,11 +59,11 @@ Future<Response> _listDecks(RequestContext context) async {
       return map;
     }).toList();
 
-    print('📤 Retornando resposta JSON.');
+    Log.d('📤 Retornando resposta JSON.');
     return Response.json(body: decks);
   } catch (e, stackTrace) {
-    print('❌ Erro crítico em _listDecks: $e');
-    print('Stack trace: $stackTrace');
+    Log.e('❌ Erro crítico em _listDecks: $e');
+    Log.e('Stack trace: $stackTrace');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
       body: {'error': 'Failed to list decks: $e'},

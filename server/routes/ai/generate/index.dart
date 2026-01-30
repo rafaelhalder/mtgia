@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
 import '../../../lib/card_validation_service.dart';
+import '../../../lib/logger.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -41,7 +42,8 @@ Future<Response> onRequest(RequestContext context) async {
           'invalid_cards': 0,
         },
         'warnings': {
-          'message': 'OPENAI_API_KEY não configurada. Retornando deck mock para desenvolvimento.',
+          'message':
+              'OPENAI_API_KEY não configurada. Retornando deck mock para desenvolvimento.',
         },
       });
     }
@@ -50,10 +52,11 @@ Future<Response> onRequest(RequestContext context) async {
     // Tenta encontrar decks no meta que tenham palavras-chave do prompt
     final pool = context.read<Pool>();
     String metaContext = '';
-    
+
     try {
       // Extrai palavras-chave simples (remove stop words básicas)
-      final keywords = prompt.split(' ')
+      final keywords = prompt
+          .split(' ')
           .where((w) => w.length > 3)
           .map((w) => "'%${w.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}%'")
           .join(' OR archetype ILIKE ');
@@ -68,34 +71,46 @@ Future<Response> onRequest(RequestContext context) async {
             LIMIT 3
           '''),
           parameters: {
-            'format': format == 'Commander' ? 'EDH' : (format == 'Standard' ? 'ST' : format),
+            'format': format == 'Commander'
+                ? 'EDH'
+                : (format == 'Standard' ? 'ST' : format),
           },
         );
 
         if (metaResult.isNotEmpty) {
-          metaContext = 'Here are some successful meta decks for inspiration:\n';
+          metaContext =
+              'Here are some successful meta decks for inspiration:\n';
           for (final row in metaResult) {
-            metaContext += 'Archetype: ${row[0]}\nList: ${(row[1] as String).substring(0, 200)}...\n\n';
+            metaContext +=
+                'Archetype: ${row[0]}\nList: ${(row[1] as String).substring(0, 200)}...\n\n';
           }
         }
       }
     } catch (e) {
-      print('Erro ao buscar contexto do meta: $e');
+      Log.w('Erro ao buscar contexto do meta: $e');
       // Segue sem contexto
     }
 
     // 2. Chamada para OpenAI
     final systemPrompt = '''
-    You are a world-class Magic: The Gathering deck builder.
-    Your goal is to build a competitive, consistent, and legal deck for the format "$format".
-    
-    Rules:
-    1. Return ONLY a JSON object with a "cards" field.
-    2. "cards" must be a list of objects with "name" (exact English card name) and "quantity" (integer).
-    3. Do not include markdown formatting (like ```json). Just the raw JSON string.
-    4. For Commander, ensure exactly 100 cards (1 Commander + 99 Main).
-    5. Ensure a good land count (approx 36-38 for Commander).
-    ''';
+You are a world-class Magic: The Gathering deck builder.
+Your goal is to build a competitive, consistent, and legal deck for the format "$format".
+
+Return ONLY a JSON object (no markdown). Use this schema:
+{
+  "commander": { "name": "Exact English card name" },   // REQUIRED for Commander/Brawl, otherwise omit or null
+  "cards": [
+    { "name": "Exact English card name", "quantity": 1 }
+  ]
+}
+
+Rules:
+1. For Commander: commander required; total must be exactly 100 including the commander (1 commander + 99 other cards).
+2. For Brawl: commander required; total must be exactly 60 including the commander.
+3. Do not include banned cards for the format.
+4. Respect deckbuilding copy limits (Commander/Brawl = 1 copy except basic lands).
+5. Keep land count reasonable (Commander ~36-38).
+''';
 
     final userMessage = '''
     Build a deck based on this description: "$prompt".
@@ -133,32 +148,45 @@ Future<Response> onRequest(RequestContext context) async {
     content = content.replaceAll('```json', '').replaceAll('```', '').trim();
 
     final deckList = jsonDecode(content) as Map<String, dynamic>;
-    final cards = (deckList['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    
+    final commanderRaw = deckList['commander'];
+    final cards =
+        (deckList['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
     // Validar cartas geradas pela IA
     final validationService = CardValidationService(pool);
-    
+
     // Extrair nomes das cartas e sanitizar
     final cardNames = cards.map((card) {
       final name = card['name'] as String;
       return CardValidationService.sanitizeCardName(name);
     }).toList();
-    
+
+    String? commanderName;
+    if (commanderRaw is Map && commanderRaw['name'] != null) {
+      commanderName = CardValidationService.sanitizeCardName(
+          commanderRaw['name'] as String);
+    } else if (commanderRaw is String && commanderRaw.trim().isNotEmpty) {
+      commanderName = CardValidationService.sanitizeCardName(commanderRaw);
+    }
+
     // Validar todas as cartas
     final validation = await validationService.validateCardNames(cardNames);
-    
+    final commanderValidation = (commanderName == null || commanderName.isEmpty)
+        ? null
+        : await validationService.validateCardNames([commanderName]);
+
     // Filtrar apenas cartas válidas e reconstruir a lista
     final validCards = <Map<String, dynamic>>[];
     final invalidCards = validation['invalid'] as List<String>;
-    
+
     for (final card in cards) {
-      final name = CardValidationService.sanitizeCardName(card['name'] as String);
-      
+      final name =
+          CardValidationService.sanitizeCardName(card['name'] as String);
+
       // Verificar se a carta é válida
       final isValid = (validation['valid'] as List).any((validCard) =>
-        (validCard['name'] as String).toLowerCase() == name.toLowerCase()
-      );
-      
+          (validCard['name'] as String).toLowerCase() == name.toLowerCase());
+
       if (isValid) {
         validCards.add({
           'name': name,
@@ -166,12 +194,13 @@ Future<Response> onRequest(RequestContext context) async {
         });
       }
     }
-    
+
     // Preparar resposta
     final responseBody = {
       'prompt': prompt,
       'format': format,
       'generated_deck': {
+        if (commanderName != null) 'commander': {'name': commanderName},
         'cards': validCards,
       },
       'meta_context_used': metaContext.isNotEmpty,
@@ -181,18 +210,22 @@ Future<Response> onRequest(RequestContext context) async {
         'invalid_cards': invalidCards.length,
       },
     };
-    
+
     // Adicionar avisos se houver cartas inválidas
     if (invalidCards.isNotEmpty) {
       responseBody['warnings'] = {
         'invalid_cards': invalidCards,
-        'message': 'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
+        'message':
+            'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
         'suggestions': validation['suggestions'],
       };
     }
 
-    return Response.json(body: responseBody);
+    if (commanderValidation != null) {
+      responseBody['commander_validation'] = commanderValidation;
+    }
 
+    return Response.json(body: responseBody);
   } catch (e) {
     return Response.json(
       statusCode: HttpStatus.internalServerError,
@@ -203,7 +236,8 @@ Future<Response> onRequest(RequestContext context) async {
 
 List<Map<String, dynamic>> _mockDeckCards(String format) {
   final normalized = format.trim().toLowerCase();
-  final isCommander = normalized == 'commander' || normalized == 'edh' || normalized == 'brawl';
+  final isCommander =
+      normalized == 'commander' || normalized == 'edh' || normalized == 'brawl';
   final total = isCommander ? 100 : 60;
 
   final basics = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
@@ -217,7 +251,8 @@ List<Map<String, dynamic>> _mockDeckCards(String format) {
   var current = cards.fold<int>(0, (sum, c) => sum + (c['quantity'] as int));
   var i = 0;
   while (current < total) {
-    cards[i % basics.length]['quantity'] = (cards[i % basics.length]['quantity'] as int) + 1;
+    cards[i % basics.length]['quantity'] =
+        (cards[i % basics.length]['quantity'] as int) + 1;
     current++;
     i++;
   }

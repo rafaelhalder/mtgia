@@ -47,7 +47,9 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
   Future<void> _generateDeck() async {
     if (_promptController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, descreva o deck que deseja criar')),
+        const SnackBar(
+          content: Text('Por favor, descreva o deck que deseja criar'),
+        ),
       );
       return;
     }
@@ -59,9 +61,9 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
 
     try {
       final result = await context.read<DeckProvider>().generateDeck(
-            prompt: _promptController.text.trim(),
-            format: _selectedFormat,
-          );
+        prompt: _promptController.text.trim(),
+        format: _selectedFormat,
+      );
 
       setState(() {
         _generatedDeck = result;
@@ -73,9 +75,9 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao gerar deck: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao gerar deck: $e')));
       }
     }
   }
@@ -83,9 +85,10 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
   Future<void> _saveDeck() async {
     if (_generatedDeck == null) return;
 
-    final deckName = _deckNameController.text.trim().isEmpty
-        ? 'Deck Gerado por IA'
-        : _deckNameController.text.trim();
+    final deckName =
+        _deckNameController.text.trim().isEmpty
+            ? 'Deck Gerado por IA'
+            : _deckNameController.text.trim();
 
     // Show loading
     if (!mounted) return;
@@ -97,24 +100,33 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
 
     try {
       // Extract cards from generated deck
-      final generatedDeckData = _generatedDeck!['generated_deck'] as Map<String, dynamic>;
+      final generatedDeckData =
+          _generatedDeck!['generated_deck'] as Map<String, dynamic>;
       final cardsList = generatedDeckData['cards'] as List;
+      final commander = generatedDeckData['commander'];
 
       // Convert to format expected by createDeck API
-      final cardsToAdd = cardsList.map((card) {
-        return {
-          'name': card['name'],
-          'quantity': card['quantity'] ?? 1,
-        };
-      }).toList();
+      final cardsToAdd =
+          cardsList.map((card) {
+            return {'name': card['name'], 'quantity': card['quantity'] ?? 1};
+          }).toList();
+
+      // Se vier comandante explicitamente, salva marcado (is_commander=true).
+      if (commander is Map && commander['name'] != null) {
+        cardsToAdd.insert(0, {
+          'name': commander['name'],
+          'quantity': 1,
+          'is_commander': true,
+        });
+      }
 
       // Create deck with cards
       final success = await context.read<DeckProvider>().createDeck(
-            name: deckName,
-            format: _selectedFormat.toLowerCase(),
-            description: _promptController.text.trim(),
-            cards: cardsToAdd.cast<Map<String, dynamic>>(),
-          );
+        name: deckName,
+        format: _selectedFormat.toLowerCase(),
+        description: _promptController.text.trim(),
+        cards: cardsToAdd.cast<Map<String, dynamic>>(),
+      );
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading
@@ -128,16 +140,16 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
         );
         context.go('/decks');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro ao salvar o deck')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Erro ao salvar o deck')));
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Close loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar deck: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao salvar deck: $e')));
       }
     }
   }
@@ -162,7 +174,11 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             // Header
             Row(
               children: [
-                Icon(Icons.auto_awesome, color: theme.colorScheme.primary, size: 32),
+                Icon(
+                  Icons.auto_awesome,
+                  color: theme.colorScheme.primary,
+                  size: 32,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -195,12 +211,10 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                 filled: true,
                 fillColor: theme.colorScheme.surface,
               ),
-              items: _formats.map((format) {
-                return DropdownMenuItem(
-                  value: format,
-                  child: Text(format),
-                );
-              }).toList(),
+              items:
+                  _formats.map((format) {
+                    return DropdownMenuItem(value: format, child: Text(format));
+                  }).toList(),
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
@@ -218,7 +232,8 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
               controller: _promptController,
               maxLines: 4,
               decoration: InputDecoration(
-                hintText: 'Ex: Deck agressivo de goblins vermelhos com muitas criaturas pequenas...',
+                hintText:
+                    'Ex: Deck agressivo de goblins vermelhos com muitas criaturas pequenas...',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -239,36 +254,42 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _examplePrompts.map((example) {
-                return ActionChip(
-                  label: Text(
-                    example,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _promptController.text = example;
-                    });
-                  },
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                );
-              }).toList(),
+              children:
+                  _examplePrompts.map((example) {
+                    return ActionChip(
+                      label: Text(
+                        example,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _promptController.text = example;
+                        });
+                      },
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
+                    );
+                  }).toList(),
             ),
             const SizedBox(height: 24),
 
             // Generate Button
             ElevatedButton.icon(
               onPressed: _isGenerating ? null : _generateDeck,
-              icon: _isGenerating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_awesome),
+              icon:
+                  _isGenerating
+                      ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : const Icon(Icons.auto_awesome),
               label: Text(
                 _isGenerating ? 'A IA está pensando...' : 'Gerar Deck',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -341,8 +362,10 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
     if (_generatedDeck == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
-    final generatedDeckData = _generatedDeck!['generated_deck'] as Map<String, dynamic>;
+    final generatedDeckData =
+        _generatedDeck!['generated_deck'] as Map<String, dynamic>;
     final cardsList = generatedDeckData['cards'] as List;
+    final commander = generatedDeckData['commander'];
 
     // Group cards by type for better visualization
     final Map<String, List<Map<String, dynamic>>> groupedCards = {};
@@ -350,7 +373,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
     for (final card in cardsList) {
       final cardMap = card as Map<String, dynamic>;
       final name = cardMap['name'] as String;
-      
+
       // Simple type categorization based on common patterns
       String category = 'Other';
       if (name.toLowerCase().contains('land') ||
@@ -388,7 +411,11 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.format_list_numbered, color: theme.colorScheme.primary, size: 20),
+              Icon(
+                Icons.format_list_numbered,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Text(
                 'Total: ${cardsList.length} cartas',
@@ -400,6 +427,23 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          if (commander is Map && commander['name'] != null) ...[
+            Text(
+              'Comandante',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.secondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12, left: 8),
+              child: Text(
+                '1x ${commander['name']}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
           ...groupedCards.entries.map((entry) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,

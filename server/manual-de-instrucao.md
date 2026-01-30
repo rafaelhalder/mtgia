@@ -277,6 +277,30 @@ Exemplo (Linux/macOS) para rodar 1x/dia às 03:00:
 0 3 * * * cd /caminho/para/mtgia/server && /usr/bin/dart run bin/sync_cards.dart >> sync_cards.log 2>&1
 ```
 
+#### Recomendado no Droplet com Easypanel (cron chamando o container)
+
+Use o script `server/bin/cron_sync_cards.sh` (evita nome hardcoded do container do Easypanel):
+
+```bash
+# dentro do Droplet
+chmod +x /caminho/para/mtgia/server/bin/cron_sync_cards.sh
+
+# validar manualmente (deve imprimir o container encontrado e rodar o sync)
+/caminho/para/mtgia/server/bin/cron_sync_cards.sh
+```
+
+Crontab (roda todo dia 03:00 e grava log):
+
+```cron
+0 3 * * * /caminho/para/mtgia/server/bin/cron_sync_cards.sh >> /var/log/mtgia-sync_cards.log 2>&1
+```
+
+Se o nome do serviço/projeto no Easypanel for diferente, ajuste o pattern:
+
+```cron
+0 3 * * * CONTAINER_PATTERN='^evolution_cartinhas\\.' /caminho/para/mtgia/server/bin/cron_sync_cards.sh >> /var/log/mtgia-sync_cards.log 2>&1
+```
+
 **Cobertura Estimada:**
 - `lib/auth_service.dart`: ~90%
 - `routes/import/index.dart`: ~85%

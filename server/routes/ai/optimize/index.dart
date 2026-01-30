@@ -2,8 +2,10 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/color_identity.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
+import '../../../lib/logger.dart';
 
 /// Classe para análise de arquétipo do deck
 /// Implementa detecção automática baseada em curva de mana, tipos de cartas e cores
@@ -300,7 +302,7 @@ Future<Response> onRequest(RequestContext context) async {
     // Get Cards with CMC for analysis
     final cardsResult = await pool.execute(
       Sql.named('''
-        SELECT c.name, dc.is_commander, c.type_line, c.mana_cost, c.colors, 
+        SELECT c.name, dc.is_commander, c.type_line, c.mana_cost, c.colors,
                COALESCE(
                  (SELECT SUM(
                    CASE 
@@ -312,7 +314,8 @@ Future<Response> onRequest(RequestContext context) async {
                  ) FROM regexp_matches(c.mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
                  0
                ) as cmc,
-               c.oracle_text
+               c.oracle_text,
+               c.color_identity
         FROM deck_cards dc 
         JOIN cards c ON c.id = dc.card_id 
         WHERE dc.deck_id = @id
@@ -324,6 +327,7 @@ Future<Response> onRequest(RequestContext context) async {
     final otherCards = <String>[];
     final allCardData = <Map<String, dynamic>>[];
     final deckColors = <String>{};
+    final commanderColorIdentity = <String>{};
 
     for (final row in cardsResult) {
       final name = row[0] as String;
@@ -333,15 +337,17 @@ Future<Response> onRequest(RequestContext context) async {
       final colors = (row[4] as List?)?.cast<String>() ?? [];
       final cmc = (row[5] as num?)?.toDouble() ?? 0.0;
       final oracleText = (row[6] as String?) ?? '';
+      final colorIdentity = (row[7] as List?)?.cast<String>() ?? const <String>[];
       
       // Coletar cores do deck
       deckColors.addAll(colors);
-      
+
       final cardData = {
         'name': name,
         'type_line': typeLine,
         'mana_cost': manaCost,
         'colors': colors,
+        'color_identity': colorIdentity,
         'cmc': cmc,
         'is_commander': isCmdr,
         'oracle_text': oracleText,
@@ -351,6 +357,9 @@ Future<Response> onRequest(RequestContext context) async {
       
       if (isCmdr) {
         commanders.add(name);
+        commanderColorIdentity.addAll(
+          normalizeColorIdentity(colorIdentity.isNotEmpty ? colorIdentity : colors),
+        );
       } else {
         // Incluir texto da carta para a IA analisar sinergia real
         // Truncar texto muito longo para economizar tokens
@@ -438,7 +447,9 @@ Future<Response> onRequest(RequestContext context) async {
       final minCount = removals.length < additions.length ? removals.length : additions.length;
       
       if (removals.length != additions.length) {
-        print('⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount');
+        Log.w(
+          '⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount',
+        );
         removals = removals.take(minCount).toList();
         additions = additions.take(minCount).toList();
       }
@@ -462,6 +473,40 @@ Future<Response> onRequest(RequestContext context) async {
           (card['name'] as String).toLowerCase() == name.toLowerCase()
         );
       }).toSet().toList();
+
+      // Filtrar adições ilegais para Commander/Brawl (identidade de cor do comandante).
+      // Observação: para colorless commander (identity vazia), apenas cartas colorless passam.
+      final filteredByColorIdentity = <String>[];
+      if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
+        final additionsIdentityResult = await pool.execute(
+          Sql.named('''
+            SELECT name, color_identity, colors
+            FROM cards
+            WHERE name = ANY(@names)
+          '''),
+          parameters: {'names': validAdditions},
+        );
+
+        final identityByName = <String, List<String>>{};
+        for (final row in additionsIdentityResult) {
+          final name = (row[0] as String).toLowerCase();
+          final colorIdentity =
+              (row[1] as List?)?.cast<String>() ?? const <String>[];
+          final colors = (row[2] as List?)?.cast<String>() ?? const <String>[];
+          final identity = (colorIdentity.isNotEmpty ? colorIdentity : colors);
+          identityByName[name] = identity;
+        }
+
+        validAdditions = validAdditions.where((name) {
+          final identity = identityByName[name.toLowerCase()] ?? const <String>[];
+          final ok = isWithinCommanderIdentity(
+            cardIdentity: identity,
+            commanderIdentity: commanderColorIdentity,
+          );
+          if (!ok) filteredByColorIdentity.add(name);
+          return ok;
+        }).toList();
+      }
 
       // Re-aplicar equilíbrio após validação
       final finalMinCount = validRemovals.length < validAdditions.length ? validRemovals.length : validAdditions.length;
@@ -537,7 +582,7 @@ Future<Response> onRequest(RequestContext context) async {
           }
           
         } catch (e) {
-          print('Erro na verificação pós-otimização: $e');
+          Log.e('Erro na verificação pós-otimização: $e');
         }
       }
 
@@ -554,13 +599,29 @@ Future<Response> onRequest(RequestContext context) async {
         'validation_warnings': validationWarnings,
       };
       
+      final warnings = <String, dynamic>{};
+
       // Adicionar avisos se houver cartas inválidas
       if (invalidCards.isNotEmpty) {
-        responseBody['warnings'] = {
+        warnings.addAll({
           'invalid_cards': invalidCards,
           'message': 'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
           'suggestions': suggestions,
+        });
+      }
+
+      // Adicionar avisos se houver cartas filtradas por identidade de cor
+      if (filteredByColorIdentity.isNotEmpty) {
+        warnings['filtered_by_color_identity'] = {
+          'commander_identity': commanderColorIdentity.toList(),
+          'removed_additions': filteredByColorIdentity,
+          'message':
+              'Algumas adições sugeridas pela IA foram removidas por estarem fora da identidade de cor do comandante.',
         };
+      }
+
+      if (warnings.isNotEmpty) {
+        responseBody['warnings'] = warnings;
       }
       
       return Response.json(body: responseBody);
