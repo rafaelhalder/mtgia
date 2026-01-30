@@ -156,7 +156,10 @@ Future<Response> _createDeck(RequestContext context) async {
       }
 
       await DeckRulesService(session).validateAndThrow(
-          format: format.toLowerCase(), cards: normalizedCards);
+        format: format.toLowerCase(),
+        cards: normalizedCards,
+        strict: false,
+      );
 
       // Prepara a inserção das cartas do deck
       final cardInsertSql = Sql.named(

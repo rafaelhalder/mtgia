@@ -9,6 +9,7 @@ class DeckRulesService {
     required String format,
     required List<Map<String, dynamic>>
         cards, // {card_id, quantity, is_commander}
+    bool strict = false,
   }) async {
     final normalizedFormat = format.toLowerCase();
 
@@ -73,7 +74,11 @@ class DeckRulesService {
     // Regras específicas de Commander/Brawl (MVP para o fluxo que você descreveu)
     if (normalizedFormat == 'commander' || normalizedFormat == 'brawl') {
       await _validateCommanderStyle(
-          format: normalizedFormat, cards: cards, cardsData: cardsData);
+        format: normalizedFormat,
+        cards: cards,
+        cardsData: cardsData,
+        strict: strict,
+      );
     }
   }
 
@@ -81,11 +86,16 @@ class DeckRulesService {
     required String format,
     required List<Map<String, dynamic>> cards,
     required Map<String, _CardData> cardsData,
+    required bool strict,
   }) async {
     final commanders =
         cards.where((c) => (c['is_commander'] as bool?) ?? false).toList();
 
     if (commanders.isEmpty) {
+      if (strict) {
+        throw DeckRulesException(
+            'Regra violada: deck $format precisa de 1 comandante selecionado.');
+      }
       final total =
           cards.fold<int>(0, (sum, c) => sum + ((c['quantity'] as int?) ?? 1));
       final maxTotal = format == 'commander' ? 100 : 60;
@@ -141,6 +151,10 @@ class DeckRulesService {
     final total =
         cards.fold<int>(0, (sum, c) => sum + ((c['quantity'] as int?) ?? 1));
     final maxTotal = format == 'commander' ? 100 : 60;
+    if (strict && total != maxTotal) {
+      throw DeckRulesException(
+          'Regra violada: deck $format deve ter exatamente $maxTotal cartas (atual: $total).');
+    }
     if (total > maxTotal) {
       throw DeckRulesException(
           'Regra violada: deck $format não pode exceder $maxTotal cartas (atual: $total).');

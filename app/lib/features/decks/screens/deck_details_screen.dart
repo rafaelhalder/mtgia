@@ -48,6 +48,11 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
             tooltip: 'Otimizar Deck com IA',
             onPressed: () => _showOptimizationOptions(context),
           ),
+          IconButton(
+            icon: const Icon(Icons.verified_outlined),
+            tooltip: 'Validar/Finalizar Deck',
+            onPressed: () => _validateDeck(context),
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -259,6 +264,47 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
         },
       ),
     );
+  }
+
+  Future<void> _validateDeck(BuildContext context) async {
+    final provider = context.read<DeckProvider>();
+    final deckId = widget.deckId;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final res = await provider.validateDeck(deckId);
+      if (!context.mounted) return;
+      Navigator.pop(context);
+
+      final ok = res['ok'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? '✅ Deck válido!' : 'Deck inválido'),
+          backgroundColor: ok ? Colors.green : Theme.of(context).colorScheme.error,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Deck inválido'),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void _showCardDetails(BuildContext context, DeckCardItem card) {

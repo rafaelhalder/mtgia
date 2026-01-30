@@ -118,8 +118,11 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             .whereType<Map>()
             .map((m) => m.cast<String, dynamic>())
             .toList();
-        await DeckRulesService(session)
-            .validateAndThrow(format: currentFormat, cards: normalized);
+        await DeckRulesService(session).validateAndThrow(
+          format: currentFormat,
+          cards: normalized,
+          strict: false,
+        );
 
         // Apaga as cartas antigas
         await session.execute(
