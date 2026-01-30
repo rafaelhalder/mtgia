@@ -83,12 +83,12 @@ _QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int 
   final conditions = <String>[];
 
   if (nameFilter != null && nameFilter.isNotEmpty) {
-    conditions.add('name ILIKE @name');
+    conditions.add('c.name ILIKE @name');
     params['name'] = '%$nameFilter%';
   }
 
   if (setFilter != null && setFilter.isNotEmpty) {
-    conditions.add('set_code = @set');
+    conditions.add('c.set_code = @set');
     params['set'] = setFilter;
   }
 
