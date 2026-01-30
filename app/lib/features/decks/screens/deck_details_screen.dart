@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/deck_provider.dart';
@@ -774,7 +775,22 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+      builder:
+          (ctx) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LinearProgressIndicator(),
+                    SizedBox(height: 12),
+                    Text('Gerando sugestões...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
     );
     isLoadingDialogOpen = true;
 
@@ -915,21 +931,22 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Cancelar'),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    await _copyOptimizeDebug(
-                      deckId: widget.deckId,
-                      archetype: archetype,
-                      bracket: _selectedBracket,
-                      result: result,
-                    );
-                    if (!ctx.mounted) return;
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(content: Text('Debug copiado')),
-                    );
-                  },
-                  child: const Text('Copiar debug'),
-                ),
+                if (kDebugMode)
+                  TextButton(
+                    onPressed: () async {
+                      await _copyOptimizeDebug(
+                        deckId: widget.deckId,
+                        archetype: archetype,
+                        bracket: _selectedBracket,
+                        result: result,
+                      );
+                      if (!ctx.mounted) return;
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Debug copiado')),
+                      );
+                    },
+                    child: const Text('Copiar debug'),
+                  ),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
                   child: const Text('Aplicar Mudanças'),
@@ -950,7 +967,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
+                  LinearProgressIndicator(),
                   SizedBox(height: 16),
                   Text(
                     'Aplicando mudanças...',
@@ -963,7 +980,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       isLoadingDialogOpen = true;
 
       // Aplicar as mudanças via DeckProvider
-      if (mode == 'complete' && additionsDetailed.isNotEmpty) {
+              if (mode == 'complete' && additionsDetailed.isNotEmpty) {
         // Completar deck: adicionar em lote (mais rápido e evita N chamadas).
         await context.read<DeckProvider>().addCardsBulk(
           deckId: widget.deckId,
@@ -972,7 +989,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               .map(
                 (m) => {
                   'card_id': m['card_id'],
-                  'quantity': 1,
+                  'quantity': (m['quantity'] as int?) ?? 1,
                   'is_commander': false,
                 },
               )

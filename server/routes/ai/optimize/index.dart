@@ -523,11 +523,15 @@ Future<Response> onRequest(RequestContext context) async {
         );
       }).toSet().toList();
       
+      // No modo complete, preservamos repetição (para básicos) e ordem.
+      // No modo optimize (swaps), mantemos set para evitar duplicatas.
       var validAdditions = sanitizedAdditions.where((name) {
-        return (validation['valid'] as List).any((card) => 
-          (card['name'] as String).toLowerCase() == name.toLowerCase()
-        );
-      }).toSet().toList();
+        return (validation['valid'] as List).any((card) =>
+            (card['name'] as String).toLowerCase() == name.toLowerCase());
+      }).toList();
+      if (!isComplete) {
+        validAdditions = validAdditions.toSet().toList();
+      }
 
       // Filtrar adições ilegais para Commander/Brawl (identidade de cor do comandante).
       // Observação: para colorless commander (identity vazia), apenas cartas colorless passam.
@@ -594,7 +598,58 @@ Future<Response> onRequest(RequestContext context) async {
         );
 
         blockedByBracket.addAll(decision.blocked);
-        validAdditions = decision.allowed;
+        // Modo complete pode conter repetição; para a decisão, usamos os nomes únicos do "allowed"
+        // e depois re-aplicamos mantendo repetição quando possível.
+        final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
+        validAdditions = validAdditions
+            .where((n) => allowedSet.contains(n.toLowerCase()))
+            .toList();
+      }
+
+      // Top-up determinístico no modo complete:
+      // se depois de validações/filtros ainda faltarem cartas para atingir o target, completa com básicos.
+      final additionsDetailed = <Map<String, dynamic>>[];
+      if (isComplete) {
+        final targetAdditions = (jsonResponse['target_additions'] as int?) ?? 0;
+        final desired = targetAdditions > 0 ? targetAdditions : validAdditions.length;
+
+        // Agrega as adições atuais por nome (quantidade 1 por ocorrência)
+        final countsByName = <String, int>{};
+        for (final n in validAdditions) {
+          countsByName[n] = (countsByName[n] ?? 0) + 1;
+        }
+
+        // Se faltar, adiciona básicos para preencher
+        var missing = desired - countsByName.values.fold<int>(0, (a, b) => a + b);
+        if (missing > 0) {
+          final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+          final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+
+          if (basicsWithIds.isNotEmpty) {
+            final keys = basicsWithIds.keys.toList();
+            var i = 0;
+            while (missing > 0) {
+              final name = keys[i % keys.length];
+              countsByName[name] = (countsByName[name] ?? 0) + 1;
+              missing--;
+              i++;
+            }
+          }
+        }
+
+        // Converte para additions_detailed com card_id/quantity
+        for (final entry in countsByName.entries) {
+          final v = validByNameLower[entry.key.toLowerCase()];
+          if (v == null) continue;
+          additionsDetailed.add({
+            'name': v['name'],
+            'card_id': v['id'],
+            'quantity': entry.value,
+          });
+        }
+
+        // Mantém additions como lista simples (única) para UI; o app aplica via additions_detailed.
+        validAdditions = additionsDetailed.map((e) => e['name'] as String).toList();
       }
 
       // Re-aplicar equilíbrio após validação
@@ -693,12 +748,14 @@ Future<Response> onRequest(RequestContext context) async {
         'validation_warnings': validationWarnings,
         'bracket': bracket,
       };
-
-      responseBody['additions_detailed'] = validAdditions.map((name) {
-        final v = validByNameLower[name.toLowerCase()];
-        if (v == null) return {'name': name};
-        return {'name': v['name'], 'card_id': v['id']};
-      }).toList();
+      
+      responseBody['additions_detailed'] = isComplete
+          ? additionsDetailed
+          : validAdditions.map((name) {
+              final v = validByNameLower[name.toLowerCase()];
+              if (v == null) return {'name': name};
+              return {'name': v['name'], 'card_id': v['id'], 'quantity': 1};
+            }).toList();
       responseBody['removals_detailed'] = validRemovals.map((name) {
         final v = validByNameLower[name.toLowerCase()];
         if (v == null) return {'name': name};
@@ -748,4 +805,35 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'error': e.toString()},
     );
   }
+}
+
+List<String> _basicLandNamesForIdentity(Set<String> identity) {
+  if (identity.isEmpty) return const ['Wastes'];
+  final names = <String>[];
+  if (identity.contains('W')) names.add('Plains');
+  if (identity.contains('U')) names.add('Island');
+  if (identity.contains('B')) names.add('Swamp');
+  if (identity.contains('R')) names.add('Mountain');
+  if (identity.contains('G')) names.add('Forest');
+  return names.isEmpty ? const ['Wastes'] : names;
+}
+
+Future<Map<String, String>> _loadBasicLandIds(Pool pool, List<String> names) async {
+  if (names.isEmpty) return const {};
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT name, id::text
+      FROM cards
+      WHERE name = ANY(@names)
+      ORDER BY name ASC
+    '''),
+    parameters: {'names': names},
+  );
+  final map = <String, String>{};
+  for (final row in result) {
+    final n = row[0] as String;
+    final id = row[1] as String;
+    map[n] = id;
+  }
+  return map;
 }
