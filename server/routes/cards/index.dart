@@ -14,15 +14,16 @@ Future<Response> onRequest(RequestContext context) async {
   final params = context.request.uri.queryParameters;
   final nameFilter = params['name'];
   final setFilter = params['set']?.trim();
-  
+
   // Paginação
   final limit = int.tryParse(params['limit'] ?? '50') ?? 50;
   final page = int.tryParse(params['page'] ?? '1') ?? 1;
   final offset = (page - 1) * limit;
 
   try {
-    final query = _buildQuery(nameFilter, setFilter, limit, offset, includeSetInfo: hasSets);
-    
+    final query = _buildQuery(nameFilter, setFilter, limit, offset,
+        includeSetInfo: hasSets);
+
     final queryResult = await conn.execute(
       Sql.named(query.sql),
       parameters: query.parameters,
@@ -39,10 +40,15 @@ Future<Response> onRequest(RequestContext context) async {
         'type_line': map['type_line'],
         'oracle_text': map['oracle_text'],
         'colors': map['colors'],
+        'color_identity': map['color_identity'],
         'image_url': map['image_url'],
         'set_code': map['set_code'],
         if (hasSets) 'set_name': map['set_name'],
-        if (hasSets) 'set_release_date': (map['set_release_date'] as DateTime?)?.toIso8601String().split('T').first,
+        if (hasSets)
+          'set_release_date': (map['set_release_date'] as DateTime?)
+              ?.toIso8601String()
+              .split('T')
+              .first,
         'rarity': map['rarity'],
       };
     }).toList();
@@ -53,7 +59,6 @@ Future<Response> onRequest(RequestContext context) async {
       'limit': limit,
       'total_returned': cards.length,
     });
-
   } catch (e) {
     return Response.json(
       statusCode: 500,
@@ -68,7 +73,9 @@ class _QueryBuilder {
   _QueryBuilder(this.sql, this.parameters);
 }
 
-_QueryBuilder _buildQuery(String? nameFilter, String? setFilter, int limit, int offset, {required bool includeSetInfo}) {
+_QueryBuilder _buildQuery(
+    String? nameFilter, String? setFilter, int limit, int offset,
+    {required bool includeSetInfo}) {
   var sql = includeSetInfo
       ? '''
     SELECT

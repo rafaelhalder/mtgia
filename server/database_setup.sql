@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS cards (
     type_line TEXT,
     oracle_text TEXT,
     colors TEXT[], -- Array de cores ex: {'W', 'U'}
+    color_identity TEXT[], -- Identidade de cor (Commander), ex: {'W','U'}
     image_url TEXT, -- URL da imagem na Scryfall
     set_code TEXT,
     rarity TEXT,
@@ -39,6 +40,8 @@ CREATE TABLE IF NOT EXISTS cards (
 
 -- Índice para busca rápida por nome
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards (name);
+-- Índice GIN para buscas por identidade (Commander/Brawl)
+CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN (color_identity);
 
 -- 2.1. Tabela de Sets/Edições (para exibir nome e data da edição)
 -- Fonte: MTGJSON SetList.json

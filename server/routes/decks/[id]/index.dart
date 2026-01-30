@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/deck_rules_service.dart';
+
 Future<Response> onRequest(RequestContext context, String deckId) async {
   if (context.request.method == HttpMethod.get) {
     return _getDeckById(context, deckId);
@@ -29,7 +31,8 @@ Future<Response> _deleteDeck(RequestContext context, String deckId) async {
     await conn.runTx((session) async {
       // 1. Verifica se o deck existe e pertence ao usuário antes de deletar
       final result = await session.execute(
-        Sql.named('DELETE FROM decks WHERE id = @deckId AND user_id = @userId RETURNING id'),
+        Sql.named(
+            'DELETE FROM decks WHERE id = @deckId AND user_id = @userId RETURNING id'),
         parameters: {'deckId': deckId, 'userId': userId},
       );
 
@@ -46,8 +49,9 @@ Future<Response> _deleteDeck(RequestContext context, String deckId) async {
       // );
     });
 
-    return Response(statusCode: HttpStatus.noContent); // 204 No Content é a resposta padrão para sucesso em DELETE
-
+    return Response(
+        statusCode: HttpStatus
+            .noContent); // 204 No Content é a resposta padrão para sucesso em DELETE
   } on Exception catch (e) {
     if (e.toString().contains('permission denied')) {
       return Response.json(statusCode: 404, body: {'error': e.toString()});
@@ -74,7 +78,8 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
     final updatedDeck = await conn.runTx((session) async {
       // 1. Verifica se o deck existe e pertence ao usuário
       final deckCheck = await session.execute(
-        Sql.named('SELECT id, name, format, description FROM decks WHERE id = @deckId AND user_id = @userId'),
+        Sql.named(
+            'SELECT id, name, format, description FROM decks WHERE id = @deckId AND user_id = @userId'),
         parameters: {'deckId': deckId, 'userId': userId},
       );
 
@@ -109,67 +114,12 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 
       // 3. Se uma nova lista de cartas for enviada, substitui a antiga
       if (cards != null) {
-        // --- VALIDAÇÃO DE REGRAS OTIMIZADA (Batch Query) ---
-        final cardIds = cards.map((c) => c['card_id']).toList();
-        
-        if (cardIds.isNotEmpty) {
-          // 1. Buscar dados de TODAS as cartas de uma vez
-          final cardsDataResult = await session.execute(
-            Sql.named('SELECT id, name, type_line FROM cards WHERE id = ANY(@ids)'),
-            parameters: {'ids': cardIds},
-          );
-          final cardsDataMap = { 
-            for (var row in cardsDataResult) row[0] as String : {'name': row[1] as String, 'type_line': row[2] as String} 
-          };
-
-          // 2. Buscar legalidades de TODAS as cartas de uma vez
-          final legalitiesResult = await session.execute(
-            Sql.named('SELECT card_id, status FROM card_legalities WHERE card_id = ANY(@ids) AND format = @format'),
-            parameters: {'ids': cardIds, 'format': currentFormat},
-          );
-          final legalitiesMap = { 
-            for (var row in legalitiesResult) row[0] as String : row[1] as String 
-          };
-
-          for (final card in cards) {
-             final cardId = card['card_id'];
-             final quantity = card['quantity'] as int;
-             
-             final cardInfo = cardsDataMap[cardId];
-             
-             if (cardInfo != null) {
-               final cardName = cardInfo['name'] as String;
-               final typeLine = (cardInfo['type_line'] as String).toLowerCase();
-               
-               // Regra 1: Limite de Cópias
-               final isBasicLand = typeLine.contains('basic land');
-               int limit = 4;
-               if (currentFormat == 'commander' || currentFormat == 'brawl') {
-                 limit = 1;
-               }
-               
-               if (!isBasicLand && quantity > limit) {
-                 throw Exception('Regra violada: "$cardName" excede o limite de $limit cópia(s) para o formato $currentFormat.');
-               }
-               
-               // Regra 2: Legalidade (Banidas/Restritas)
-               final status = legalitiesMap[cardId];
-               
-               if (status != null) {
-                 if (status == 'banned') {
-                   throw Exception('Regra violada: "$cardName" é BANIDA no formato $currentFormat.');
-                 }
-                 if (status == 'not_legal') {
-                   throw Exception('Regra violada: "$cardName" não é válida no formato $currentFormat.');
-                 }
-                 if (status == 'restricted' && quantity > 1) {
-                   throw Exception('Regra violada: "$cardName" é RESTRITA no formato $currentFormat (máx. 1).');
-                 }
-               }
-             }
-          }
-        }
-        // --- FIM DA VALIDAÇÃO ---
+        final normalized = cards
+            .whereType<Map>()
+            .map((m) => m.cast<String, dynamic>())
+            .toList();
+        await DeckRulesService(session)
+            .validateAndThrow(format: currentFormat, cards: normalized);
 
         // Apaga as cartas antigas
         await session.execute(
@@ -183,21 +133,22 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
           // INSERT INTO deck_cards (...) VALUES ($1, $2...), ($5, $6...), ...
           final values = <String>[];
           final params = <String, dynamic>{'deckId': deckId};
-          
+
           for (var i = 0; i < cards.length; i++) {
             final card = cards[i];
             final pId = 'c$i';
             final pQty = 'q$i';
             final pCmdr = 'cmd$i';
-            
+
             values.add('(@deckId, @$pId, @$pQty, @$pCmdr)');
             params[pId] = card['card_id'];
             params[pQty] = card['quantity'];
             params[pCmdr] = card['is_commander'] ?? false;
           }
-          
-          final batchInsertSql = 'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${values.join(', ')}';
-          
+
+          final batchInsertSql =
+              'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${values.join(', ')}';
+
           await session.execute(
             Sql.named(batchInsertSql),
             parameters: params,
@@ -212,18 +163,22 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
       );
       final deckMap = result.first.toColumnMap();
       if (deckMap['created_at'] is DateTime) {
-        deckMap['created_at'] = (deckMap['created_at'] as DateTime).toIso8601String();
+        deckMap['created_at'] =
+            (deckMap['created_at'] as DateTime).toIso8601String();
       }
       return deckMap;
     });
 
     return Response.json(body: {'success': true, 'deck': updatedDeck});
-
+  } on DeckRulesException catch (e) {
+    return Response.json(
+        statusCode: HttpStatus.badRequest, body: {'error': e.message});
   } on Exception catch (e) {
     if (e.toString().contains('permission denied')) {
       return Response.json(statusCode: 404, body: {'error': e.toString()});
     }
-    return Response.json(statusCode: 500, body: {'error': 'Failed to update deck: $e'});
+    return Response.json(
+        statusCode: 500, body: {'error': 'Failed to update deck: $e'});
   }
 }
 
@@ -247,13 +202,16 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     if (deckResult.isEmpty) {
       return Response.json(
         statusCode: HttpStatus.notFound,
-        body: {'error': 'Deck not found or you do not have permission to view it.'},
+        body: {
+          'error': 'Deck not found or you do not have permission to view it.'
+        },
       );
     }
 
     final deckInfo = deckResult.first.toColumnMap();
     if (deckInfo['created_at'] is DateTime) {
-      deckInfo['created_at'] = (deckInfo['created_at'] as DateTime).toIso8601String();
+      deckInfo['created_at'] =
+          (deckInfo['created_at'] as DateTime).toIso8601String();
     }
 
     // 2. Buscar todas as cartas associadas a esse deck com detalhes
@@ -268,6 +226,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
           c.type_line,
           c.oracle_text,
           c.colors,
+          c.color_identity,
           c.image_url,
           c.set_code,
           c.rarity
@@ -328,7 +287,14 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
 
     final groupedMainBoard = <String, List<Map<String, dynamic>>>{};
     final manaCurve = <String, int>{};
-    final colorDistribution = <String, int>{'W': 0, 'U': 0, 'B': 0, 'R': 0, 'G': 0, 'C': 0};
+    final colorDistribution = <String, int>{
+      'W': 0,
+      'U': 0,
+      'B': 0,
+      'R': 0,
+      'G': 0,
+      'C': 0
+    };
 
     for (final card in cardsList) {
       // Grouping
@@ -343,11 +309,12 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
       // Stats Calculation (ignoring lands for curve usually, but let's include everything that has a cost)
       final cost = card['mana_cost'] as String?;
       final typeLine = (card['type_line'] as String? ?? '').toLowerCase();
-      
+
       if (!typeLine.contains('land')) {
         final cmc = calculateCmc(cost);
         final cmcKey = cmc >= 7 ? '7+' : cmc.toString();
-        manaCurve[cmcKey] = (manaCurve[cmcKey] ?? 0) + (card['quantity'] as int);
+        manaCurve[cmcKey] =
+            (manaCurve[cmcKey] ?? 0) + (card['quantity'] as int);
       }
 
       // Color Distribution
@@ -355,18 +322,21 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
       if (colors != null && colors.isNotEmpty) {
         for (final color in colors) {
           if (colorDistribution.containsKey(color)) {
-            colorDistribution[color as String] = colorDistribution[color]! + (card['quantity'] as int);
+            colorDistribution[color as String] =
+                colorDistribution[color]! + (card['quantity'] as int);
           }
         }
       } else if (cost != null && cost.contains('{C}')) {
-         colorDistribution['C'] = colorDistribution['C']! + (card['quantity'] as int);
+        colorDistribution['C'] =
+            colorDistribution['C']! + (card['quantity'] as int);
       }
     }
 
     final responseBody = {
       ...deckInfo,
       'stats': {
-        'total_cards': cardsList.fold<int>(0, (sum, item) => sum + (item['quantity'] as int)),
+        'total_cards': cardsList.fold<int>(
+            0, (sum, item) => sum + (item['quantity'] as int)),
         'unique_cards': cardsList.length,
         'mana_curve': manaCurve,
         'color_distribution': colorDistribution,
@@ -377,7 +347,6 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     };
 
     return Response.json(body: responseBody);
-
   } catch (e) {
     return Response.json(
       statusCode: HttpStatus.internalServerError,

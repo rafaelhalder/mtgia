@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/deck_provider.dart';
 import '../models/deck_card_item.dart';
+import '../models/deck_details.dart';
 import '../../cards/providers/card_provider.dart';
 import '../widgets/deck_analysis_tab.dart';
 
@@ -92,6 +93,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
           if (deck == null) {
             return const Center(child: Text('Deck não encontrado'));
           }
+          final format = deck.format.toLowerCase();
+          final isCommanderFormat = format == 'commander' || format == 'brawl';
+          final maxCards = format == 'commander' ? 100 : (format == 'brawl' ? 60 : null);
+          final totalCards = _totalCards(deck);
 
           return TabBarView(
             controller: _tabController,
@@ -105,6 +110,35 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
                     Text(deck.name, style: theme.textTheme.headlineMedium),
                     const SizedBox(height: 8),
                     Chip(label: Text(deck.format.toUpperCase())),
+                    const SizedBox(height: 8),
+                    Text(
+                      maxCards == null ? 'Cartas: $totalCards' : 'Cartas: $totalCards/$maxCards',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    if (isCommanderFormat && deck.commander.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.errorContainer.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: theme.colorScheme.errorContainer),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: theme.colorScheme.error),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text('Selecione um comandante para aplicar regras e filtros de identidade de cor.'),
+                            ),
+                            TextButton(
+                              onPressed: () => context.go('/decks/${widget.deckId}/search'),
+                              child: const Text('Selecionar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     if (deck.description != null) ...[
                       Text('Descrição', style: theme.textTheme.titleMedium),
@@ -134,6 +168,14 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> with SingleTicker
               ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (maxCards != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Total: $totalCards/$maxCards',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
                   ...deck.mainBoard.entries.map((entry) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,6 +469,19 @@ class _ManaCostRow extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+int _totalCards(DeckDetails deck) {
+  var total = 0;
+  for (final c in deck.commander) {
+    total += c.quantity;
+  }
+  for (final list in deck.mainBoard.values) {
+    for (final c in list) {
+      total += c.quantity;
+    }
+  }
+  return total;
 }
 
 class _ManaSymbol extends StatelessWidget {

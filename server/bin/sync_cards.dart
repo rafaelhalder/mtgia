@@ -51,8 +51,12 @@ Opções:
   final sinceDays = _parseSinceDays(args) ?? 45;
 
   final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
-  final environment = (env['ENVIRONMENT'] ?? Platform.environment['ENVIRONMENT'] ?? 'development').toLowerCase();
-  print('🔄 Sync de cartas (ENVIRONMENT=$environment)${full ? ' [FULL]' : ' [INCREMENTAL]'}${force ? ' [FORÇADO]' : ''}');
+  final environment = (env['ENVIRONMENT'] ??
+          Platform.environment['ENVIRONMENT'] ??
+          'development')
+      .toLowerCase();
+  print(
+      '🔄 Sync de cartas (ENVIRONMENT=$environment)${full ? ' [FULL]' : ' [INCREMENTAL]'}${force ? ' [FORÇADO]' : ''}');
 
   final db = Database();
   await db.connect();
@@ -61,6 +65,7 @@ Opções:
   final startedAt = DateTime.now();
   try {
     await _ensureSyncStateTable(pool);
+    await _ensureCardsColorIdentity(pool);
     await _ensureSetsTable(pool);
     await _syncSetsFromSetList(pool);
 
@@ -70,14 +75,17 @@ Opções:
 
     final lastVersion = await _getSyncState(pool, 'mtgjson_meta_version');
     final lastSyncAtStr = await _getSyncState(pool, 'cards_last_sync_at');
-    final lastSyncAt = lastSyncAtStr != null ? DateTime.tryParse(lastSyncAtStr) : null;
+    final lastSyncAt =
+        lastSyncAtStr != null ? DateTime.tryParse(lastSyncAtStr) : null;
 
     if (!force && lastVersion != null && lastVersion == remoteVersion) {
-      print('✅ MTGJSON já está atualizado (version=$remoteVersion, date=$remoteDate). Nada a fazer.');
+      print(
+          '✅ MTGJSON já está atualizado (version=$remoteVersion, date=$remoteDate). Nada a fazer.');
       return;
     }
 
-    print('📦 MTGJSON remoto: version=$remoteVersion, date=$remoteDate (local=$lastVersion)');
+    print(
+        '📦 MTGJSON remoto: version=$remoteVersion, date=$remoteDate (local=$lastVersion)');
 
     final beforeCards = await _count(pool, 'cards');
     final beforeLegalities = await _count(pool, 'card_legalities');
@@ -93,7 +101,8 @@ Opções:
 
     if (full || effectiveLastSyncAt == null) {
       final atomicFile = await _downloadAtomicCards(force: force);
-      final decoded = jsonDecode(await atomicFile.readAsString()) as Map<String, dynamic>;
+      final decoded =
+          jsonDecode(await atomicFile.readAsString()) as Map<String, dynamic>;
       final cardsMap = decoded['data'] as Map<String, dynamic>;
 
       processedCards = await pool.runTx((session) async {
@@ -106,17 +115,21 @@ Opções:
     } else {
       final setCodes = await _getNewSetCodesSince(effectiveLastSyncAt);
       if (setCodes.isEmpty) {
-        print('✅ Nenhum set novo detectado desde ${effectiveLastSyncAt.toIso8601String()}. Atualizando apenas checkpoint de versão.');
+        print(
+            '✅ Nenhum set novo detectado desde ${effectiveLastSyncAt.toIso8601String()}. Atualizando apenas checkpoint de versão.');
         processedCards = 0;
         processedLegalities = 0;
       } else {
-        print('🆕 Sets novos desde ${effectiveLastSyncAt.toIso8601String()}: ${setCodes.join(', ')}');
+        print(
+            '🆕 Sets novos desde ${effectiveLastSyncAt.toIso8601String()}: ${setCodes.join(', ')}');
         processedCards = 0;
         processedLegalities = 0;
 
         for (final code in setCodes) {
           final setData = await _fetchSetJson(code);
-          final cards = (setData['cards'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+          final cards =
+              (setData['cards'] as List?)?.cast<Map<String, dynamic>>() ??
+                  const [];
           if (cards.isEmpty) continue;
 
           processedCards += await pool.runTx((session) async {
@@ -134,14 +147,16 @@ Opções:
 
     await _setSyncState(pool, 'mtgjson_meta_version', remoteVersion);
     await _setSyncState(pool, 'mtgjson_meta_date', remoteDate);
-    await _setSyncState(pool, 'cards_last_sync_at', DateTime.now().toIso8601String());
+    await _setSyncState(
+        pool, 'cards_last_sync_at', DateTime.now().toIso8601String());
 
     await _logSync(
       pool,
       syncType: 'cards',
       status: 'success',
       recordsInserted: (afterCards - beforeCards).clamp(0, 1 << 31),
-      recordsUpdated: (processedCards - (afterCards - beforeCards)).clamp(0, 1 << 31),
+      recordsUpdated:
+          (processedCards - (afterCards - beforeCards)).clamp(0, 1 << 31),
       recordsDeleted: 0,
       startedAt: startedAt,
       finishedAt: DateTime.now(),
@@ -153,7 +168,9 @@ Opções:
       syncType: 'card_legalities',
       status: 'success',
       recordsInserted: (afterLegalities - beforeLegalities).clamp(0, 1 << 31),
-      recordsUpdated: (processedLegalities - (afterLegalities - beforeLegalities)).clamp(0, 1 << 31),
+      recordsUpdated:
+          (processedLegalities - (afterLegalities - beforeLegalities))
+              .clamp(0, 1 << 31),
       recordsDeleted: 0,
       startedAt: startedAt,
       finishedAt: DateTime.now(),
@@ -162,7 +179,8 @@ Opções:
 
     print('✅ Sync concluído.');
     print('  - Cards: $processedCards processadas (total $afterCards)');
-    print('  - Legalities: $processedLegalities processadas (total $afterLegalities)');
+    print(
+        '  - Legalities: $processedLegalities processadas (total $afterLegalities)');
   } catch (e) {
     await _logSync(
       pool,
@@ -179,6 +197,14 @@ Opções:
   } finally {
     await db.close();
   }
+}
+
+Future<void> _ensureCardsColorIdentity(Pool pool) async {
+  // Idempotente: para bases antigas.
+  await pool.execute(Sql.named(
+      'ALTER TABLE cards ADD COLUMN IF NOT EXISTS color_identity TEXT[]'));
+  await pool.execute(Sql.named(
+      'CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN (color_identity)'));
 }
 
 int? _parseSinceDays(List<String> args) {
@@ -198,7 +224,8 @@ Future<Map<String, dynamic>> _fetchMtgJsonMeta() async {
   if (res.statusCode != 200) {
     throw Exception('Falha ao baixar Meta.json: ${res.statusCode}');
   }
-  final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  final decoded =
+      jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   final data = decoded['data'];
   if (data is! Map<String, dynamic>) {
     throw Exception('Meta.json inesperado: campo data inválido');
@@ -211,7 +238,8 @@ Future<List<String>> _getNewSetCodesSince(DateTime since) async {
   if (res.statusCode != 200) {
     throw Exception('Falha ao baixar SetList.json: ${res.statusCode}');
   }
-  final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  final decoded =
+      jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   final data = decoded['data'];
   if (data is! List) {
     throw Exception('SetList.json inesperado: campo data inválido');
@@ -225,7 +253,10 @@ Future<List<String>> _getNewSetCodesSince(DateTime since) async {
     if (item is! Map) continue;
     final code = item['code']?.toString();
     final releaseDateStr = item['releaseDate']?.toString();
-    if (code == null || code.isEmpty || releaseDateStr == null || releaseDateStr.isEmpty) continue;
+    if (code == null ||
+        code.isEmpty ||
+        releaseDateStr == null ||
+        releaseDateStr.isEmpty) continue;
 
     final releaseDate = DateTime.tryParse(releaseDateStr);
     if (releaseDate == null) continue;
@@ -245,7 +276,8 @@ Future<Map<String, dynamic>> _fetchSetJson(String setCode) async {
   if (res.statusCode != 200) {
     throw Exception('Falha ao baixar set $setCode: ${res.statusCode}');
   }
-  final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  final decoded =
+      jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   final data = decoded['data'];
   if (data is! Map<String, dynamic>) {
     throw Exception('Set $setCode inesperado: campo data inválido');
@@ -266,7 +298,8 @@ Future<File> _downloadAtomicCards({required bool force}) async {
     throw Exception('Falha ao baixar AtomicCards.json: ${res.statusCode}');
   }
   await file.writeAsBytes(res.bodyBytes);
-  print('✅ Download concluído: $_atomicCardsFileName (${res.bodyBytes.length} bytes)');
+  print(
+      '✅ Download concluído: $_atomicCardsFileName (${res.bodyBytes.length} bytes)');
   return file;
 }
 
@@ -305,7 +338,8 @@ Future<void> _syncSetsFromSetList(Pool pool) async {
   if (res.statusCode != 200) {
     throw Exception('Falha ao baixar SetList.json: ${res.statusCode}');
   }
-  final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  final decoded =
+      jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   final data = decoded['data'];
   if (data is! List) {
     throw Exception('SetList.json inesperado: campo data inválido');
@@ -333,10 +367,12 @@ Future<void> _syncSetsFromSetList(Pool pool) async {
         if (item is! Map) continue;
         final code = item['code']?.toString().trim();
         final name = item['name']?.toString().trim();
-        if (code == null || code.isEmpty || name == null || name.isEmpty) continue;
+        if (code == null || code.isEmpty || name == null || name.isEmpty)
+          continue;
 
         final releaseDateStr = item['releaseDate']?.toString();
-        final releaseDate = releaseDateStr != null ? DateTime.tryParse(releaseDateStr) : null;
+        final releaseDate =
+            releaseDateStr != null ? DateTime.tryParse(releaseDateStr) : null;
 
         await stmt.run([
           code,
@@ -419,14 +455,15 @@ Future<void> _logSync(
   }
 }
 
-Future<int> _upsertCardsFromAtomic(Session session, Map<String, dynamic> cardsMap) async {
+Future<int> _upsertCardsFromAtomic(
+    Session session, Map<String, dynamic> cardsMap) async {
   print('🃏 Upsert de cards...');
 
   final stmt = await session.prepare('''
     INSERT INTO cards (
-      scryfall_id, name, mana_cost, type_line, oracle_text, colors, image_url, set_code, rarity
+      scryfall_id, name, mana_cost, type_line, oracle_text, colors, color_identity, image_url, set_code, rarity
     ) VALUES (
-      \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9
+      \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10
     )
     ON CONFLICT (scryfall_id) DO UPDATE SET
       name = EXCLUDED.name,
@@ -434,6 +471,7 @@ Future<int> _upsertCardsFromAtomic(Session session, Map<String, dynamic> cardsMa
       type_line = EXCLUDED.type_line,
       oracle_text = EXCLUDED.oracle_text,
       colors = EXCLUDED.colors,
+      color_identity = EXCLUDED.color_identity,
       image_url = EXCLUDED.image_url,
       set_code = EXCLUDED.set_code,
       rarity = EXCLUDED.rarity
@@ -466,15 +504,23 @@ Future<int> _upsertCardsFromAtomic(Session session, Map<String, dynamic> cardsMa
       final manaCost = chosen['manaCost']?.toString();
       final typeLine = chosen['type']?.toString();
       final oracleText = chosen['text']?.toString();
-      final colors = (chosen['colors'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+      final colors =
+          (chosen['colors'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[];
+      final colorIdentity = (chosen['colorIdentity'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[];
 
-      final printing = (chosen['printings'] as List?)?.cast<dynamic>().firstOrNull;
+      final printing =
+          (chosen['printings'] as List?)?.cast<dynamic>().firstOrNull;
       final setCode = printing?.toString();
       final rarity = chosen['rarity']?.toString();
 
       // URL por nome exato (simples e funciona com Oracle ID no banco para validar depois).
       final encodedName = Uri.encodeQueryComponent(name);
-      final imageUrl = 'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
+      final imageUrl =
+          'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
 
       await stmt.run([
         oracleId,
@@ -483,6 +529,7 @@ Future<int> _upsertCardsFromAtomic(Session session, Map<String, dynamic> cardsMa
         typeLine,
         oracleText,
         colors,
+        colorIdentity,
         imageUrl,
         setCode,
         rarity,
@@ -501,14 +548,15 @@ Future<int> _upsertCardsFromAtomic(Session session, Map<String, dynamic> cardsMa
   return processed;
 }
 
-Future<int> _upsertCardsFromSet(Session session, List<Map<String, dynamic>> cards, String setCode) async {
+Future<int> _upsertCardsFromSet(
+    Session session, List<Map<String, dynamic>> cards, String setCode) async {
   print('🃏 Upsert de cards (set=$setCode)...');
 
   final stmt = await session.prepare('''
     INSERT INTO cards (
-      scryfall_id, name, mana_cost, type_line, oracle_text, colors, image_url, set_code, rarity
+      scryfall_id, name, mana_cost, type_line, oracle_text, colors, color_identity, image_url, set_code, rarity
     ) VALUES (
-      \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9
+      \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10
     )
     ON CONFLICT (scryfall_id) DO UPDATE SET
       name = EXCLUDED.name,
@@ -516,6 +564,7 @@ Future<int> _upsertCardsFromSet(Session session, List<Map<String, dynamic>> card
       type_line = EXCLUDED.type_line,
       oracle_text = EXCLUDED.oracle_text,
       colors = EXCLUDED.colors,
+      color_identity = EXCLUDED.color_identity,
       image_url = EXCLUDED.image_url,
       set_code = EXCLUDED.set_code,
       rarity = EXCLUDED.rarity
@@ -534,11 +583,17 @@ Future<int> _upsertCardsFromSet(Session session, List<Map<String, dynamic>> card
       final manaCost = card['manaCost']?.toString();
       final typeLine = card['type']?.toString();
       final oracleText = card['text']?.toString();
-      final colors = (card['colors'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+      final colors =
+          (card['colors'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[];
+      final colorIdentity =
+          (card['colorIdentity'] as List?)?.map((e) => e.toString()).toList() ??
+              const <String>[];
       final rarity = card['rarity']?.toString();
 
       final encodedName = Uri.encodeQueryComponent(name);
-      final imageUrl = 'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
+      final imageUrl =
+          'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
 
       await stmt.run([
         oracleId,
@@ -547,6 +602,7 @@ Future<int> _upsertCardsFromSet(Session session, List<Map<String, dynamic>> card
         typeLine,
         oracleText,
         colors,
+        colorIdentity,
         imageUrl,
         setCode,
         rarity,
@@ -560,7 +616,8 @@ Future<int> _upsertCardsFromSet(Session session, List<Map<String, dynamic>> card
   return processed;
 }
 
-Future<int> _upsertLegalitiesFromAtomic(Session session, Map<String, dynamic> cardsMap) async {
+Future<int> _upsertLegalitiesFromAtomic(
+    Session session, Map<String, dynamic> cardsMap) async {
   print('⚖️  Upsert de legalidades...');
 
   // 1) Carregar mapa oracleId -> internal card id
@@ -626,7 +683,8 @@ Future<int> _upsertLegalitiesFromAtomic(Session session, Map<String, dynamic> ca
   return processed;
 }
 
-Future<int> _upsertLegalitiesFromSet(Session session, List<Map<String, dynamic>> cards) async {
+Future<int> _upsertLegalitiesFromSet(
+    Session session, List<Map<String, dynamic>> cards) async {
   print('⚖️  Upsert de legalidades (set)...');
 
   final idResult = await session.execute(

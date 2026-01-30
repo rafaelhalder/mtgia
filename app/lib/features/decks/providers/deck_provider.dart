@@ -424,6 +424,7 @@ class DeckProvider extends ChangeNotifier {
                 'quantity': 1,
                 'is_commander': false,
                 'type_line': card['type_line'] ?? '',
+                'color_identity': (card['color_identity'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[],
               };
             } else {
               debugPrint('  ❌ Não encontrado: $cardName');
@@ -505,12 +506,22 @@ class DeckProvider extends ChangeNotifier {
       final format = _selectedDeck?.format.toLowerCase() ?? '';
       final isCommander = format == 'commander' || format == 'brawl';
       final defaultLimit = isCommander ? 1 : 4;
+      final commanderIdentity = isCommander ? _getCommanderIdentitySet(_selectedDeck) : null;
 
       for (final cardToAdd in cardsToAddIds) {
         final cardId = cardToAdd['card_id'] as String;
         final typeLine = (cardToAdd['type_line'] as String? ?? '').toLowerCase();
         final isBasicLand = typeLine.contains('basic land');
         final limit = isBasicLand ? 99 : defaultLimit;
+
+        if (commanderIdentity != null) {
+          final identity = (cardToAdd['color_identity'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+          final ok = identity.every((c) => commanderIdentity.contains(c.toUpperCase()));
+          if (!ok) {
+            debugPrint('⛔️ [DeckProvider] Pulando fora da identidade do comandante: $cardId');
+            continue;
+          }
+        }
 
         if (currentCards.containsKey(cardId)) {
           final existing = currentCards[cardId]!;
@@ -556,5 +567,13 @@ class DeckProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Set<String>? _getCommanderIdentitySet(DeckDetails? deck) {
+    if (deck == null) return null;
+    if (deck.commander.isEmpty) return null;
+    final commander = deck.commander.first;
+    final identity = commander.colorIdentity.isNotEmpty ? commander.colorIdentity : commander.colors;
+    return identity.map((e) => e.toUpperCase()).toSet();
   }
 }

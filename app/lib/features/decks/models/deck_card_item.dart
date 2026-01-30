@@ -5,6 +5,7 @@ class DeckCardItem {
   final String typeLine;
   final String? oracleText;
   final List<String> colors;
+  final List<String> colorIdentity;
   final String? imageUrl;
   final String setCode;
   final String? setName;
@@ -20,6 +21,7 @@ class DeckCardItem {
     required this.typeLine,
     this.oracleText,
     this.colors = const [],
+    this.colorIdentity = const [],
     this.imageUrl,
     required this.setCode,
     this.setName,
@@ -37,6 +39,7 @@ class DeckCardItem {
       typeLine: json['type_line'] as String? ?? '',
       oracleText: json['oracle_text'] as String?,
       colors: (json['colors'] as List?)?.map((e) => e as String).toList() ?? [],
+      colorIdentity: (json['color_identity'] as List?)?.map((e) => e as String).toList() ?? [],
       imageUrl: json['image_url'] as String?,
       setCode: json['set_code'] as String? ?? '',
       setName: json['set_name'] as String?,

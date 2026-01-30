@@ -46,8 +46,11 @@ class CardProvider extends ChangeNotifier {
             typeLine: json['type_line'] ?? '',
             oracleText: json['oracle_text'],
             colors: (json['colors'] as List?)?.map((e) => e.toString()).toList() ?? [],
+            colorIdentity: (json['color_identity'] as List?)?.map((e) => e.toString()).toList() ?? [],
             imageUrl: json['image_url'],
             setCode: json['set_code'] ?? '',
+            setName: json['set_name'],
+            setReleaseDate: json['set_release_date'],
             rarity: json['rarity'] ?? '',
             quantity: 1, // Default para busca
             isCommander: false, // Default
