@@ -1049,18 +1049,41 @@ Future<Response> onRequest(RequestContext context) async {
         'target_additions': jsonResponse['target_additions'],
       };
       
+      // Gerar additions_detailed apenas para cartas com card_id válido
       responseBody['additions_detailed'] = isComplete
           ? additionsDetailed
-          : validAdditions.map((name) {
-              final v = validByNameLower[name.toLowerCase()];
-              if (v == null) return {'name': name};
-              return {'name': v['name'], 'card_id': v['id'], 'quantity': 1};
-            }).toList();
-      responseBody['removals_detailed'] = validRemovals.map((name) {
-        final v = validByNameLower[name.toLowerCase()];
-        if (v == null) return {'name': name};
-        return {'name': v['name'], 'card_id': v['id']};
-      }).toList();
+          : validAdditions
+              .map((name) {
+                final v = validByNameLower[name.toLowerCase()];
+                if (v == null || v['id'] == null) return null;
+                return {'name': v['name'], 'card_id': v['id'], 'quantity': 1};
+              })
+              .where((e) => e != null)
+              .toList();
+      
+      // Gerar removals_detailed apenas para cartas com card_id válido
+      responseBody['removals_detailed'] = validRemovals
+          .map((name) {
+            final v = validByNameLower[name.toLowerCase()];
+            if (v == null || v['id'] == null) return null;
+            return {'name': v['name'], 'card_id': v['id']};
+          })
+          .where((e) => e != null)
+          .toList();
+      
+      // CRÍTICO: Balancear additions/removals detailed para manter contagem igual
+      final addDet = responseBody['additions_detailed'] as List;
+      final remDet = responseBody['removals_detailed'] as List;
+      if (addDet.length != remDet.length && jsonResponse['mode'] != 'complete') {
+        final minLen = addDet.length < remDet.length ? addDet.length : remDet.length;
+        responseBody['additions_detailed'] = addDet.take(minLen).toList();
+        responseBody['removals_detailed'] = remDet.take(minLen).toList();
+        // Também ajustar as listas simples para UI consistente
+        validRemovals = validRemovals.take(minLen).toList();
+        validAdditions = validAdditions.take(minLen).toList();
+        responseBody['removals'] = validRemovals;
+        responseBody['additions'] = validAdditions;
+      }
       
       final warnings = <String, dynamic>{};
 
