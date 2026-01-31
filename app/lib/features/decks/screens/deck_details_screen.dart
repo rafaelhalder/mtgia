@@ -241,23 +241,91 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       ),
                     ],
                     const SizedBox(height: 16),
-                    Text('Estratégia', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    Row(
                       children: [
-                        Chip(
+                        Expanded(
+                          child: Text('Estratégia', style: theme.textTheme.titleMedium),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _showOptimizationOptions(context),
+                          icon: const Icon(Icons.auto_fix_high, size: 18),
                           label: Text(
-                            (deck.archetype == null ||
-                                    deck.archetype!.trim().isEmpty)
-                                ? 'Não definida'
-                                : deck.archetype!,
+                            (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                ? 'Definir'
+                                : 'Alterar',
                           ),
                         ),
-                        Chip(label: Text('Bracket: ${deck.bracket ?? 2}')),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => _showOptimizationOptions(context),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                              ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                ? theme.colorScheme.outline.withValues(alpha: 0.3)
+                                : theme.colorScheme.primary.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                  ? Icons.help_outline
+                                  : Icons.psychology,
+                              color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                  ? theme.colorScheme.outline
+                                  : theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                        ? 'Não definida'
+                                        : deck.archetype!,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                          ? theme.colorScheme.outline
+                                          : theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Bracket: ${deck.bracket ?? 2} • ${_bracketLabel(deck.bracket ?? 2)}',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              color: theme.colorScheme.outline,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (deck.archetype == null || deck.archetype!.trim().isEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Toque para analisar estratégias e otimizar seu deck com IA',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1033,6 +1101,21 @@ int _totalCards(DeckDetails deck) {
     }
   }
   return total;
+}
+
+String _bracketLabel(int bracket) {
+  switch (bracket) {
+    case 1:
+      return 'Casual';
+    case 2:
+      return 'Mid-power';
+    case 3:
+      return 'High-power';
+    case 4:
+      return 'cEDH';
+    default:
+      return 'Mid-power';
+  }
 }
 
 class _ManaSymbol extends StatelessWidget {
