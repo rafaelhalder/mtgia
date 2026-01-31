@@ -1148,6 +1148,7 @@ Future<Map<String, String>> _loadBasicLandIds(Pool pool, List<String> names) asy
       SELECT name, id::text
       FROM cards
       WHERE name = ANY(@names)
+        AND type_line LIKE 'Basic Land%'
       ORDER BY name ASC
     '''),
     parameters: {'names': names},
