@@ -166,10 +166,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       isLoading: _isPricingLoading,
                       onPressed: () => _loadPricing(force: true),
                       onForceRefresh: () => _loadPricing(force: true),
-                      onShowDetails:
-                          (_pricing == null)
-                              ? null
-                              : () => _showPricingDetails(),
+                      onShowDetails: _showPricingDetails,
                     ),
                     if (isCommanderFormat && deck.commander.isEmpty) ...[
                       const SizedBox(height: 12),
@@ -830,7 +827,17 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     }
   }
 
-  void _showPricingDetails() {
+  Future<void> _showPricingDetails() async {
+    // Se não tem items, precisa carregar do endpoint
+    final hasItems = _pricing != null && 
+        (_pricing!['items'] as List?)?.isNotEmpty == true;
+    
+    if (!hasItems) {
+      // Carregar pricing completo primeiro
+      await _loadPricing(force: false);
+      if (!mounted) return;
+    }
+    
     final pricing = _pricing;
     if (pricing == null) return;
     final items =
@@ -974,7 +981,7 @@ class _PricingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (pricing != null && onShowDetails != null)
+          if (onShowDetails != null)
             TextButton(
               onPressed: isLoading ? null : onShowDetails,
               child: const Text('Detalhes'),
