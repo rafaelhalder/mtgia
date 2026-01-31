@@ -740,8 +740,20 @@ Future<Response> onRequest(RequestContext context) async {
       List<String> removals = [];
       List<String> additions = [];
 
-      // Suporte ao novo formato "changes" (pares de troca)
-      if (jsonResponse.containsKey('changes')) {
+      // Suporte ao formato "swaps" (retornado pelo prompt.md)
+      if (jsonResponse.containsKey('swaps')) {
+        final swaps = jsonResponse['swaps'] as List;
+        for (var swap in swaps) {
+           if (swap is Map) {
+             final out = swap['out'] as String?;
+             final inCard = swap['in'] as String?;
+             if (out != null && out.isNotEmpty) removals.add(out);
+             if (inCard != null && inCard.isNotEmpty) additions.add(inCard);
+           }
+        }
+      }
+      // Suporte ao formato "changes" (alternativo)
+      else if (jsonResponse.containsKey('changes')) {
         final changes = jsonResponse['changes'] as List;
         for (var change in changes) {
            if (change is Map) {

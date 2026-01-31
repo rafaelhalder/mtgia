@@ -225,9 +225,11 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
         parameters: {'deckId': deckId},
       );
       final deckMap = result.first.toColumnMap();
-      if (deckMap['created_at'] is DateTime) {
-        deckMap['created_at'] =
-            (deckMap['created_at'] as DateTime).toIso8601String();
+      // Converter todos os DateTime para ISO string
+      for (final key in deckMap.keys.toList()) {
+        if (deckMap[key] is DateTime) {
+          deckMap[key] = (deckMap[key] as DateTime).toIso8601String();
+        }
       }
       return deckMap;
     });
