@@ -106,9 +106,10 @@ Future<void> _processAndInsertCards(Session conn, Map<String, dynamic> cardsMap)
       final setCode = (cardData['printings'] as List?)?.firstOrNull?.toString();
       final rarity = cardData['rarity'];
 
-      // Construindo a URL da imagem usando o endpoint "named" da Scryfall
+      // Construindo a URL da imagem usando o endpoint "named" da Scryfall com set específico
       final encodedName = Uri.encodeQueryComponent(name);
-      final imageUrl = 'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
+      final setParam = (setCode != null && setCode.isNotEmpty) ? '&set=$setCode' : '';
+      final imageUrl = 'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
 
       batch.add([
         scryfallId,

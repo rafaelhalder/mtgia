@@ -517,10 +517,11 @@ Future<int> _upsertCardsFromAtomic(
       final setCode = printing?.toString();
       final rarity = chosen['rarity']?.toString();
 
-      // URL por nome exato (simples e funciona com Oracle ID no banco para validar depois).
+      // URL por nome exato com set específico para mostrar a arte correta da edição.
       final encodedName = Uri.encodeQueryComponent(name);
+      final setParam = setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
       final imageUrl =
-          'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
+          'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
 
       await stmt.run([
         oracleId,
@@ -592,8 +593,9 @@ Future<int> _upsertCardsFromSet(
       final rarity = card['rarity']?.toString();
 
       final encodedName = Uri.encodeQueryComponent(name);
+      final setParam = setCode.isNotEmpty ? '&set=$setCode' : '';
       final imageUrl =
-          'https://api.scryfall.com/cards/named?exact=$encodedName&format=image';
+          'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
 
       await stmt.run([
         oracleId,
