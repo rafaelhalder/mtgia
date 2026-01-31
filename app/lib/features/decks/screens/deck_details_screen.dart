@@ -10,6 +10,7 @@ import '../models/deck_card_item.dart';
 import '../models/deck_details.dart';
 import '../../cards/providers/card_provider.dart';
 import '../widgets/deck_analysis_tab.dart';
+import '../widgets/deck_progress_indicator.dart';
 import '../../auth/providers/auth_provider.dart';
 
 class DeckDetailsScreen extends StatefulWidget {
@@ -151,14 +152,15 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     Text(deck.name, style: theme.textTheme.headlineMedium),
                     const SizedBox(height: 8),
                     Chip(label: Text(deck.format.toUpperCase())),
-                    const SizedBox(height: 8),
-                    Text(
-                      maxCards == null
-                          ? 'Cartas: $totalCards'
-                          : 'Cartas: $totalCards/$maxCards',
-                      style: theme.textTheme.bodyMedium,
+                    const SizedBox(height: 12),
+                    DeckProgressIndicator(
+                      deck: deck,
+                      totalCards: totalCards,
+                      maxCards: maxCards,
+                      hasCommander: deck.commander.isNotEmpty,
+                      onTap: () => _tabController.animateTo(1), // Vai para tab de cartas
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     _PricingRow(
                       pricing: _pricing,
                       isLoading: _isPricingLoading,
@@ -270,9 +272,11 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   if (maxCards != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Total: $totalCards/$maxCards',
-                        style: theme.textTheme.titleMedium,
+                      child: DeckProgressIndicator(
+                        deck: deck,
+                        totalCards: totalCards,
+                        maxCards: maxCards,
+                        hasCommander: deck.commander.isNotEmpty,
                       ),
                     ),
                   ...deck.mainBoard.entries.map((entry) {

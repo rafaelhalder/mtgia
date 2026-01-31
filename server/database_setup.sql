@@ -270,3 +270,27 @@ CREATE TABLE IF NOT EXISTS deck_weakness_reports (
 
 CREATE INDEX IF NOT EXISTS idx_weakness_reports_deck ON deck_weakness_reports (deck_id);
 CREATE INDEX IF NOT EXISTS idx_weakness_reports_severity ON deck_weakness_reports (severity);
+
+-- 14. Tabela de Logs de IA (Observabilidade)
+-- Armazena métricas e resumos das chamadas de IA para debugging e auditoria
+CREATE TABLE IF NOT EXISTS ai_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    deck_id UUID REFERENCES decks(id) ON DELETE SET NULL,
+    endpoint TEXT NOT NULL,              -- 'optimize', 'complete', 'explain', 'archetypes'
+    model TEXT NOT NULL,                 -- 'gpt-4o', 'gpt-4o-mini', etc.
+    prompt_summary TEXT,                 -- Resumo do prompt (sem dados sensíveis)
+    input_tokens INTEGER,                -- Tokens de entrada (se disponível)
+    output_tokens INTEGER,               -- Tokens de saída (se disponível)
+    response_summary TEXT,               -- Resumo da resposta
+    success BOOLEAN NOT NULL DEFAULT TRUE,
+    error_message TEXT,                  -- Mensagem de erro (se falhou)
+    latency_ms INTEGER NOT NULL,         -- Tempo total da chamada em ms
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_logs_user ON ai_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_deck ON ai_logs (deck_id);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_endpoint ON ai_logs (endpoint);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_logs (success);

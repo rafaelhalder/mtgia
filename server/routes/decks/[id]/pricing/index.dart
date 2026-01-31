@@ -65,7 +65,14 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
     for (final r in rows) {
       final m = r.toColumnMap();
       final qty = (m['quantity'] as int?) ?? 0;
-      final price = (m['price'] as num?)?.toDouble();
+      // O PostgreSQL retorna DECIMAL como String ou num dependendo do driver
+      final rawPrice = m['price'];
+      double? price;
+      if (rawPrice is num) {
+        price = rawPrice.toDouble();
+      } else if (rawPrice is String) {
+        price = double.tryParse(rawPrice);
+      }
       final updatedAt = m['price_updated_at'] as DateTime?;
 
       // Sempre manter preço atualizado: por padrão, atualiza diariamente.

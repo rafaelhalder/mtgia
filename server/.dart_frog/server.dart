@@ -12,6 +12,8 @@ import '../routes/sets/index.dart' as sets_index;
 import '../routes/rules/index.dart' as rules_index;
 import '../routes/import/index.dart' as import_index;
 import '../routes/health/index.dart' as health_index;
+import '../routes/health/ready/index.dart' as health_ready_index;
+import '../routes/health/live/index.dart' as health_live_index;
 import '../routes/decks/index.dart' as decks_index;
 import '../routes/decks/[id]/index.dart' as decks_$id_index;
 import '../routes/decks/[id]/validate/index.dart' as decks_$id_validate_index;
@@ -30,6 +32,7 @@ import '../routes/auth/me.dart' as auth_me;
 import '../routes/auth/login.dart' as auth_login;
 import '../routes/ai/weakness-analysis/index.dart' as ai_weakness_analysis_index;
 import '../routes/ai/simulate-matchup/index.dart' as ai_simulate_matchup_index;
+import '../routes/ai/simulate/index.dart' as ai_simulate_index;
 import '../routes/ai/optimize/index.dart' as ai_optimize_index;
 import '../routes/ai/generate/index.dart' as ai_generate_index;
 import '../routes/ai/explain/index.dart' as ai_explain_index;
@@ -60,6 +63,7 @@ Handler buildRootHandler() {
     ..mount('/ai/explain', (context) => buildAiExplainHandler()(context))
     ..mount('/ai/generate', (context) => buildAiGenerateHandler()(context))
     ..mount('/ai/optimize', (context) => buildAiOptimizeHandler()(context))
+    ..mount('/ai/simulate', (context) => buildAiSimulateHandler()(context))
     ..mount('/ai/simulate-matchup', (context) => buildAiSimulateMatchupHandler()(context))
     ..mount('/ai/weakness-analysis', (context) => buildAiWeaknessAnalysisHandler()(context))
     ..mount('/auth', (context) => buildAuthHandler()(context))
@@ -76,6 +80,8 @@ Handler buildRootHandler() {
     ..mount('/decks/<id>/validate', (context,id,) => buildDecks$idValidateHandler(id,)(context))
     ..mount('/decks/<id>', (context,id,) => buildDecks$idHandler(id,)(context))
     ..mount('/decks', (context) => buildDecksHandler()(context))
+    ..mount('/health/live', (context) => buildHealthLiveHandler()(context))
+    ..mount('/health/ready', (context) => buildHealthReadyHandler()(context))
     ..mount('/health', (context) => buildHealthHandler()(context))
     ..mount('/import', (context) => buildImportHandler()(context))
     ..mount('/rules', (context) => buildRulesHandler()(context))
@@ -110,6 +116,13 @@ Handler buildAiOptimizeHandler() {
   final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
   final router = Router()
     ..all('/', (context) => ai_optimize_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAiSimulateHandler() {
+  final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => ai_simulate_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
@@ -222,6 +235,20 @@ Handler buildDecksHandler() {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
     ..all('/', (context) => decks_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildHealthLiveHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => health_live_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildHealthReadyHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => health_ready_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

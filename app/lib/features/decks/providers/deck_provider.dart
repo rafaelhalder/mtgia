@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/logger.dart';
 import '../models/deck.dart';
 import '../models/deck_details.dart';
 import '../models/deck_card_item.dart';
@@ -18,6 +18,11 @@ class DeckProvider extends ChangeNotifier {
   String? _detailsErrorMessage; // Erro específico de detalhes
   int? _detailsStatusCode;
 
+  // Cache de detalhes do deck (evita recarregar se já temos os dados)
+  final Map<String, DeckDetails> _deckDetailsCache = {};
+  final Map<String, DateTime> _deckDetailsCacheTime = {};
+  static const _cacheDuration = Duration(minutes: 5);
+
   List<Deck> get decks => _decks;
   DeckDetails? get selectedDeck => _selectedDeck;
   bool get isLoading => _isLoading;
@@ -28,8 +33,20 @@ class DeckProvider extends ChangeNotifier {
 
   DeckProvider({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  /// Busca detalhes de um deck específico
-  Future<void> fetchDeckDetails(String deckId) async {
+  /// Busca detalhes de um deck específico (com cache)
+  Future<void> fetchDeckDetails(String deckId, {bool forceRefresh = false}) async {
+    // Verifica cache primeiro (se não for forceRefresh)
+    if (!forceRefresh && _deckDetailsCache.containsKey(deckId)) {
+      final cacheTime = _deckDetailsCacheTime[deckId];
+      if (cacheTime != null && DateTime.now().difference(cacheTime) < _cacheDuration) {
+        _selectedDeck = _deckDetailsCache[deckId];
+        _detailsErrorMessage = null;
+        _detailsStatusCode = 200;
+        notifyListeners();
+        return;
+      }
+    }
+
     _isLoading = true;
     _detailsErrorMessage = null;
     _detailsStatusCode = null;
@@ -43,6 +60,10 @@ class DeckProvider extends ChangeNotifier {
         _selectedDeck = DeckDetails.fromJson(
           response.data as Map<String, dynamic>,
         );
+        // Salva no cache
+        _deckDetailsCache[deckId] = _selectedDeck!;
+        _deckDetailsCacheTime[deckId] = DateTime.now();
+        
         _detailsErrorMessage = null;
         _detailsStatusCode = 200;
       } else {
@@ -267,6 +288,7 @@ class DeckProvider extends ChangeNotifier {
         }
 
         // 5. Recarrega os detalhes para atualizar a UI de detalhes
+        invalidateDeckCache(deckId);
         await fetchDeckDetails(deckId);
 
         return true;
@@ -322,14 +344,14 @@ class DeckProvider extends ChangeNotifier {
 
       // Debug snapshot (sem token): útil para você colar o JSON de request/response.
       await _saveOptimizeDebug(request: payload);
-      debugPrint('🧪 [AI Optimize] request=${jsonEncode(payload)}');
+      AppLogger.debug('🧪 [AI Optimize] request=${jsonEncode(payload)}');
 
       final response = await _apiClient.post('/ai/optimize', payload);
 
       if (response.statusCode == 200) {
         final data = (response.data as Map).cast<String, dynamic>();
         await _saveOptimizeDebug(response: data);
-        debugPrint('🧪 [AI Optimize] response=${jsonEncode(data)}');
+        AppLogger.debug('🧪 [AI Optimize] response=${jsonEncode(data)}');
         return data;
       } else {
         await _saveOptimizeDebug(
@@ -377,6 +399,7 @@ class DeckProvider extends ChangeNotifier {
       'cards': cards,
     });
     if (response.statusCode == 200) {
+      invalidateDeckCache(deckId);
       await fetchDeckDetails(deckId);
       return true;
     }
@@ -406,6 +429,7 @@ class DeckProvider extends ChangeNotifier {
     }
 
     // Recarrega detalhes e lista para refletir chips/estado.
+    invalidateDeckCache(deckId);
     await fetchDeckDetails(deckId);
     await fetchDecks();
   }
@@ -442,6 +466,7 @@ class DeckProvider extends ChangeNotifier {
       throw Exception(msg);
     }
 
+    invalidateDeckCache(deckId);
     await fetchDeckDetails(deckId);
     await fetchDecks();
     return true;
@@ -541,14 +566,14 @@ class DeckProvider extends ChangeNotifier {
     required List<String> cardsToAdd,
   }) async {
     try {
-      debugPrint('🔄 [DeckProvider] Iniciando otimização do deck $deckId');
-      debugPrint(
+      AppLogger.debug('🔄 [DeckProvider] Iniciando otimização do deck $deckId');
+      AppLogger.debug(
         '📋 [DeckProvider] Remover: ${cardsToRemove.length} cartas | Adicionar: ${cardsToAdd.length} cartas',
       );
 
       // 1. Buscar o deck atual para pegar a lista de cartas
       if (_selectedDeck == null || _selectedDeck!.id != deckId) {
-        debugPrint('📥 [DeckProvider] Buscando detalhes do deck...');
+        AppLogger.debug('📥 [DeckProvider] Buscando detalhes do deck...');
         await fetchDeckDetails(deckId);
       }
 
@@ -580,12 +605,12 @@ class DeckProvider extends ChangeNotifier {
       }
 
       // 3. Buscar IDs das cartas a adicionar pelo nome (EM PARALELO)
-      debugPrint('🔍 [DeckProvider] Buscando IDs das cartas a adicionar...');
+      AppLogger.debug('🔍 [DeckProvider] Buscando IDs das cartas a adicionar...');
       final cardsToAddIds = <Map<String, dynamic>>[];
 
       final addFutures = cardsToAdd.map((cardName) async {
         try {
-          debugPrint('  🔎 Buscando: $cardName');
+          AppLogger.debug('  🔎 Buscando: $cardName');
           final encoded = Uri.encodeQueryComponent(cardName);
           final searchResponse = await _apiClient.get(
             '/cards?name=$encoded&limit=1',
@@ -603,7 +628,7 @@ class DeckProvider extends ChangeNotifier {
 
             if (results.isNotEmpty) {
               final card = results[0] as Map<String, dynamic>;
-              debugPrint('  ✅ Encontrado: $cardName -> ${card['id']}');
+              AppLogger.debug('  ✅ Encontrado: $cardName -> ${card['id']}');
               return {
                 'card_id': card['id'],
                 'quantity': 1,
@@ -616,11 +641,11 @@ class DeckProvider extends ChangeNotifier {
                     const <String>[],
               };
             } else {
-              debugPrint('  ❌ Não encontrado: $cardName');
+              AppLogger.debug('  ❌ Não encontrado: $cardName');
             }
           }
         } catch (e) {
-          debugPrint('  ⚠️ Erro ao buscar $cardName: $e');
+          AppLogger.warning('Erro ao buscar $cardName: $e');
         }
         return null;
       });
@@ -629,12 +654,12 @@ class DeckProvider extends ChangeNotifier {
       cardsToAddIds.addAll(addResults.whereType<Map<String, dynamic>>());
 
       // 4. Buscar IDs das cartas a remover pelo nome (EM PARALELO)
-      debugPrint('🔍 [DeckProvider] Buscando IDs das cartas a remover...');
+      AppLogger.debug('🔍 [DeckProvider] Buscando IDs das cartas a remover...');
       final cardsToRemoveIds = <String>[];
 
       final removeFutures = cardsToRemove.map((cardName) async {
         try {
-          debugPrint('  🔎 Buscando para remover: $cardName');
+          AppLogger.debug('  🔎 Buscando para remover: $cardName');
           final encoded = Uri.encodeQueryComponent(cardName);
           final searchResponse = await _apiClient.get(
             '/cards?name=$encoded&limit=1',
@@ -651,14 +676,14 @@ class DeckProvider extends ChangeNotifier {
 
             if (results.isNotEmpty) {
               final card = results[0] as Map<String, dynamic>;
-              debugPrint(
+              AppLogger.debug(
                 '  ✅ Encontrado para remoção: $cardName -> ${card['id']}',
               );
               return card['id'] as String;
             }
           }
         } catch (e) {
-          debugPrint('  ⚠️ Erro ao buscar $cardName: $e');
+          AppLogger.warning('Erro ao buscar $cardName: $e');
         }
         return null;
       });
@@ -678,7 +703,7 @@ class DeckProvider extends ChangeNotifier {
       }
 
       // 5. Remover as cartas da lista atual
-      debugPrint('✂️ [DeckProvider] Removendo cartas...');
+      AppLogger.debug('✂️ [DeckProvider] Removendo cartas...');
 
       final beforeSnapshot =
           currentCards.values
@@ -712,7 +737,7 @@ class DeckProvider extends ChangeNotifier {
       }
 
       // 6. Adicionar as novas cartas
-      debugPrint(
+      AppLogger.debug(
         '➕ [DeckProvider] Adicionando ${cardsToAddIds.length} cartas...',
       );
 
@@ -739,7 +764,7 @@ class DeckProvider extends ChangeNotifier {
             (c) => commanderIdentity.contains(c.toUpperCase()),
           );
           if (!ok) {
-            debugPrint(
+            AppLogger.debug(
               '⛔️ [DeckProvider] Pulando fora da identidade do comandante: $cardId',
             );
             continue;
@@ -772,18 +797,37 @@ class DeckProvider extends ChangeNotifier {
       }
 
       // 7. Atualizar o deck via API
-      debugPrint('💾 [DeckProvider] Salvando alterações no servidor...');
+      AppLogger.debug('💾 [DeckProvider] Salvando alterações no servidor...');
       final stopwatch = Stopwatch()..start();
       final response = await _apiClient.put('/decks/$deckId', {
         'cards': currentCards.values.toList(),
       });
       stopwatch.stop();
-      debugPrint(
+      AppLogger.debug(
         '⏱️ [DeckProvider] Tempo de resposta do servidor: ${stopwatch.elapsedMilliseconds}ms',
       );
 
       if (response.statusCode == 200) {
-        debugPrint('✅ [DeckProvider] Deck atualizado com sucesso!');
+        AppLogger.debug('✅ [DeckProvider] Deck atualizado com sucesso!');
+
+        // 8. Validar o deck após salvar (garante integridade)
+        try {
+          final validation = await validateDeck(deckId);
+          final isValid = validation['valid'] as bool? ?? false;
+          if (!isValid) {
+            final errors = (validation['errors'] as List?)?.join(', ') ?? '';
+            AppLogger.warning(
+              '[DeckProvider] Deck salvo mas com avisos de validação: $errors',
+            );
+          }
+        } catch (validationError) {
+          // Validação falhou, mas deck já foi salvo - apenas log
+          AppLogger.warning(
+            '[DeckProvider] Não foi possível validar deck após salvar: $validationError',
+          );
+        }
+
+        invalidateDeckCache(deckId);
         await fetchDeckDetails(deckId);
         return true;
       } else {
@@ -794,7 +838,7 @@ class DeckProvider extends ChangeNotifier {
         throw Exception(errorMsg);
       }
     } catch (e) {
-      debugPrint('❌ [DeckProvider] Erro fatal na otimização: $e');
+      AppLogger.error('[DeckProvider] Erro fatal na otimização', e);
       rethrow;
     }
   }
@@ -803,6 +847,18 @@ class DeckProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Invalida o cache de um deck específico (chamar após updates)
+  void invalidateDeckCache(String deckId) {
+    _deckDetailsCache.remove(deckId);
+    _deckDetailsCacheTime.remove(deckId);
+  }
+
+  /// Limpa todo o cache de detalhes
+  void clearAllCache() {
+    _deckDetailsCache.clear();
+    _deckDetailsCacheTime.clear();
   }
 
   Set<String>? _getCommanderIdentitySet(DeckDetails? deck) {

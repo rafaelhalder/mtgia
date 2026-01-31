@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/deck.dart';
+import 'deck_progress_indicator.dart';
 
 /// Widget Card para exibir um deck na listagem
 class DeckCard extends StatelessWidget {
@@ -83,9 +84,11 @@ class DeckCard extends StatelessWidget {
               // Footer (Stats)
               Row(
                 children: [
-                  _StatChip(
-                    icon: Icons.style,
-                    label: '${deck.cardCount} cartas',
+                  DeckProgressChip(
+                    totalCards: deck.cardCount,
+                    maxCards: _getMaxCards(deck.format),
+                    hasCommander: true, // Não temos essa info na listagem, assumimos true
+                    format: deck.format,
                   ),
                   const SizedBox(width: 12),
                   if (deck.synergyScore != null)
@@ -107,6 +110,13 @@ class DeckCard extends StatelessWidget {
     if (score >= 80) return const Color(0xFF10B981); // Verde
     if (score >= 60) return const Color(0xFFF59E0B); // Amarelo
     return const Color(0xFFEF4444); // Vermelho
+  }
+
+  int? _getMaxCards(String format) {
+    final fmt = format.toLowerCase();
+    if (fmt == 'commander') return 100;
+    if (fmt == 'brawl') return 60;
+    return null;
   }
 }
 

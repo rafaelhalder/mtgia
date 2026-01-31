@@ -151,31 +151,71 @@ class DeckRulesService {
       }
       return;
     }
-    if (commanders.length != 1) {
+
+    // Validar quantidade de comandantes (1 ou 2 com Partner/Background)
+    if (commanders.length > 2) {
       throw DeckRulesException(
-        'Regra violada: deck $format suporta exatamente 1 comandante (parceiros/background não implementados ainda).',
+        'Regra violada: deck $format suporta no máximo 2 comandantes (com Partner ou Background).',
       );
     }
 
-    final commanderId = commanders.first['card_id'] as String?;
-    if (commanderId == null || commanderId.isEmpty) {
-      throw DeckRulesException('Regra violada: comandante sem card_id.');
-    }
-    final commanderInfo = cardsData[commanderId];
-    if (commanderInfo == null) {
-      throw DeckRulesException('Regra violada: comandante não encontrado.');
+    if (commanders.length == 2) {
+      // Validar regras de Partner/Background
+      final cmd1Id = commanders[0]['card_id'] as String?;
+      final cmd2Id = commanders[1]['card_id'] as String?;
+      if (cmd1Id == null || cmd2Id == null) {
+        throw DeckRulesException('Regra violada: comandante sem card_id.');
+      }
+      final cmd1 = cardsData[cmd1Id];
+      final cmd2 = cardsData[cmd2Id];
+      if (cmd1 == null || cmd2 == null) {
+        throw DeckRulesException('Regra violada: comandante não encontrado.');
+      }
+
+      if (!_validatePartnerPairing(cmd1, cmd2)) {
+        throw DeckRulesException(
+          'Regra violada: "${cmd1.name}" e "${cmd2.name}" não podem ser comandantes juntos. '
+          'Precisam ter "Partner", "Partner with [nome]" ou um ter "Choose a Background" e o outro ser Background.',
+        );
+      }
     }
 
-    if (!_isCommanderEligible(commanderInfo)) {
-      throw DeckRulesException(
-        'Regra violada: "${commanderInfo.name}" não pode ser comandante (precisa ser criatura lendária ou dizer "can be your commander").',
-      );
+    if (commanders.length == 1) {
+      final commanderId = commanders.first['card_id'] as String?;
+      if (commanderId == null || commanderId.isEmpty) {
+        throw DeckRulesException('Regra violada: comandante sem card_id.');
+      }
+      final commanderInfo = cardsData[commanderId];
+      if (commanderInfo == null) {
+        throw DeckRulesException('Regra violada: comandante não encontrado.');
+      }
+
+      if (!_isCommanderEligible(commanderInfo)) {
+        throw DeckRulesException(
+          'Regra violada: "${commanderInfo.name}" não pode ser comandante (precisa ser criatura lendária ou dizer "can be your commander").',
+        );
+      }
     }
 
-    final commanderIdentity = commanderInfo.colorIdentity.isNotEmpty
-        ? commanderInfo.colorIdentity
-        : commanderInfo.colors;
-    final commanderSet = commanderIdentity.map((e) => e.toUpperCase()).toSet();
+    // Calcular identidade de cor combinada de todos os comandantes
+    final commanderIdentitySet = <String>{};
+    for (final cmd in commanders) {
+      final cmdId = cmd['card_id'] as String?;
+      if (cmdId == null) continue;
+      final info = cardsData[cmdId];
+      if (info == null) continue;
+      
+      if (!_isCommanderEligible(info) && !_isBackground(info)) {
+        throw DeckRulesException(
+          'Regra violada: "${info.name}" não pode ser comandante.',
+        );
+      }
+      
+      final identity = info.colorIdentity.isNotEmpty
+          ? info.colorIdentity
+          : info.colors;
+      commanderIdentitySet.addAll(identity.map((e) => e.toUpperCase()));
+    }
 
     for (final item in cards) {
       final cardId = item['card_id'] as String?;
@@ -186,9 +226,9 @@ class DeckRulesService {
       final identity =
           info.colorIdentity.isNotEmpty ? info.colorIdentity : info.colors;
       for (final c in identity) {
-        if (!commanderSet.contains(c.toUpperCase())) {
+        if (!commanderIdentitySet.contains(c.toUpperCase())) {
           throw DeckRulesException(
-            'Regra violada: "${info.name}" tem identidade de cor fora do comandante (${commanderIdentity.join(', ')}).',
+            'Regra violada: "${info.name}" tem identidade de cor fora do(s) comandante(s).',
           );
         }
       }
@@ -217,7 +257,99 @@ class DeckRulesService {
 
     // Planeswalkers e outras exceções com texto “can be your commander”.
     if (oracle.contains('can be your commander')) return true;
+    // Background é elegível se o outro comandante tem "Choose a Background"
+    if (_isBackground(card)) return true;
 
+    return false;
+  }
+
+  /// Verifica se a carta é um Background (encantamento lendário com subtipo Background)
+  bool _isBackground(_CardData card) {
+    final typeLine = card.typeLine.toLowerCase();
+    return typeLine.contains('legendary') && 
+           typeLine.contains('enchantment') && 
+           typeLine.contains('background');
+  }
+
+  /// Verifica se a carta tem "Partner" (qualquer um) no texto
+  bool _hasPartner(_CardData card) {
+    final oracle = (card.oracleText ?? '').toLowerCase();
+    // Procura por "partner" mas não como parte de outra palavra
+    // Regex para encontrar "partner" isolado (fim de linha ou espaço)
+    return RegExp(r'\bpartner\b').hasMatch(oracle);
+  }
+
+  /// Verifica se a carta tem "Partner with [Nome Específico]"
+  String? _getPartnerWithName(_CardData card) {
+    final oracle = (card.oracleText ?? '').toLowerCase();
+    final match = RegExp(r'partner with ([^(]+)').firstMatch(oracle);
+    if (match != null) {
+      return match.group(1)?.trim();
+    }
+    return null;
+  }
+
+  /// Verifica se a carta tem "Choose a Background"
+  bool _hasChooseBackground(_CardData card) {
+    final oracle = (card.oracleText ?? '').toLowerCase();
+    return oracle.contains('choose a background');
+  }
+
+  /// Valida se dois comandantes podem ser usados juntos
+  bool _validatePartnerPairing(_CardData cmd1, _CardData cmd2) {
+    // Caso 1: Ambos têm "Partner" genérico
+    final hasPartner1 = _hasPartner(cmd1);
+    final hasPartner2 = _hasPartner(cmd2);
+    final partnerWith1 = _getPartnerWithName(cmd1);
+    final partnerWith2 = _getPartnerWithName(cmd2);
+
+    // Se ambos têm Partner genérico (sem "with"), podem ser pareados
+    if (hasPartner1 && hasPartner2 && partnerWith1 == null && partnerWith2 == null) {
+      return true;
+    }
+
+    // Caso 2: Partner with [nome específico]
+    if (partnerWith1 != null) {
+      // cmd1 tem "Partner with X", verificar se cmd2 é X
+      if (cmd2.name.toLowerCase().contains(partnerWith1)) {
+        return true;
+      }
+    }
+    if (partnerWith2 != null) {
+      // cmd2 tem "Partner with X", verificar se cmd1 é X
+      if (cmd1.name.toLowerCase().contains(partnerWith2)) {
+        return true;
+      }
+    }
+
+    // Caso 3: Choose a Background + Background
+    final hasChooseBg1 = _hasChooseBackground(cmd1);
+    final hasChooseBg2 = _hasChooseBackground(cmd2);
+    final isBg1 = _isBackground(cmd1);
+    final isBg2 = _isBackground(cmd2);
+
+    if ((hasChooseBg1 && isBg2) || (hasChooseBg2 && isBg1)) {
+      return true;
+    }
+
+    // Caso 4: Friends forever (Doctor Who)
+    final oracle1 = (cmd1.oracleText ?? '').toLowerCase();
+    final oracle2 = (cmd2.oracleText ?? '').toLowerCase();
+    if (oracle1.contains('friends forever') && oracle2.contains('friends forever')) {
+      return true;
+    }
+
+    // Caso 5: Doctor's companion
+    final hasDoctor1 = oracle1.contains("doctor's companion");
+    final hasDoctor2 = oracle2.contains("doctor's companion");
+    final isTimeLord1 = cmd1.typeLine.toLowerCase().contains('time lord') && 
+                        cmd1.typeLine.toLowerCase().contains('doctor');
+    final isTimeLord2 = cmd2.typeLine.toLowerCase().contains('time lord') && 
+                        cmd2.typeLine.toLowerCase().contains('doctor');
+
+    if ((hasDoctor1 && isTimeLord2) || (hasDoctor2 && isTimeLord1)) {
+      return true;
+    }
     return false;
   }
 

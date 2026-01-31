@@ -1,12 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:postgres/postgres.dart';
+import '../ai_log_service.dart';
 import 'sinergia.dart';
+
 class DeckOptimizerService {
   final String openAiKey;
   final SynergyEngine synergyEngine;
+  final AiLogService? _logService;
 
-  DeckOptimizerService(this.openAiKey) : synergyEngine = SynergyEngine();
+  DeckOptimizerService(this.openAiKey, {Connection? db}) 
+      : synergyEngine = SynergyEngine(),
+        _logService = db != null ? AiLogService(db) : null;
 
   /// O fluxo principal de otimização
   Future<Map<String, dynamic>> optimizeDeck({
@@ -14,6 +20,8 @@ class DeckOptimizerService {
     required List<String> commanders,
     required String targetArchetype,
     int? bracket,
+    String? userId,
+    String? deckId,
   }) async {
     final List<dynamic> currentCards = deckData['cards'];
     final List<String> colors = List<String>.from(deckData['colors']);
@@ -48,6 +56,8 @@ class DeckOptimizerService {
       staplesPool: formatStaples,
       archetype: targetArchetype,
       bracket: bracket,
+      userId: userId,
+      deckId: deckId,
     );
 
     return optimizationResult;
@@ -60,6 +70,8 @@ class DeckOptimizerService {
     required String targetArchetype,
     required int targetAdditions,
     int? bracket,
+    String? userId,
+    String? deckId,
   }) async {
     final List<dynamic> currentCards = deckData['cards'];
     final List<String> colors = List<String>.from(deckData['colors']);
@@ -80,6 +92,8 @@ class DeckOptimizerService {
       archetype: targetArchetype,
       bracket: bracket,
       targetAdditions: targetAdditions,
+      userId: userId,
+      deckId: deckId,
     );
 
     return completionResult;
@@ -149,7 +163,11 @@ class DeckOptimizerService {
     required List<String> staplesPool,
     required String archetype,
     int? bracket,
+    String? userId,
+    String? deckId,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
@@ -162,28 +180,72 @@ class DeckOptimizerService {
       "current_decklist": deckList
     });
 
-    final response = await http.post(
-      Uri.parse('https://api.openai.com/v1/chat/completions'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $openAiKey',
-      },
-      body: jsonEncode({
-        'model': 'gpt-4o', // Recomendado GPT-4o ou 3.5-turbo-16k para melhor raciocínio
-        'messages': [
-          {'role': 'system', 'content': _getSystemPrompt()}, // Função que retorna o texto do arquivo Markdown
-          {'role': 'user', 'content': userPrompt},
-        ],
-        'temperature': 0.4, // Baixa temperatura para ser mais analítico e menos criativo
-        'response_format': { "type": "json_object" }
-      }),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $openAiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-4o', // Recomendado GPT-4o ou 3.5-turbo-16k para melhor raciocínio
+          'messages': [
+            {'role': 'system', 'content': _getSystemPrompt()}, // Função que retorna o texto do arquivo Markdown
+            {'role': 'user', 'content': userPrompt},
+          ],
+          'temperature': 0.4, // Baixa temperatura para ser mais analítico e menos criativo
+          'response_format': { "type": "json_object" }
+        }),
+      );
 
-    if (response.statusCode == 200) {
-       final data = jsonDecode(utf8.decode(response.bodyBytes));
-       return jsonDecode(data['choices'][0]['message']['content']);
-    } else {
-      throw Exception('Failed to optimize deck');
+      stopwatch.stop();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final result = jsonDecode(data['choices'][0]['message']['content']);
+        
+        // Log de sucesso
+        await _logService?.log(
+          userId: userId,
+          deckId: deckId,
+          endpoint: 'optimize',
+          model: 'gpt-4o',
+          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Bracket: $bracket',
+          responseSummary: result['summary']?.toString(),
+          latencyMs: stopwatch.elapsedMilliseconds,
+          inputTokens: data['usage']?['prompt_tokens'] as int?,
+          outputTokens: data['usage']?['completion_tokens'] as int?,
+          success: true,
+        );
+        
+        return result;
+      } else {
+        // Log de erro
+        await _logService?.log(
+          userId: userId,
+          deckId: deckId,
+          endpoint: 'optimize',
+          model: 'gpt-4o',
+          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+          latencyMs: stopwatch.elapsedMilliseconds,
+          success: false,
+          errorMessage: 'HTTP ${response.statusCode}: ${response.body}',
+        );
+        throw Exception('Failed to optimize deck');
+      }
+    } catch (e) {
+      stopwatch.stop();
+      await _logService?.log(
+        userId: userId,
+        deckId: deckId,
+        endpoint: 'optimize',
+        model: 'gpt-4o',
+        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        latencyMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: e.toString(),
+      );
+      rethrow;
     }
   }
 
@@ -217,7 +279,11 @@ class DeckOptimizerService {
     required String archetype,
     required int targetAdditions,
     int? bracket,
+    String? userId,
+    String? deckId,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
@@ -230,28 +296,73 @@ class DeckOptimizerService {
       "current_decklist": deckList
     });
 
-    final response = await http.post(
-      Uri.parse('https://api.openai.com/v1/chat/completions'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $openAiKey',
-      },
-      body: jsonEncode({
-        'model': 'gpt-4o',
-        'messages': [
-          {'role': 'system', 'content': _getSystemPromptComplete()},
-          {'role': 'user', 'content': userPrompt},
-        ],
-        'temperature': 0.4,
-        'response_format': {"type": "json_object"}
-      }),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $openAiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-4o',
+          'messages': [
+            {'role': 'system', 'content': _getSystemPromptComplete()},
+            {'role': 'user', 'content': userPrompt},
+          ],
+          'temperature': 0.4,
+          'response_format': {"type": "json_object"}
+        }),
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      return jsonDecode(data['choices'][0]['message']['content']);
+      stopwatch.stop();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final result = jsonDecode(data['choices'][0]['message']['content']);
+        
+        // Log de sucesso
+        await _logService?.log(
+          userId: userId,
+          deckId: deckId,
+          endpoint: 'complete',
+          model: 'gpt-4o',
+          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Additions: $targetAdditions',
+          responseSummary: result['summary']?.toString(),
+          latencyMs: stopwatch.elapsedMilliseconds,
+          inputTokens: data['usage']?['prompt_tokens'] as int?,
+          outputTokens: data['usage']?['completion_tokens'] as int?,
+          success: true,
+        );
+        
+        return result;
+      }
+      
+      // Log de erro HTTP
+      await _logService?.log(
+        userId: userId,
+        deckId: deckId,
+        endpoint: 'complete',
+        model: 'gpt-4o',
+        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        latencyMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: 'HTTP ${response.statusCode}',
+      );
+      throw Exception('Failed to complete deck');
+    } catch (e) {
+      stopwatch.stop();
+      await _logService?.log(
+        userId: userId,
+        deckId: deckId,
+        endpoint: 'complete',
+        model: 'gpt-4o',
+        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        latencyMs: stopwatch.elapsedMilliseconds,
+        success: false,
+        errorMessage: e.toString(),
+      );
+      rethrow;
     }
-    throw Exception('Failed to complete deck');
   }
 
   String _getSystemPromptComplete() {
