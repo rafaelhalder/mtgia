@@ -62,6 +62,9 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
     var total = 0.0;
     var missing = 0;
 
+    // Coleta cartas que precisam buscar preço (sem preço ou force=true)
+    final cardsToFetch = <Map<String, dynamic>>[];
+
     for (final r in rows) {
       final m = r.toColumnMap();
       final qty = (m['quantity'] as int?) ?? 0;
@@ -73,45 +76,21 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       } else if (rawPrice is String) {
         price = double.tryParse(rawPrice);
       }
-      final updatedAt = m['price_updated_at'] as DateTime?;
 
-      // Sempre manter preço atualizado: por padrão, atualiza diariamente.
-      final isStale = updatedAt == null ||
-          DateTime.now().toUtc().difference(updatedAt.toUtc()).inHours >= 24;
-
-      double? finalPrice = price;
-      if (force || finalPrice == null || isStale) {
-        // No nosso schema, `cards.scryfall_id` é o Oracle ID (UUID).
-        // Para obter preço, tentamos:
-        // 1) /cards/{id} (caso futuramente seja Card ID)
-        // 2) /cards/search?q=oracleid:<uuid> set:<set_code>
-        // 3) /cards/search?q=oracleid:<uuid> (fallback)
+      // Se force=true ou não tem preço, marca para buscar
+      // Removido check de isStale para não buscar automaticamente preços antigos
+      // O cron já atualiza diariamente
+      if (force || price == null) {
         final oracleId = (m['scryfall_id'] as String?)?.trim();
-        final setCode = (m['set_code'] as String?)?.trim();
         if (oracleId != null && oracleId.isNotEmpty) {
-          final fetched = await _fetchUsdPriceFromScryfall(
-            idOrOracleId: oracleId,
-            setCode: setCode,
-          );
-          if (fetched != null) {
-            finalPrice = fetched;
-            await pool.execute(
-              Sql.named('''
-                UPDATE cards
-                SET price = @price,
-                    price_updated_at = NOW()
-                WHERE id = @id
-              '''),
-              parameters: {'price': fetched, 'id': m['card_id']},
-            );
-          }
+          cardsToFetch.add(m);
         }
       }
 
-      if (finalPrice == null) {
+      if (price == null) {
         missing += qty;
       } else {
-        total += finalPrice * qty;
+        total += price * qty;
       }
 
       items.add({
@@ -120,9 +99,58 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         'set_code': m['set_code'],
         'quantity': qty,
         'is_commander': m['is_commander'] == true,
-        'unit_price_usd': finalPrice,
-        'line_total_usd': finalPrice == null ? null : (finalPrice * qty),
+        'unit_price_usd': price,
+        'line_total_usd': price == null ? null : (price * qty),
       });
+    }
+
+    // Se force=true ou tem cartas sem preço, busca em paralelo (máx 10 por vez)
+    if (cardsToFetch.isNotEmpty) {
+      // Limita a 10 buscas para não demorar muito
+      final toFetch = cardsToFetch.take(10).toList();
+      
+      final futures = toFetch.map((m) async {
+        final oracleId = (m['scryfall_id'] as String?)?.trim();
+        final setCode = (m['set_code'] as String?)?.trim();
+        if (oracleId == null || oracleId.isEmpty) return;
+        
+        final fetched = await _fetchUsdPriceFromScryfall(
+          idOrOracleId: oracleId,
+          setCode: setCode,
+        );
+        if (fetched != null) {
+          await pool.execute(
+            Sql.named('''
+              UPDATE cards
+              SET price = @price,
+                  price_updated_at = NOW()
+              WHERE id = @id
+            '''),
+            parameters: {'price': fetched, 'id': m['card_id']},
+          );
+          
+          // Atualiza o item na lista
+          final idx = items.indexWhere((i) => i['card_id'] == m['card_id']);
+          if (idx >= 0) {
+            final qty = items[idx]['quantity'] as int;
+            final oldPrice = items[idx]['unit_price_usd'];
+            
+            items[idx]['unit_price_usd'] = fetched;
+            items[idx]['line_total_usd'] = fetched * qty;
+            
+            // Ajusta totais
+            if (oldPrice == null) {
+              missing -= qty;
+              total += fetched * qty;
+            } else {
+              total = total - (oldPrice as double) * qty + fetched * qty;
+            }
+          }
+        }
+      });
+      
+      // Executa em paralelo
+      await Future.wait(futures);
     }
 
     // Salva snapshot no deck (para exibir sem recalcular).
