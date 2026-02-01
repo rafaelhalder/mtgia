@@ -133,9 +133,15 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Deck criado com sucesso!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Deck criado com sucesso! Abrindo análise...'),
+              ],
+            ),
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
         context.go('/decks');
@@ -160,7 +166,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gerar Deck'),
+        title: const Text('Gerador de Decks'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/decks'),
@@ -172,29 +178,51 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Header
-            Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome,
-                  color: theme.colorScheme.primary,
-                  size: 32,
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary.withOpacity(0.2),
+                    theme.colorScheme.secondary.withOpacity(0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Descreva o deck dos seus sonhos',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.psychology,
+                        color: theme.colorScheme.primary,
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Criação Inteligente',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Descreva a estratégia ou tema do deck e a IA irá criar um deck completo, balanceado e otimizado para o formato escolhido.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      height: 1.4,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'O gerador irá criar um deck completo e balanceado baseado na sua descrição.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[400],
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -226,14 +254,20 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             const SizedBox(height: 24),
 
             // Prompt Input
-            Text('Descreva seu deck:', style: theme.textTheme.titleMedium),
+            Row(
+              children: [
+                Icon(Icons.edit_note, size: 18, color: theme.colorScheme.secondary),
+                const SizedBox(width: 6),
+                Text('Descreva seu deck:', style: theme.textTheme.titleMedium),
+              ],
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _promptController,
               maxLines: 4,
               decoration: InputDecoration(
                 hintText:
-                    'Ex: Deck agressivo de goblins vermelhos com muitas criaturas pequenas...',
+                    'Ex: Deck agressivo de goblins que ataca rapidamente com muitas criaturas pequenas e dano direto...',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -244,11 +278,17 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
             const SizedBox(height: 16),
 
             // Example Prompts
-            Text(
-              'Ou escolha um exemplo:',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: Colors.grey[400],
-              ),
+            Row(
+              children: [
+                Icon(Icons.lightbulb_outline, size: 16, color: theme.colorScheme.tertiary),
+                const SizedBox(width: 6),
+                Text(
+                  'Inspirações:',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -283,9 +323,9 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                      : const Icon(Icons.auto_awesome),
+                      : const Icon(Icons.psychology),
               label: Text(
-                _isGenerating ? 'Gerando...' : 'Gerar Deck',
+                _isGenerating ? 'IA processando...' : 'Gerar com IA',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -305,12 +345,25 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  Icon(Icons.preview, color: theme.colorScheme.secondary),
+                  Icon(Icons.auto_awesome, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
-                  Text(
-                    'Preview do Deck Gerado',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Deck Gerado pela IA',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Revise e personalize antes de salvar',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

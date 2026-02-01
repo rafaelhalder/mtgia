@@ -248,16 +248,18 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     const SizedBox(height: 16),
                     Row(
                       children: [
+                        Icon(Icons.auto_awesome, size: 18, color: theme.colorScheme.primary.withOpacity(0.7)),
+                        const SizedBox(width: 6),
                         Expanded(
-                          child: Text('Estratégia', style: theme.textTheme.titleMedium),
+                          child: Text('Análise de IA', style: theme.textTheme.titleMedium),
                         ),
                         TextButton.icon(
                           onPressed: () => _showOptimizationOptions(context),
-                          icon: const Icon(Icons.auto_fix_high, size: 18),
+                          icon: const Icon(Icons.psychology, size: 18),
                           label: Text(
                             (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                ? 'Definir'
-                                : 'Alterar',
+                                ? 'Analisar'
+                                : 'Reotimizar',
                           ),
                         ),
                       ],
@@ -283,10 +285,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                           children: [
                             Icon(
                               (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                  ? Icons.help_outline
+                                  ? Icons.auto_awesome
                                   : Icons.psychology,
                               color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                  ? theme.colorScheme.outline
+                                  ? theme.colorScheme.secondary
                                   : theme.colorScheme.primary,
                             ),
                             const SizedBox(width: 12),
@@ -296,12 +298,12 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 children: [
                                   Text(
                                     (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                        ? 'Não definida'
+                                        ? 'Aguardando análise'
                                         : deck.archetype!,
                                     style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.bold,
                                       color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                          ? theme.colorScheme.outline
+                                          ? theme.colorScheme.secondary
                                           : theme.colorScheme.primary,
                                     ),
                                   ),
@@ -323,12 +325,20 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     ),
                     if (deck.archetype == null || deck.archetype!.trim().isEmpty) ...[
                       const SizedBox(height: 8),
-                      Text(
-                        'Toque para analisar estratégias e otimizar seu deck com IA',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.outline,
-                          fontStyle: FontStyle.italic,
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.tips_and_updates, size: 14, color: theme.colorScheme.secondary),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Deixe a IA analisar seu deck e sugerir melhorias de sinergia',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.secondary,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -1011,9 +1021,20 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         builder: (ctx, setDialogState) => AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.content_paste_go, color: theme.colorScheme.secondary),
+              Icon(Icons.auto_awesome, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
-              const Text('Colar Lista'),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Importar com IA', style: TextStyle(fontSize: 18)),
+                    Text(
+                      'Reconhecimento automático de cartas',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           content: SizedBox(
@@ -1023,41 +1044,17 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Instruções
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.secondary.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '💡 Cole a lista de cartas copiada de outros sites',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.secondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Formatos: "1 Sol Ring", "1x Mana Vault"',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
                   // Opção de substituir tudo
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+                      color: replaceAll 
+                        ? Colors.orange.withOpacity(0.1)
+                        : theme.colorScheme.surface,
+                      border: Border.all(
+                        color: replaceAll 
+                          ? Colors.orange.withOpacity(0.5)
+                          : theme.colorScheme.outline.withOpacity(0.3),
+                      ),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: CheckboxListTile(
@@ -1065,18 +1062,31 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       onChanged: (value) {
                         setDialogState(() => replaceAll = value ?? false);
                       },
-                      title: const Text('Substituir deck inteiro', style: TextStyle(fontSize: 14)),
+                      title: Row(
+                        children: [
+                          Icon(
+                            replaceAll ? Icons.swap_horiz : Icons.add_circle_outline,
+                            size: 18,
+                            color: replaceAll ? Colors.orange : theme.colorScheme.secondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            replaceAll ? 'Substituir deck' : 'Adicionar cartas',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
                       subtitle: Text(
                         replaceAll 
-                          ? '⚠️ Cartas atuais serão removidas!'
-                          : 'Adiciona às cartas existentes',
+                          ? 'Remove cartas atuais e usa apenas a nova lista'
+                          : 'Mantém cartas existentes e adiciona as novas',
                         style: TextStyle(
                           fontSize: 11,
                           color: replaceAll ? Colors.orange : null,
                         ),
                       ),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      controlAffinity: ListTileControlAffinity.trailing,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1085,12 +1095,16 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   TextField(
                     controller: listController,
                     decoration: InputDecoration(
-                      hintText: 'Cole a lista aqui...\n\n1 Sol Ring\n1 Arcane Signet\n4 Island',
+                      hintText: 'Cole a lista de qualquer site...\n\nA IA reconhece formatos do Moxfield, Archidekt, MTGA e outros.',
+                      hintStyle: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                        fontSize: 12,
+                      ),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: theme.colorScheme.surface,
                     ),
-                    maxLines: 12,
+                    maxLines: 10,
                     style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12,
@@ -1209,12 +1223,22 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         final imported = result['cards_imported'] ?? 0;
                         ScaffoldMessenger.of(parentContext).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              notFoundLines.isEmpty
-                                  ? '$imported cartas importadas!'
-                                  : '$imported cartas importadas (${notFoundLines.length} não encontradas)',
+                            content: Row(
+                              children: [
+                                const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    notFoundLines.isEmpty
+                                        ? '✓ $imported cartas reconhecidas e adicionadas!'
+                                        : '✓ $imported cartas adicionadas (${notFoundLines.length} não identificadas)',
+                                  ),
+                                ),
+                              ],
                             ),
-                            backgroundColor: notFoundLines.isEmpty ? Colors.green : Colors.orange,
+                            backgroundColor: notFoundLines.isEmpty 
+                              ? Theme.of(parentContext).colorScheme.primary 
+                              : Colors.orange,
                           ),
                         );
                         
@@ -1232,8 +1256,8 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.upload),
-              label: Text(isImporting ? 'Importando...' : 'Importar'),
+                  : const Icon(Icons.auto_awesome),
+              label: Text(isImporting ? 'Analisando...' : 'Processar com IA'),
             ),
           ],
         ),
@@ -1781,9 +1805,15 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       Navigator.pop(context); // Close Sheet
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mudanças aplicadas com sucesso!'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.psychology, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('✓ Deck otimizado pela IA com sucesso!'),
+            ],
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
         ),
       );
     } catch (e) {
@@ -1792,7 +1822,13 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao aplicar otimização: $e'),
+            content: Row(
+              children: const [
+                Icon(Icons.error_outline, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(child: Text('Erro na otimização')),
+              ],
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -1834,15 +1870,25 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
           ),
           Row(
             children: [
-              Icon(Icons.auto_fix_high, color: theme.colorScheme.primary),
+              Icon(Icons.psychology, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
-              Text('Otimizar Deck', style: theme.textTheme.headlineSmall),
+              Text('Otimização Inteligente', style: theme.textTheme.headlineSmall),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'Sugestões para o seu comandante:',
-            style: theme.textTheme.bodyMedium,
+          Row(
+            children: [
+              Icon(Icons.tips_and_updates, size: 14, color: theme.colorScheme.secondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'A IA analisa seu deck e sugere estratégias baseadas no comandante',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           InputDecorator(
@@ -1897,8 +1943,8 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () => _applyOptimization(context, savedArchetype),
-              icon: const Icon(Icons.auto_fix_high),
-              label: const Text('Otimizar com esta estratégia'),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Reotimizar com IA'),
             ),
             const SizedBox(height: 16),
           ],
