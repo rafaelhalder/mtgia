@@ -216,11 +216,17 @@ class DeckArchetypeAnalyzer {
     final detectedArchetype = detectArchetype();
     final manaAnalysis = analyzeManaBase();
     
+    // Calcular total_cards considerando quantity
+    int totalCards = 0;
+    for (final card in cards) {
+      totalCards += (card['quantity'] as int?) ?? 1;
+    }
+    
     return {
       'detected_archetype': detectedArchetype,
       'average_cmc': avgCMC.toStringAsFixed(2),
       'type_distribution': typeCounts,
-      'total_cards': cards.length,
+      'total_cards': totalCards,
       'mana_curve_assessment': _assessManaCurve(avgCMC, detectedArchetype),
       'mana_base_assessment': manaAnalysis['assessment'],
       'archetype_confidence': _calculateConfidence(avgCMC, typeCounts, detectedArchetype),
