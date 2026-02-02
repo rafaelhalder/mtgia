@@ -5,6 +5,33 @@ import 'package:postgres/postgres.dart';
 import '../../lib/deck_rules_service.dart';
 import '../../lib/logger.dart';
 
+String? _normalizeScryfallImageUrl(String? url) {
+  if (url == null) return null;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return null;
+  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
+
+  try {
+    final uri = Uri.parse(trimmed);
+    final qp = Map<String, String>.from(uri.queryParameters);
+
+    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
+
+    final exact = qp['exact'];
+    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
+      final left = exact.split('//').first.trim();
+      if (left.isNotEmpty) qp['exact'] = left;
+    }
+
+    return uri.replace(queryParameters: qp).toString();
+  } catch (_) {
+    return trimmed.replaceAllMapped(
+      RegExp(r'([?&]set=)([^&]+)'),
+      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
+    );
+  }
+}
+
 bool? _hasDeckMetaColumnsCache;
 Future<bool> _hasDeckMetaColumns(Pool pool) async {
   if (_hasDeckMetaColumnsCache != null) return _hasDeckMetaColumnsCache!;
@@ -91,11 +118,23 @@ Future<Response> _listDecks(RequestContext context) async {
           d.pricing_missing_cards,
           d.pricing_updated_at,
           d.created_at,
+          cmd.commander_name,
+          cmd.commander_image_url,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
+        LEFT JOIN LATERAL (
+          SELECT 
+            c.name as commander_name,
+            c.image_url as commander_image_url
+          FROM deck_cards dc_cmd
+          JOIN cards c ON c.id = dc_cmd.card_id
+          WHERE dc_cmd.deck_id = d.id
+            AND dc_cmd.is_commander = true
+          LIMIT 1
+        ) cmd ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE d.user_id = @userId
-        GROUP BY d.id
+        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url
         ORDER BY d.created_at DESC
       '''
             : '''
@@ -112,11 +151,23 @@ Future<Response> _listDecks(RequestContext context) async {
           0::int as pricing_missing_cards,
           NULL::timestamptz as pricing_updated_at,
           d.created_at,
+          cmd.commander_name,
+          cmd.commander_image_url,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
+        LEFT JOIN LATERAL (
+          SELECT 
+            c.name as commander_name,
+            c.image_url as commander_image_url
+          FROM deck_cards dc_cmd
+          JOIN cards c ON c.id = dc_cmd.card_id
+          WHERE dc_cmd.deck_id = d.id
+            AND dc_cmd.is_commander = true
+          LIMIT 1
+        ) cmd ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE d.user_id = @userId
-        GROUP BY d.id
+        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url
         ORDER BY d.created_at DESC
       ''')
         : (hasPricing
@@ -134,11 +185,23 @@ Future<Response> _listDecks(RequestContext context) async {
           d.pricing_missing_cards,
           d.pricing_updated_at,
           d.created_at,
+          cmd.commander_name,
+          cmd.commander_image_url,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
+        LEFT JOIN LATERAL (
+          SELECT 
+            c.name as commander_name,
+            c.image_url as commander_image_url
+          FROM deck_cards dc_cmd
+          JOIN cards c ON c.id = dc_cmd.card_id
+          WHERE dc_cmd.deck_id = d.id
+            AND dc_cmd.is_commander = true
+          LIMIT 1
+        ) cmd ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE d.user_id = @userId
-        GROUP BY d.id
+        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url
         ORDER BY d.created_at DESC
       '''
             : '''
@@ -155,11 +218,23 @@ Future<Response> _listDecks(RequestContext context) async {
           0::int as pricing_missing_cards,
           NULL::timestamptz as pricing_updated_at,
           d.created_at,
+          cmd.commander_name,
+          cmd.commander_image_url,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
+        LEFT JOIN LATERAL (
+          SELECT 
+            c.name as commander_name,
+            c.image_url as commander_image_url
+          FROM deck_cards dc_cmd
+          JOIN cards c ON c.id = dc_cmd.card_id
+          WHERE dc_cmd.deck_id = d.id
+            AND dc_cmd.is_commander = true
+          LIMIT 1
+        ) cmd ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE d.user_id = @userId
-        GROUP BY d.id
+        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url
         ORDER BY d.created_at DESC
       ''');
 
@@ -178,6 +253,9 @@ Future<Response> _listDecks(RequestContext context) async {
         map['pricing_updated_at'] =
             (map['pricing_updated_at'] as DateTime).toIso8601String();
       }
+      map['commander_image_url'] = _normalizeScryfallImageUrl(
+        map['commander_image_url']?.toString(),
+      );
       // PostgreSQL DECIMAL retorna String, converter para double
       final rawPricingTotal = map['pricing_total'];
       if (rawPricingTotal is String) {

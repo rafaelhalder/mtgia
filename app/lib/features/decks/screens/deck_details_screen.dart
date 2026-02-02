@@ -229,8 +229,8 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
                               child: SizedBox(
-                                width: 50,
-                                height: 50,
+                                width: 44,
+                                height: 62,
                                 child:
                                     c.imageUrl != null
                                         ? Image.network(
@@ -1987,6 +1987,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
   late Future<List<Map<String, dynamic>>> _optionsFuture;
   int _selectedBracket = 2;
   bool _showAllStrategies = true;
+  bool _keepTheme = true;
 
   String? get _currentArchetype {
     final deck = context.read<DeckProvider>().selectedDeck;
@@ -2004,6 +2005,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
         'deck_id': deckId,
         'archetype': archetype,
         'bracket': bracket,
+        'keep_theme': _keepTheme,
       },
       'response': result,
     };
@@ -2058,7 +2060,8 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       final result = await deckProvider.optimizeDeck(
         widget.deckId,
         archetype,
-        _selectedBracket,
+        bracket: _selectedBracket,
+        keepTheme: _keepTheme,
       );
 
       closeLoadingDialog();
@@ -2071,6 +2074,14 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       final warnings =
           (result['warnings'] is Map)
               ? (result['warnings'] as Map).cast<String, dynamic>()
+              : const <String, dynamic>{};
+      final themeInfo =
+          (result['theme'] is Map)
+              ? (result['theme'] as Map).cast<String, dynamic>()
+              : const <String, dynamic>{};
+      final constraints =
+          (result['constraints'] is Map)
+              ? (result['constraints'] as Map).cast<String, dynamic>()
               : const <String, dynamic>{};
       final mode = (result['mode'] as String?) ?? 'optimize';
       final additionsDetailed =
@@ -2111,6 +2122,16 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (constraints['keep_theme'] == true &&
+                        themeInfo['theme'] != null) ...[
+                      Text(
+                        'Tema preservado: ${themeInfo['theme']}',
+                        style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (reasoning.isNotEmpty) ...[
                       Text(
                         reasoning,
@@ -2378,6 +2399,16 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
             ),
           ),
           const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Manter tema do deck'),
+            subtitle: const Text(
+              'Otimiza sem trocar o plano principal e evita remover cartas núcleo.',
+            ),
+            value: _keepTheme,
+            onChanged: (v) => setState(() => _keepTheme = v),
+          ),
+          const SizedBox(height: 8),
           if (savedArchetype != null && savedArchetype.trim().isNotEmpty) ...[
             Container(
               padding: const EdgeInsets.all(12),

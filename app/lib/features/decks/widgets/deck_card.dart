@@ -18,6 +18,10 @@ class DeckCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final commanderImageUrl = deck.commanderImageUrl?.trim();
+    final hasCommander =
+        (deck.commanderName?.trim().isNotEmpty ?? false) ||
+        (commanderImageUrl?.isNotEmpty ?? false);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -31,7 +35,48 @@ class DeckCard extends StatelessWidget {
             children: [
               // Header (Nome + Formato)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (hasCommander) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 44,
+                        height: 62,
+                        child:
+                            (commanderImageUrl != null &&
+                                    commanderImageUrl.isNotEmpty)
+                                ? Image.network(
+                                  commanderImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder:
+                                      (_, __, ___) => Container(
+                                        color:
+                                            theme
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                        alignment: Alignment.center,
+                                        child: Icon(
+                                          Icons.image_not_supported,
+                                          size: 18,
+                                          color: theme.colorScheme.outline,
+                                        ),
+                                      ),
+                                )
+                                : Container(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    Icons.auto_awesome,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,6 +86,8 @@ class DeckCard extends StatelessWidget {
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Row(
@@ -87,7 +134,7 @@ class DeckCard extends StatelessWidget {
                   DeckProgressChip(
                     totalCards: deck.cardCount,
                     maxCards: _getMaxCards(deck.format),
-                    hasCommander: true, // Não temos essa info na listagem, assumimos true
+                    hasCommander: hasCommander,
                     format: deck.format,
                   ),
                   const SizedBox(width: 12),
@@ -150,11 +197,7 @@ class _StatChip extends StatelessWidget {
   final String label;
   final Color? color;
 
-  const _StatChip({
-    required this.icon,
-    required this.label,
-    this.color,
-  });
+  const _StatChip({required this.icon, required this.label, this.color});
 
   @override
   Widget build(BuildContext context) {

@@ -453,14 +453,16 @@ class DeckProvider extends ChangeNotifier {
   /// Solicita sugestões de otimização para um arquétipo específico
   Future<Map<String, dynamic>> optimizeDeck(
     String deckId,
-    String archetype, [
+    String archetype, {
     int? bracket,
-  ]) async {
+    bool keepTheme = true,
+  }) async {
     try {
       final payload = <String, dynamic>{
         'deck_id': deckId,
         'archetype': archetype,
         if (bracket != null) 'bracket': bracket,
+        'keep_theme': keepTheme,
       };
 
       // Debug snapshot (sem token): útil para você colar o JSON de request/response.

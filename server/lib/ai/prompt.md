@@ -49,6 +49,18 @@ Candidatas Fracas (Data-Driven): Uma lista de cartas que o algoritmo identificou
 
 Pool de Sinergia: Uma lista de cartas extraída do Scryfall que combinam mecanicamente com o texto do Comandante. Use esta lista como prioridade para ADIÇÕES.
 
+RESTRIÇÕES (CONSTRAINTS)
+
+O payload pode conter um objeto `constraints` com:
+- `keep_theme` (bool): se `true`, otimize SEM trocar o tema/plano principal do deck.
+- `deck_theme` (string): rótulo do tema detectado no deck atual.
+- `core_cards` (lista de strings): cartas “núcleo” que definem o deck.
+
+Se `constraints.keep_theme = true`:
+- NÃO transforme o deck em outro arquétipo/tema.
+- NUNCA remova cartas em `constraints.core_cards`.
+- Prefira upgrades que reforcem o tema (ramp, interação, consistência) sem mudar a condição de vitória do jogador.
+
 FONTE DE DADOS DINÂMICA
 
 O sistema busca dados de três fontes para garantir informações sempre atualizadas:
