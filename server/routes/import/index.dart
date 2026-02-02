@@ -2,6 +2,30 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+List<Map<String, dynamic>> _consolidateCardsById(
+  List<Map<String, dynamic>> cards,
+) {
+  final byId = <String, Map<String, dynamic>>{};
+  for (final card in cards) {
+    final cardId = card['card_id'] as String;
+    final existing = byId[cardId];
+    if (existing == null) {
+      byId[cardId] = Map<String, dynamic>.from(card);
+      continue;
+    }
+
+    existing['quantity'] =
+        (existing['quantity'] as int) + (card['quantity'] as int);
+    if (card['is_commander'] == true) {
+      existing['is_commander'] = true;
+    }
+  }
+  return byId.values.toList();
+}
+
+int _sumQuantities(List<Map<String, dynamic>> cards) =>
+    cards.fold<int>(0, (sum, c) => sum + (c['quantity'] as int? ?? 0));
+
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method == HttpMethod.post) {
     return _importDeck(context);
@@ -70,11 +94,11 @@ Future<Response> _importDeck(RequestContext context) async {
     if (match != null) {
       final quantity = int.parse(match.group(1)!);
       final cardName = match.group(2)!.trim();
-      
+
       final lineLower = line.toLowerCase();
-      final isCommanderTag = lineLower.contains('[commander') || 
-                             lineLower.contains('*cmdr*') || 
-                             lineLower.contains('!commander');
+      final isCommanderTag = lineLower.contains('[commander') ||
+          lineLower.contains('*cmdr*') ||
+          lineLower.contains('!commander');
 
       parsedItems.add({
         'line': line,
@@ -90,17 +114,22 @@ Future<Response> _importDeck(RequestContext context) async {
 
   // 2. Busca em lote (Batch Query)
   final foundCardsMap = <String, Map<String, dynamic>>{};
-  
+
   if (namesToQuery.isNotEmpty) {
     final result = await pool.execute(
-      Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
+      Sql.named(
+          'SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
       parameters: {'names': TypedValue(Type.textArray, namesToQuery.toList())},
     );
     for (final row in result) {
       final id = row[0] as String;
       final name = row[1] as String;
       final typeLine = row[2] as String;
-      foundCardsMap[name.toLowerCase()] = {'id': id, 'name': name, 'type_line': typeLine};
+      foundCardsMap[name.toLowerCase()] = {
+        'id': id,
+        'name': name,
+        'type_line': typeLine
+      };
     }
   }
 
@@ -112,7 +141,8 @@ Future<Response> _importDeck(RequestContext context) async {
     final nameLower = (item['name'] as String).toLowerCase();
     if (!foundCardsMap.containsKey(nameLower)) {
       // Tenta limpar números no final do nome
-      final cleanName = (item['name'] as String).replaceAll(RegExp(r'\s+\d+$'), '');
+      final cleanName =
+          (item['name'] as String).replaceAll(RegExp(r'\s+\d+$'), '');
       if (cleanName != item['name']) {
         item['cleanName'] = cleanName;
         cleanNamesToQuery.add(cleanName.toLowerCase());
@@ -125,52 +155,66 @@ Future<Response> _importDeck(RequestContext context) async {
   // 4. Busca em lote para os Fallbacks
   if (cleanNamesToQuery.isNotEmpty) {
     final result = await pool.execute(
-      Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
-      parameters: {'names': TypedValue(Type.textArray, cleanNamesToQuery.toList())},
+      Sql.named(
+          'SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
+      parameters: {
+        'names': TypedValue(Type.textArray, cleanNamesToQuery.toList())
+      },
     );
     for (final row in result) {
       final id = row[0] as String;
       final name = row[1] as String;
       final typeLine = row[2] as String;
-      foundCardsMap[name.toLowerCase()] = {'id': id, 'name': name, 'type_line': typeLine};
+      foundCardsMap[name.toLowerCase()] = {
+        'id': id,
+        'name': name,
+        'type_line': typeLine
+      };
     }
   }
 
   // 5. Fallback para Split Cards / Double Faced (Ex: "Command Tower" -> "Command Tower // Command Tower")
   final splitPatternsToQuery = <String>[];
-  
+
   for (final item in parsedItems) {
-     final nameKey = item['cleanName'] != null 
-        ? (item['cleanName'] as String).toLowerCase() 
+    final nameKey = item['cleanName'] != null
+        ? (item['cleanName'] as String).toLowerCase()
         : (item['name'] as String).toLowerCase();
-     
-     // Se ainda não achou
-     if (!foundCardsMap.containsKey(nameKey)) {
-        splitPatternsToQuery.add('$nameKey // %');
-     }
+
+    // Se ainda não achou
+    if (!foundCardsMap.containsKey(nameKey)) {
+      splitPatternsToQuery.add('$nameKey // %');
+    }
   }
 
   if (splitPatternsToQuery.isNotEmpty) {
-      final result = await pool.execute(
-        Sql.named('SELECT id, name, type_line FROM cards WHERE lower(name) LIKE ANY(@patterns)'),
-        parameters: {'patterns': TypedValue(Type.textArray, splitPatternsToQuery)},
-      );
-      
-      for (final row in result) {
-        final id = row[0] as String;
-        final dbName = row[1] as String;
-        final typeLine = row[2] as String;
-        final dbNameLower = dbName.toLowerCase();
-        
-        // Split robusto
-        final parts = dbNameLower.split(RegExp(r'\s*//\s*'));
-        if (parts.isNotEmpty) {
-            final prefix = parts[0].trim();
-            if (!foundCardsMap.containsKey(prefix)) {
-                 foundCardsMap[prefix] = {'id': id, 'name': dbName, 'type_line': typeLine};
-            }
+    final result = await pool.execute(
+      Sql.named(
+          'SELECT id, name, type_line FROM cards WHERE lower(name) LIKE ANY(@patterns)'),
+      parameters: {
+        'patterns': TypedValue(Type.textArray, splitPatternsToQuery)
+      },
+    );
+
+    for (final row in result) {
+      final id = row[0] as String;
+      final dbName = row[1] as String;
+      final typeLine = row[2] as String;
+      final dbNameLower = dbName.toLowerCase();
+
+      // Split robusto
+      final parts = dbNameLower.split(RegExp(r'\s*//\s*'));
+      if (parts.isNotEmpty) {
+        final prefix = parts[0].trim();
+        if (!foundCardsMap.containsKey(prefix)) {
+          foundCardsMap[prefix] = {
+            'id': id,
+            'name': dbName,
+            'type_line': typeLine
+          };
         }
       }
+    }
   }
 
   // 6. Montagem final da lista de inserção
@@ -178,16 +222,17 @@ Future<Response> _importDeck(RequestContext context) async {
     // Verifica se já foi marcado como não encontrado (ex: erro de regex)
     if (notFoundCards.contains(item['line'])) continue;
 
-    final nameKey = item['cleanName'] != null 
-        ? (item['cleanName'] as String).toLowerCase() 
+    final nameKey = item['cleanName'] != null
+        ? (item['cleanName'] as String).toLowerCase()
         : (item['name'] as String).toLowerCase();
 
     if (foundCardsMap.containsKey(nameKey)) {
       final cardData = foundCardsMap[nameKey]!;
       final dbName = cardData['name'] as String;
-      
-      final isCommander = item['isCommanderTag'] || (commanderName != null && 
-                         dbName.toLowerCase() == commanderName.toLowerCase());
+
+      final isCommander = item['isCommanderTag'] ||
+          (commanderName != null &&
+              dbName.toLowerCase() == commanderName.toLowerCase());
 
       cardsToInsert.add({
         'card_id': cardData['id'],
@@ -205,23 +250,30 @@ Future<Response> _importDeck(RequestContext context) async {
   }
 
   if (cardsToInsert.isEmpty) {
-     return Response.json(
+    return Response.json(
       statusCode: HttpStatus.badRequest,
-      body: {'error': 'No valid cards found in the list.', 'not_found': notFoundCards},
+      body: {
+        'error': 'No valid cards found in the list.',
+        'not_found': notFoundCards
+      },
     );
   }
 
+  final consolidatedCards = _consolidateCardsById(cardsToInsert);
+
   // 6.5. Validação de Comandante para formatos que exigem
   if (format == 'commander' || format == 'brawl') {
-    final hasCommander = cardsToInsert.any((c) => c['is_commander'] == true);
-    
+    final hasCommander =
+        consolidatedCards.any((c) => c['is_commander'] == true);
+
     if (!hasCommander) {
       // Tenta detectar automaticamente um comandante baseado no tipo
       // Procura por Legendary Creature ou Planeswalker com "can be your commander"
-      for (final card in cardsToInsert) {
+      for (final card in consolidatedCards) {
         final typeLine = (card['type_line'] as String).toLowerCase();
-        final isLegendaryCreature = typeLine.contains('legendary') && typeLine.contains('creature');
-        
+        final isLegendaryCreature =
+            typeLine.contains('legendary') && typeLine.contains('creature');
+
         if (isLegendaryCreature) {
           // Marca a primeira Legendary Creature como comandante
           card['is_commander'] = true;
@@ -235,7 +287,7 @@ Future<Response> _importDeck(RequestContext context) async {
   final limit = (format == 'commander' || format == 'brawl') ? 1 : 4;
   final cardIdsToCheck = <String>[];
 
-  for (final card in cardsToInsert) {
+  for (final card in consolidatedCards) {
     final name = card['name'] as String;
     final typeLine = card['type_line'] as String;
     final quantity = card['quantity'] as int;
@@ -244,7 +296,9 @@ Future<Response> _importDeck(RequestContext context) async {
     if (!isBasicLand && quantity > limit) {
       return Response.json(
         statusCode: HttpStatus.badRequest,
-        body: {'error': 'Regra violada: $name tem $quantity cópias (Limite: $limit).'},
+        body: {
+          'error': 'Regra violada: $name tem $quantity cópias (Limite: $limit).'
+        },
       );
     }
     cardIdsToCheck.add(card['card_id'] as String);
@@ -252,14 +306,12 @@ Future<Response> _importDeck(RequestContext context) async {
 
   if (cardIdsToCheck.isNotEmpty) {
     final legalityResult = await pool.execute(
-      Sql.named(
-        'SELECT c.name, cl.status FROM card_legalities cl JOIN cards c ON c.id = cl.card_id WHERE cl.card_id = ANY(@ids) AND cl.format = @format'
-      ),
-      parameters: {
-        'ids': TypedValue(Type.textArray, cardIdsToCheck),
-        'format': format,
-      }
-    );
+        Sql.named(
+            'SELECT c.name, cl.status FROM card_legalities cl JOIN cards c ON c.id = cl.card_id WHERE cl.card_id = ANY(@ids) AND cl.format = @format'),
+        parameters: {
+          'ids': TypedValue(Type.textArray, cardIdsToCheck),
+          'format': format,
+        });
 
     final bannedCards = <String>[];
     for (final row in legalityResult) {
@@ -271,7 +323,10 @@ Future<Response> _importDeck(RequestContext context) async {
     if (bannedCards.isNotEmpty) {
       return Response.json(
         statusCode: HttpStatus.badRequest,
-        body: {'error': 'O deck contém cartas BANIDAS no formato $format: ${bannedCards.join(", ")}'},
+        body: {
+          'error':
+              'O deck contém cartas BANIDAS no formato $format: ${bannedCards.join(", ")}'
+        },
       );
     }
   }
@@ -294,57 +349,59 @@ Future<Response> _importDeck(RequestContext context) async {
       final newDeckId = deckResult.first.toColumnMap()['id'];
 
       // 2. Inserir as Cartas (Bulk Insert)
-      if (cardsToInsert.isNotEmpty) {
+      if (consolidatedCards.isNotEmpty) {
         final valueStrings = <String>[];
         final params = <String, dynamic>{
           'deckId': newDeckId,
         };
 
-        for (var i = 0; i < cardsToInsert.length; i++) {
-          final card = cardsToInsert[i];
+        for (var i = 0; i < consolidatedCards.length; i++) {
+          final card = consolidatedCards[i];
           final pCardId = 'c$i';
           final pQty = 'q$i';
           final pCmdr = 'cmd$i';
-          
+
           valueStrings.add('(@deckId, @$pCardId, @$pQty, @$pCmdr)');
           params[pCardId] = card['card_id'];
           params[pQty] = card['quantity'];
           params[pCmdr] = card['is_commander'] ?? false;
         }
 
-        final sql = 'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${valueStrings.join(',')}';
-        
+        final sql =
+            'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${valueStrings.join(',')}';
+
         await session.execute(Sql.named(sql), parameters: params);
       }
-      
+
       final deckMap = deckResult.first.toColumnMap();
       if (deckMap['created_at'] is DateTime) {
-        deckMap['created_at'] = (deckMap['created_at'] as DateTime).toIso8601String();
+        deckMap['created_at'] =
+            (deckMap['created_at'] as DateTime).toIso8601String();
       }
       return deckMap;
     });
 
     // Prepara warnings para a resposta
     final warnings = <String>[];
-    
+
     // Verifica se é formato Commander/Brawl sem comandante detectado
-    if ((format == 'commander' || format == 'brawl') && 
-        !cardsToInsert.any((c) => c['is_commander'] == true)) {
-      warnings.add('Nenhum comandante foi detectado. Considere marcar uma carta como comandante.');
+    if ((format == 'commander' || format == 'brawl') &&
+        !consolidatedCards.any((c) => c['is_commander'] == true)) {
+      warnings.add(
+          'Nenhum comandante foi detectado. Considere marcar uma carta como comandante.');
     }
 
     final responseBody = {
       'deck': newDeck,
-      'cards_imported': cardsToInsert.length,
+      'cards_imported': _sumQuantities(consolidatedCards),
       'not_found_lines': notFoundCards,
     };
-    
+
     if (warnings.isNotEmpty) {
       responseBody['warnings'] = warnings;
     }
 
     return Response.json(body: responseBody);
-
   } catch (e) {
     return Response.json(
       statusCode: HttpStatus.internalServerError,
