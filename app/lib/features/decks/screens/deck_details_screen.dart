@@ -226,10 +226,34 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       ...deck.commander.map(
                         (c) => Card(
                           child: ListTile(
-                            leading:
-                                c.imageUrl != null
-                                    ? Image.network(c.imageUrl!, width: 50)
-                                    : const Icon(Icons.image_not_supported),
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 50,
+                                height: 50,
+                                child:
+                                    c.imageUrl != null
+                                        ? Image.network(
+                                          c.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (_, __, ___) => Container(
+                                                color: Colors.grey[800],
+                                                child: const Icon(
+                                                  Icons.image_not_supported,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                        )
+                                        : Container(
+                                          color: Colors.grey[800],
+                                          child: const Icon(
+                                            Icons.image_not_supported,
+                                            size: 20,
+                                          ),
+                                        ),
+                              ),
+                            ),
                             title: Text(c.name),
                             subtitle: Text(c.typeLine),
                             onTap: () => _showCardDetails(context, c),
