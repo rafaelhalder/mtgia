@@ -1,6 +1,36 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+String? _normalizeScryfallImageUrl(String? url) {
+  if (url == null) return null;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return null;
+  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
+
+  try {
+    final uri = Uri.parse(trimmed);
+    final qp = Map<String, String>.from(uri.queryParameters);
+
+    // Normalize set= to lowercase to avoid 404 (Scryfall expects lowercase set codes).
+    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
+
+    // Some MTGJSON rows use "Name // Name". Scryfall named endpoint expects the
+    // canonical card name, so fallback to the left side.
+    final exact = qp['exact'];
+    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
+      final left = exact.split('//').first.trim();
+      if (left.isNotEmpty) qp['exact'] = left;
+    }
+
+    return uri.replace(queryParameters: qp).toString();
+  } catch (_) {
+    return trimmed.replaceAllMapped(
+      RegExp(r'([?&]set=)([^&]+)'),
+      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
+    );
+  }
+}
+
 Future<Response> onRequest(RequestContext context) async {
   // Apenas método GET é permitido
   if (context.request.method != HttpMethod.get) {
@@ -32,6 +62,7 @@ Future<Response> onRequest(RequestContext context) async {
     // Mapeamento do resultado para JSON
     final cards = queryResult.map((row) {
       final map = row.toColumnMap();
+      final imageUrl = _normalizeScryfallImageUrl(map['image_url']?.toString());
       return {
         'id': map['id'],
         'scryfall_id': map['scryfall_id'],
@@ -41,7 +72,7 @@ Future<Response> onRequest(RequestContext context) async {
         'oracle_text': map['oracle_text'],
         'colors': map['colors'],
         'color_identity': map['color_identity'],
-        'image_url': map['image_url'],
+        'image_url': imageUrl,
         'set_code': map['set_code'],
         if (hasSets) 'set_name': map['set_name'],
         if (hasSets)

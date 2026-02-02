@@ -27,6 +27,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
   late TabController _tabController;
   Map<String, dynamic>? _pricing;
   bool _isPricingLoading = false;
+  final Set<String> _hiddenCardIds = <String>{};
 
   @override
   void initState() {
@@ -163,7 +164,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       totalCards: totalCards,
                       maxCards: maxCards,
                       hasCommander: deck.commander.isNotEmpty,
-                      onTap: () => _tabController.animateTo(1), // Vai para tab de cartas
+                      onTap:
+                          () => _tabController.animateTo(
+                            1,
+                          ), // Vai para tab de cartas
                     ),
                     const SizedBox(height: 12),
                     _PricingRow(
@@ -222,10 +226,34 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       ...deck.commander.map(
                         (c) => Card(
                           child: ListTile(
-                            leading:
-                                c.imageUrl != null
-                                    ? Image.network(c.imageUrl!, width: 50)
-                                    : const Icon(Icons.image_not_supported),
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: SizedBox(
+                                width: 44,
+                                height: 62,
+                                child:
+                                    c.imageUrl != null
+                                        ? Image.network(
+                                          c.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder:
+                                              (_, __, ___) => Container(
+                                                color: Colors.grey[800],
+                                                child: const Icon(
+                                                  Icons.image_not_supported,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                        )
+                                        : Container(
+                                          color: Colors.grey[800],
+                                          child: const Icon(
+                                            Icons.image_not_supported,
+                                            size: 20,
+                                          ),
+                                        ),
+                              ),
+                            ),
                             title: Text(c.name),
                             subtitle: Text(c.typeLine),
                             onTap: () => _showCardDetails(context, c),
@@ -249,13 +277,17 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Estratégia', style: theme.textTheme.titleMedium),
+                          child: Text(
+                            'Estratégia',
+                            style: theme.textTheme.titleMedium,
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _showOptimizationOptions(context),
                           icon: const Icon(Icons.tune, size: 18),
                           label: Text(
-                            (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                            (deck.archetype == null ||
+                                    deck.archetype!.trim().isEmpty)
                                 ? 'Definir'
                                 : 'Alterar',
                           ),
@@ -269,25 +301,38 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                              ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
-                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                          color:
+                              (deck.archetype == null ||
+                                      deck.archetype!.trim().isEmpty)
+                                  ? theme.colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.5)
+                                  : theme.colorScheme.primaryContainer
+                                      .withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                ? theme.colorScheme.outline.withValues(alpha: 0.3)
-                                : theme.colorScheme.primary.withValues(alpha: 0.4),
+                            color:
+                                (deck.archetype == null ||
+                                        deck.archetype!.trim().isEmpty)
+                                    ? theme.colorScheme.outline.withValues(
+                                      alpha: 0.3,
+                                    )
+                                    : theme.colorScheme.primary.withValues(
+                                      alpha: 0.4,
+                                    ),
                           ),
                         ),
                         child: Row(
                           children: [
                             Icon(
-                              (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                              (deck.archetype == null ||
+                                      deck.archetype!.trim().isEmpty)
                                   ? Icons.help_outline
                                   : Icons.psychology,
-                              color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                  ? theme.colorScheme.outline
-                                  : theme.colorScheme.primary,
+                              color:
+                                  (deck.archetype == null ||
+                                          deck.archetype!.trim().isEmpty)
+                                      ? theme.colorScheme.outline
+                                      : theme.colorScheme.primary,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -295,14 +340,19 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    (deck.archetype == null || deck.archetype!.trim().isEmpty)
+                                    (deck.archetype == null ||
+                                            deck.archetype!.trim().isEmpty)
                                         ? 'Não definida'
                                         : deck.archetype!,
                                     style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.bold,
-                                      color: (deck.archetype == null || deck.archetype!.trim().isEmpty)
-                                          ? theme.colorScheme.outline
-                                          : theme.colorScheme.primary,
+                                      color:
+                                          (deck.archetype == null ||
+                                                  deck.archetype!
+                                                      .trim()
+                                                      .isEmpty)
+                                              ? theme.colorScheme.outline
+                                              : theme.colorScheme.primary,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -321,7 +371,8 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         ),
                       ),
                     ),
-                    if (deck.archetype == null || deck.archetype!.trim().isEmpty) ...[
+                    if (deck.archetype == null ||
+                        deck.archetype!.trim().isEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
                         'Toque para definir a estratégia do deck',
@@ -363,84 +414,238 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             ),
                           ),
                         ),
-                        ...entry.value.map(
-                          (card) => Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.all(8),
-                              leading: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: SizedBox(
-                                  width: 40,
-                                  height: 56,
-                                  child:
-                                      card.imageUrl != null
-                                          ? Image.network(
-                                            card.imageUrl!,
-                                            fit: BoxFit.cover,
-                                          )
-                                          : Container(
-                                            color: Colors.grey[800],
-                                            child: const Icon(
-                                              Icons.image_not_supported,
-                                              size: 20,
-                                            ),
-                                          ),
+                        ...entry.value
+                            .where((card) => !_hiddenCardIds.contains(card.id))
+                            .map(
+                              (card) => Dismissible(
+                                key: ValueKey('deck-card-${card.id}'),
+                                direction: DismissDirection.horizontal,
+                                background: Container(
+                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.edit, color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Editar',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              title: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
+                                secondaryBackground: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.error,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Excluir',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Icon(Icons.delete, color: Colors.white),
+                                    ],
+                                  ),
+                                ),
+                                confirmDismiss: (direction) async {
+                                  if (direction ==
+                                      DismissDirection.startToEnd) {
+                                    await _showEditCardDialog(
+                                      context,
+                                      card,
+                                      deckFormat: deck.format,
+                                    );
+                                    return false;
+                                  }
+
+                                  if (direction ==
+                                      DismissDirection.endToStart) {
+                                    final confirmed = await _confirmRemoveCard(
+                                      context,
+                                      card,
+                                    );
+                                    if (confirmed != true) return false;
+
+                                    if (mounted) {
+                                      setState(
+                                        () => _hiddenCardIds.add(card.id),
+                                      );
+                                    }
+
+                                    try {
+                                      await context
+                                          .read<DeckProvider>()
+                                          .removeCardFromDeck(
+                                            deckId: widget.deckId,
+                                            cardId: card.id,
+                                          );
+                                      if (!mounted) return true;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Carta removida: ${card.name}',
+                                          ),
+                                          backgroundColor:
+                                              theme.colorScheme.primary,
+                                        ),
+                                      );
+                                      return true;
+                                    } catch (e) {
+                                      if (mounted) {
+                                        setState(
+                                          () => _hiddenCardIds.remove(card.id),
+                                        );
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Erro ao remover: $e',
+                                            ),
+                                            backgroundColor:
+                                                theme.colorScheme.error,
+                                          ),
+                                        );
+                                      }
+                                      return false;
+                                    }
+                                  }
+
+                                  return false;
+                                },
+                                child: Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.all(8),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: SizedBox(
+                                        width: 40,
+                                        height: 56,
+                                        child:
+                                            card.imageUrl != null
+                                                ? Image.network(
+                                                  card.imageUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (_, __, ___) => Container(
+                                                        color: Colors.grey[800],
+                                                        child: const Icon(
+                                                          Icons
+                                                              .image_not_supported,
+                                                          size: 20,
+                                                        ),
+                                                      ),
+                                                )
+                                                : Container(
+                                                  color: Colors.grey[800],
+                                                  child: const Icon(
+                                                    Icons.image_not_supported,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                      ),
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primaryContainer,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '${card.quantity}x',
-                                      style: theme.textTheme.labelSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
+                                    title: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color:
                                                 theme
                                                     .colorScheme
-                                                    .onPrimaryContainer,
+                                                    .primaryContainer,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
+                                          child: Text(
+                                            '${card.quantity}x',
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                  color:
+                                                      theme
+                                                          .colorScheme
+                                                          .onPrimaryContainer,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            card.name,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      card.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          card.typeLine,
+                                          style: theme.textTheme.bodySmall,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            _ManaCostRow(cost: card.manaCost),
+                                            const SizedBox(width: 8),
+                                            if (card.setCode.isNotEmpty)
+                                              Text(
+                                                card.setCode.toUpperCase(),
+                                                style: theme.textTheme.bodySmall
+                                                    ?.copyWith(
+                                                      color:
+                                                          theme
+                                                              .colorScheme
+                                                              .outline,
+                                                    ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
+                                    onTap:
+                                        () => _showCardDetails(context, card),
                                   ),
-                                ],
+                                ),
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    card.typeLine,
-                                    style: theme.textTheme.bodySmall,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  _ManaCostRow(cost: card.manaCost),
-                                ],
-                              ),
-                              onTap: () => _showCardDetails(context, card),
                             ),
-                          ),
-                        ),
                         const SizedBox(height: 8),
                       ],
                     );
@@ -518,19 +723,22 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(12),
                       ),
-                      child: Image.network(
-                        card.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, __, ___) => const SizedBox(
-                              height: 200,
-                              child: Center(
-                                child: Icon(
-                                  Icons.image_not_supported,
-                                  size: 64,
+                      child: AspectRatio(
+                        aspectRatio: 0.714, // MTG card ratio ~ 2.5"x3.5"
+                        child: Image.network(
+                          card.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (_, __, ___) => Container(
+                                color: Colors.grey[900],
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    size: 64,
+                                  ),
                                 ),
                               ),
-                            ),
+                        ),
                       ),
                     ),
                   Padding(
@@ -810,7 +1018,12 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                     ? Image.network(
                                       it['image_url'],
                                       width: 40,
+                                      height: 56,
                                       fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (_, __, ___) => const Icon(
+                                            Icons.image_not_supported,
+                                          ),
                                     )
                                     : const Icon(Icons.image_not_supported),
                             title: Text(setName),
@@ -880,6 +1093,226 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     }
   }
 
+  Future<bool?> _confirmRemoveCard(BuildContext context, DeckCardItem card) {
+    return showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Remover carta'),
+            content: Text('Remover "${card.name}" do deck?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Remover'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _showEditCardDialog(
+    BuildContext context,
+    DeckCardItem card, {
+    required String deckFormat,
+  }) async {
+    final theme = Theme.of(context);
+    final deckProvider = context.read<DeckProvider>();
+    final qtyController = TextEditingController(text: '${card.quantity}');
+    final format = deckFormat.toLowerCase();
+    final consolidateSameName = format == 'commander' || format == 'brawl';
+
+    bool isSaving = false;
+    String? error;
+    String selectedCardId = card.id;
+
+    await showDialog<void>(
+      context: context,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              return AlertDialog(
+                title: const Text('Editar carta'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        card.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: qtyController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Quantidade',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FutureBuilder<List<Map<String, dynamic>>>(
+                        future: context
+                            .read<CardProvider>()
+                            .fetchPrintingsByName(card.name),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 4),
+                              child: Text('Carregando edições...'),
+                            );
+                          }
+                          if (snapshot.hasError) {
+                            return Text(
+                              'Erro ao carregar edições: ${snapshot.error}',
+                              style: TextStyle(color: theme.colorScheme.error),
+                            );
+                          }
+
+                          final list = snapshot.data ?? const [];
+                          if (list.isEmpty) {
+                            return const Text('Nenhuma edição encontrada.');
+                          }
+
+                          if (!list.any(
+                            (m) => (m['id'] ?? '').toString() == selectedCardId,
+                          )) {
+                            selectedCardId = list.first['id'].toString();
+                          }
+
+                          return InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Edição (set)',
+                              border: OutlineInputBorder(),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                isExpanded: true,
+                                value: selectedCardId,
+                                items:
+                                    list.map((it) {
+                                      final id = (it['id'] ?? '').toString();
+                                      final setCode =
+                                          (it['set_code'] ?? '')
+                                              .toString()
+                                              .toUpperCase();
+                                      final setName =
+                                          (it['set_name'] ?? '').toString();
+                                      final date =
+                                          (it['set_release_date'] ?? '')
+                                              .toString();
+                                      final label = [
+                                        if (setCode.isNotEmpty) setCode,
+                                        if (setName.isNotEmpty) setName,
+                                        if (date.isNotEmpty) '($date)',
+                                      ].join(' • ');
+                                      return DropdownMenuItem<String>(
+                                        value: id,
+                                        child: Text(
+                                          label.isEmpty ? id : label,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    }).toList(),
+                                onChanged:
+                                    isSaving
+                                        ? null
+                                        : (v) {
+                                          if (v == null) return;
+                                          setDialogState(
+                                            () => selectedCardId = v,
+                                          );
+                                        },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          error!,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed:
+                        isSaving
+                            ? null
+                            : () async {
+                              final qty = int.tryParse(
+                                qtyController.text.trim(),
+                              );
+                              if (qty == null || qty <= 0) {
+                                setDialogState(
+                                  () => error = 'Quantidade inválida',
+                                );
+                                return;
+                              }
+
+                              setDialogState(() {
+                                isSaving = true;
+                                error = null;
+                              });
+
+                              try {
+                                await deckProvider.updateDeckCardEntry(
+                                  deckId: widget.deckId,
+                                  oldCardId: card.id,
+                                  newCardId: selectedCardId,
+                                  quantity: qty,
+                                  cardName: card.name,
+                                  consolidateSameName: consolidateSameName,
+                                );
+                                if (!ctx.mounted) return;
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text('Carta atualizada.'),
+                                    backgroundColor: theme.colorScheme.primary,
+                                  ),
+                                );
+                              } catch (e) {
+                                if (!ctx.mounted) return;
+                                setDialogState(() {
+                                  isSaving = false;
+                                  error = e.toString().replaceFirst(
+                                    'Exception: ',
+                                    '',
+                                  );
+                                });
+                              }
+                            },
+                    child:
+                        isSaving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Text('Salvar'),
+                  ),
+                ],
+              );
+            },
+          ),
+    );
+  }
+
   Future<void> _loadPricing({required bool force}) async {
     if (_isPricingLoading) return;
     setState(() => _isPricingLoading = true);
@@ -902,15 +1335,15 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
 
   Future<void> _showPricingDetails() async {
     // Se não tem items, precisa carregar do endpoint
-    final hasItems = _pricing != null && 
-        (_pricing!['items'] as List?)?.isNotEmpty == true;
-    
+    final hasItems =
+        _pricing != null && (_pricing!['items'] as List?)?.isNotEmpty == true;
+
     if (!hasItems) {
       // Carregar pricing completo primeiro
       await _loadPricing(force: false);
       if (!mounted) return;
     }
-    
+
     final pricing = _pricing;
     if (pricing == null) return;
     final items =
@@ -1007,243 +1440,315 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
 
     showDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.auto_awesome, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Importar Lista', style: TextStyle(fontSize: 18)),
-                    Text(
-                      'Adicionar cartas de outra fonte',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Opção de substituir tudo
-                  Container(
-                    decoration: BoxDecoration(
-                      color: replaceAll 
-                        ? Colors.orange.withOpacity(0.1)
-                        : theme.colorScheme.surface,
-                      border: Border.all(
-                        color: replaceAll 
-                          ? Colors.orange.withOpacity(0.5)
-                          : theme.colorScheme.outline.withOpacity(0.3),
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: CheckboxListTile(
-                      value: replaceAll,
-                      onChanged: (value) {
-                        setDialogState(() => replaceAll = value ?? false);
-                      },
-                      title: Row(
-                        children: [
-                          Icon(
-                            replaceAll ? Icons.swap_horiz : Icons.add_circle_outline,
-                            size: 18,
-                            color: replaceAll ? Colors.orange : theme.colorScheme.secondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            replaceAll ? 'Substituir deck' : 'Adicionar cartas',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                      subtitle: Text(
-                        replaceAll 
-                          ? 'Remove cartas atuais e usa apenas a nova lista'
-                          : 'Mantém cartas existentes e adiciona as novas',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: replaceAll ? Colors.orange : null,
+      barrierDismissible: true,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (ctx, setDialogState) => PopScope(
+                  canPop: !isImporting,
+                  child: AlertDialog(
+                    title: Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          color: theme.colorScheme.primary,
                         ),
-                      ),
-                      controlAffinity: ListTileControlAffinity.trailing,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Campo de texto
-                  TextField(
-                    controller: listController,
-                    decoration: InputDecoration(
-                      hintText: 'Cole sua lista de cartas aqui...\n\nFormato: 1 Sol Ring ou 1x Sol Ring',
-                      hintStyle: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.4),
-                        fontSize: 12,
-                      ),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: theme.colorScheme.surface,
-                    ),
-                    maxLines: 10,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  
-                  // Erro
-                  if (error != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              error!,
-                              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                            ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Importar Lista',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                              Text(
+                                'Adicionar cartas de outra fonte',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.normal,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                  
-                  // Cartas não encontradas
-                  if (notFoundLines.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '⚠️ ${notFoundLines.length} cartas não encontradas:',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          ...notFoundLines.take(5).map((line) => Text(
-                            '• $line',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.orange.shade200,
-                            ),
-                          )),
-                          if (notFoundLines.length > 5)
-                            Text(
-                              '... e mais ${notFoundLines.length - 5}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontStyle: FontStyle.italic,
-                                color: Colors.orange.shade300,
+                    content: SizedBox(
+                      width: double.maxFinite,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Opção de substituir tudo
+                            Container(
+                              decoration: BoxDecoration(
+                                color:
+                                    replaceAll
+                                        ? Colors.orange.withOpacity(0.1)
+                                        : theme.colorScheme.surface,
+                                border: Border.all(
+                                  color:
+                                      replaceAll
+                                          ? Colors.orange.withOpacity(0.5)
+                                          : theme.colorScheme.outline
+                                              .withOpacity(0.3),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: CheckboxListTile(
+                                value: replaceAll,
+                                onChanged: (value) {
+                                  setDialogState(
+                                    () => replaceAll = value ?? false,
+                                  );
+                                },
+                                title: Row(
+                                  children: [
+                                    Icon(
+                                      replaceAll
+                                          ? Icons.swap_horiz
+                                          : Icons.add_circle_outline,
+                                      size: 18,
+                                      color:
+                                          replaceAll
+                                              ? Colors.orange
+                                              : theme.colorScheme.secondary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      replaceAll
+                                          ? 'Substituir deck'
+                                          : 'Adicionar cartas',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  replaceAll
+                                      ? 'Remove cartas atuais e usa apenas a nova lista'
+                                      : 'Mantém cartas existentes e adiciona as novas',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: replaceAll ? Colors.orange : null,
+                                  ),
+                                ),
+                                controlAffinity:
+                                    ListTileControlAffinity.trailing,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
                               ),
                             ),
-                        ],
+                            const SizedBox(height: 16),
+
+                            // Campo de texto
+                            TextField(
+                              controller: listController,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Cole sua lista de cartas aqui...\n\nFormato: 1 Sol Ring ou 1x Sol Ring',
+                                hintStyle: TextStyle(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.4),
+                                  fontSize: 12,
+                                ),
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: theme.colorScheme.surface,
+                              ),
+                              maxLines: 10,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+
+                            // Erro
+                            if (error != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.redAccent.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.error_outline,
+                                      color: Colors.redAccent,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        error!,
+                                        style: const TextStyle(
+                                          color: Colors.redAccent,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
+                            // Cartas não encontradas
+                            if (notFoundLines.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.orange.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '⚠️ ${notFoundLines.length} cartas não encontradas:',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    ...notFoundLines
+                                        .take(5)
+                                        .map(
+                                          (line) => Text(
+                                            '• $line',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.orange.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                    if (notFoundLines.length > 5)
+                                      Text(
+                                        '... e mais ${notFoundLines.length - 5}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontStyle: FontStyle.italic,
+                                          color: Colors.orange.shade300,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ],
-              ),
-            ),
+                    actions: [
+                      TextButton(
+                        onPressed:
+                            isImporting ? null : () => Navigator.pop(ctx),
+                        child: const Text('Cancelar'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed:
+                            isImporting
+                                ? null
+                                : () async {
+                                  if (listController.text.trim().isEmpty) {
+                                    setDialogState(
+                                      () => error = 'Cole a lista de cartas',
+                                    );
+                                    return;
+                                  }
+
+                                  setDialogState(() {
+                                    isImporting = true;
+                                    error = null;
+                                    notFoundLines = [];
+                                  });
+
+                                  final provider =
+                                      parentContext.read<DeckProvider>();
+                                  final result = await provider
+                                      .importListToDeck(
+                                        deckId: deckId,
+                                        list: listController.text,
+                                        replaceAll: replaceAll,
+                                      );
+
+                                  if (!ctx.mounted) return;
+
+                                  setDialogState(() {
+                                    isImporting = false;
+                                    notFoundLines = List<String>.from(
+                                      result['not_found_lines'] ?? [],
+                                    );
+                                  });
+
+                                  if (result['success'] == true) {
+                                    Navigator.pop(ctx);
+
+                                    final imported =
+                                        result['cards_imported'] ?? 0;
+                                    ScaffoldMessenger.of(
+                                      parentContext,
+                                    ).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          notFoundLines.isEmpty
+                                              ? '$imported cartas importadas!'
+                                              : '$imported cartas importadas (${notFoundLines.length} não encontradas)',
+                                        ),
+                                        backgroundColor:
+                                            notFoundLines.isEmpty
+                                                ? Theme.of(
+                                                  parentContext,
+                                                ).colorScheme.primary
+                                                : Colors.orange,
+                                      ),
+                                    );
+
+                                    // Recarrega o deck
+                                    provider.fetchDeckDetails(
+                                      deckId,
+                                      forceRefresh: true,
+                                    );
+                                  } else {
+                                    setDialogState(() {
+                                      error =
+                                          result['error'] ?? 'Erro ao importar';
+                                    });
+                                  }
+                                },
+                        icon:
+                            isImporting
+                                ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Icon(Icons.upload),
+                        label: Text(isImporting ? 'Importando...' : 'Importar'),
+                      ),
+                    ],
+                  ),
+                ),
           ),
-          actions: [
-            TextButton(
-              onPressed: isImporting ? null : () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton.icon(
-              onPressed: isImporting
-                  ? null
-                  : () async {
-                      if (listController.text.trim().isEmpty) {
-                        setDialogState(() => error = 'Cole a lista de cartas');
-                        return;
-                      }
-
-                      setDialogState(() {
-                        isImporting = true;
-                        error = null;
-                        notFoundLines = [];
-                      });
-
-                      final provider = parentContext.read<DeckProvider>();
-                      final result = await provider.importListToDeck(
-                        deckId: deckId,
-                        list: listController.text,
-                        replaceAll: replaceAll,
-                      );
-
-                      if (!ctx.mounted) return;
-
-                      setDialogState(() {
-                        isImporting = false;
-                        notFoundLines = List<String>.from(result['not_found_lines'] ?? []);
-                      });
-
-                      if (result['success'] == true) {
-                        Navigator.pop(ctx);
-                        
-                        final imported = result['cards_imported'] ?? 0;
-                        ScaffoldMessenger.of(parentContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              notFoundLines.isEmpty
-                                  ? '$imported cartas importadas!'
-                                  : '$imported cartas importadas (${notFoundLines.length} não encontradas)',
-                            ),
-                            backgroundColor: notFoundLines.isEmpty 
-                              ? Theme.of(parentContext).colorScheme.primary 
-                              : Colors.orange,
-                          ),
-                        );
-                        
-                        // Recarrega o deck
-                        provider.fetchDeckDetails(deckId, forceRefresh: true);
-                      } else {
-                        setDialogState(() {
-                          error = result['error'] ?? 'Erro ao importar';
-                        });
-                      }
-                    },
-              icon: isImporting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload),
-              label: Text(isImporting ? 'Importando...' : 'Importar'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1482,6 +1987,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
   late Future<List<Map<String, dynamic>>> _optionsFuture;
   int _selectedBracket = 2;
   bool _showAllStrategies = true;
+  bool _keepTheme = true;
 
   String? get _currentArchetype {
     final deck = context.read<DeckProvider>().selectedDeck;
@@ -1499,6 +2005,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
         'deck_id': deckId,
         'archetype': archetype,
         'bracket': bracket,
+        'keep_theme': _keepTheme,
       },
       'response': result,
     };
@@ -1553,7 +2060,8 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       final result = await deckProvider.optimizeDeck(
         widget.deckId,
         archetype,
-        _selectedBracket,
+        bracket: _selectedBracket,
+        keepTheme: _keepTheme,
       );
 
       closeLoadingDialog();
@@ -1566,6 +2074,14 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
       final warnings =
           (result['warnings'] is Map)
               ? (result['warnings'] as Map).cast<String, dynamic>()
+              : const <String, dynamic>{};
+      final themeInfo =
+          (result['theme'] is Map)
+              ? (result['theme'] as Map).cast<String, dynamic>()
+              : const <String, dynamic>{};
+      final constraints =
+          (result['constraints'] is Map)
+              ? (result['constraints'] as Map).cast<String, dynamic>()
               : const <String, dynamic>{};
       final mode = (result['mode'] as String?) ?? 'optimize';
       final additionsDetailed =
@@ -1606,6 +2122,16 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (constraints['keep_theme'] == true &&
+                        themeInfo['theme'] != null) ...[
+                      Text(
+                        'Tema preservado: ${themeInfo['theme']}',
+                        style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (reasoning.isNotEmpty) ...[
                       Text(
                         reasoning,
@@ -1873,6 +2399,16 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
             ),
           ),
           const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Manter tema do deck'),
+            subtitle: const Text(
+              'Otimiza sem trocar o plano principal e evita remover cartas núcleo.',
+            ),
+            value: _keepTheme,
+            onChanged: (v) => setState(() => _keepTheme = v),
+          ),
+          const SizedBox(height: 8),
           if (savedArchetype != null && savedArchetype.trim().isNotEmpty) ...[
             Container(
               padding: const EdgeInsets.all(12),

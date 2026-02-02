@@ -10,6 +10,8 @@ class Deck {
   final int? synergyScore;
   final String? strengths;
   final String? weaknesses;
+  final String? commanderName;
+  final String? commanderImageUrl;
   final String? pricingCurrency;
   final double? pricingTotal;
   final int? pricingMissingCards;
@@ -28,6 +30,8 @@ class Deck {
     this.synergyScore,
     this.strengths,
     this.weaknesses,
+    this.commanderName,
+    this.commanderImageUrl,
     this.pricingCurrency,
     this.pricingTotal,
     this.pricingMissingCards,
@@ -49,6 +53,8 @@ class Deck {
       synergyScore: json['synergy_score'] as int?,
       strengths: json['strengths'] as String?,
       weaknesses: json['weaknesses'] as String?,
+      commanderName: json['commander_name'] as String?,
+      commanderImageUrl: json['commander_image_url'] as String?,
       pricingCurrency: json['pricing_currency'] as String?,
       pricingTotal: (json['pricing_total'] as num?)?.toDouble(),
       pricingMissingCards: json['pricing_missing_cards'] as int?,
@@ -74,6 +80,8 @@ class Deck {
       'synergy_score': synergyScore,
       'strengths': strengths,
       'weaknesses': weaknesses,
+      'commander_name': commanderName,
+      'commander_image_url': commanderImageUrl,
       'pricing_currency': pricingCurrency,
       'pricing_total': pricingTotal,
       'pricing_missing_cards': pricingMissingCards,
@@ -95,6 +103,8 @@ class Deck {
     int? synergyScore,
     String? strengths,
     String? weaknesses,
+    String? commanderName,
+    String? commanderImageUrl,
     String? pricingCurrency,
     double? pricingTotal,
     int? pricingMissingCards,
@@ -113,6 +123,8 @@ class Deck {
       synergyScore: synergyScore ?? this.synergyScore,
       strengths: strengths ?? this.strengths,
       weaknesses: weaknesses ?? this.weaknesses,
+      commanderName: commanderName ?? this.commanderName,
+      commanderImageUrl: commanderImageUrl ?? this.commanderImageUrl,
       pricingCurrency: pricingCurrency ?? this.pricingCurrency,
       pricingTotal: pricingTotal ?? this.pricingTotal,
       pricingMissingCards: pricingMissingCards ?? this.pricingMissingCards,

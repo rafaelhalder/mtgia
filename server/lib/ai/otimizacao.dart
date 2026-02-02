@@ -10,7 +10,7 @@ class DeckOptimizerService {
   final SynergyEngine synergyEngine;
   final AiLogService? _logService;
 
-  DeckOptimizerService(this.openAiKey, {Connection? db}) 
+  DeckOptimizerService(this.openAiKey, {Connection? db})
       : synergyEngine = SynergyEngine(),
         _logService = db != null ? AiLogService(db) : null;
 
@@ -20,6 +20,9 @@ class DeckOptimizerService {
     required List<String> commanders,
     required String targetArchetype,
     int? bracket,
+    bool keepTheme = true,
+    String? detectedTheme,
+    List<String>? coreCards,
     String? userId,
     String? deckId,
   }) async {
@@ -38,10 +41,9 @@ class DeckOptimizerService {
     // 2. BUSCA DE SINERGIA CONTEXTUAL (RAG)
     // Em vez de staples genéricos, buscamos o que comba com o Comandante
     final synergyCards = await synergyEngine.fetchCommanderSynergies(
-      commanderName: commanders.first, 
-      colors: colors,
-      archetype: targetArchetype
-    );
+        commanderName: commanders.first,
+        colors: colors,
+        archetype: targetArchetype);
 
     // 3. RECUPERAÇÃO DE DADOS DE META (Staples de formato)
     final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
@@ -56,6 +58,9 @@ class DeckOptimizerService {
       staplesPool: formatStaples,
       archetype: targetArchetype,
       bracket: bracket,
+      keepTheme: keepTheme,
+      detectedTheme: detectedTheme,
+      coreCards: coreCards,
       userId: userId,
       deckId: deckId,
     );
@@ -70,6 +75,9 @@ class DeckOptimizerService {
     required String targetArchetype,
     required int targetAdditions,
     int? bracket,
+    bool keepTheme = true,
+    String? detectedTheme,
+    List<String>? coreCards,
     String? userId,
     String? deckId,
   }) async {
@@ -92,6 +100,9 @@ class DeckOptimizerService {
       archetype: targetArchetype,
       bracket: bracket,
       targetAdditions: targetAdditions,
+      keepTheme: keepTheme,
+      detectedTheme: detectedTheme,
+      coreCards: coreCards,
       userId: userId,
       deckId: deckId,
     );
@@ -107,7 +118,7 @@ class DeckOptimizerService {
         .where((c) => c['edhrec_rank'] != null)
         .map((c) => c['edhrec_rank'] as int)
         .toList();
-    
+
     // Calcula a mediana do deck (ou usa 5000 como fallback razoável)
     // Nota: Usamos divisão inteira (~/) pois ranks são inteiros e a precisão
     // de 1 unidade não afeta significativamente o score final
@@ -115,17 +126,17 @@ class DeckOptimizerService {
     if (ranksWithValue.isNotEmpty) {
       ranksWithValue.sort();
       final mid = ranksWithValue.length ~/ 2;
-      medianRank = ranksWithValue.length.isOdd 
-          ? ranksWithValue[mid] 
+      medianRank = ranksWithValue.length.isOdd
+          ? ranksWithValue[mid]
           : ((ranksWithValue[mid - 1] + ranksWithValue[mid]) ~/ 2);
     }
-    
+
     var scored = cards.map((card) {
       // Para cartas sem rank (novas ou de nicho), usa a mediana do deck
       // Isso evita penalizar injustamente cartas recém-lançadas
-      final rank = (card['edhrec_rank'] as int?) ?? medianRank; 
+      final rank = (card['edhrec_rank'] as int?) ?? medianRank;
       final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
-      
+
       // Lógica: Rank baixo é bom (ex: Sol Ring é rank 1). CMC baixo é bom.
       // Score Alto = Carta Ruim (Rank alto + Custo alto)
       // Ajuste para terrenos: Terrenos básicos sempre têm score "neutro" para não serem cortados automaticamente
@@ -133,25 +144,28 @@ class DeckOptimizerService {
         return {'name': card['name'], 'weakness_score': -1.0};
       }
 
-      final score = rank * (cmc > 4 ? 1.5 : 1.0); // Penaliza cartas caras impopulares
+      final score =
+          rank * (cmc > 4 ? 1.5 : 1.0); // Penaliza cartas caras impopulares
       return {'name': card['name'], 'weakness_score': score};
     }).toList();
 
     // Ordena do maior score (pior carta) para o menor
-    scored.sort((a, b) => (b['weakness_score'] as double).compareTo(a['weakness_score'] as double));
-    
+    scored.sort((a, b) => (b['weakness_score'] as double)
+        .compareTo(a['weakness_score'] as double));
+
     // Remove terrenos básicos da lista de "ruins"
     scored.removeWhere((c) => (c['weakness_score'] as double) < 0);
-    
+
     return scored;
   }
 
-  Future<List<String>> _fetchFormatStaples(List<String> colors, String archetype) async {
+  Future<List<String>> _fetchFormatStaples(
+      List<String> colors, String archetype) async {
     // Busca staples genéricas das cores do deck (ordenadas por EDHREC rank via _searchScryfall)
     final colorQuery = colors.isEmpty ? "c:c" : "id<=${colors.join('')}";
     // Ex: "format:commander -is:banned id<=UB"
     final query = "format:commander -is:banned $colorQuery";
-    
+
     return await synergyEngine.searchScryfall(query);
   }
 
@@ -163,18 +177,30 @@ class DeckOptimizerService {
     required List<String> staplesPool,
     required String archetype,
     int? bracket,
+    required bool keepTheme,
+    String? detectedTheme,
+    List<String>? coreCards,
     String? userId,
     String? deckId,
   }) async {
     final stopwatch = Stopwatch()..start();
-    
+
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
       "bracket": bracket,
+      "constraints": {
+        "keep_theme": keepTheme,
+        if (detectedTheme != null) "deck_theme": detectedTheme,
+        if (coreCards != null && coreCards.isNotEmpty) "core_cards": coreCards,
+        "notes":
+            "Se keep_theme=true: NÃO mude o plano/tema do deck; preserve as core_cards (nunca remover).",
+      },
       "context": {
-        "statistically_weak_cards": weakCandidates, // A IA vai olhar isso com carinho para cortar
-        "high_synergy_options": synergyPool, // A IA vai escolher daqui para adicionar
+        "statistically_weak_cards":
+            weakCandidates, // A IA vai olhar isso com carinho para cortar
+        "high_synergy_options":
+            synergyPool, // A IA vai escolher daqui para adicionar
         "format_staples": staplesPool
       },
       "current_decklist": deckList
@@ -188,13 +214,18 @@ class DeckOptimizerService {
           'Authorization': 'Bearer $openAiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-4o', // Recomendado GPT-4o ou 3.5-turbo-16k para melhor raciocínio
+          'model':
+              'gpt-4o', // Recomendado GPT-4o ou 3.5-turbo-16k para melhor raciocínio
           'messages': [
-            {'role': 'system', 'content': _getSystemPrompt()}, // Função que retorna o texto do arquivo Markdown
+            {
+              'role': 'system',
+              'content': _getSystemPrompt()
+            }, // Função que retorna o texto do arquivo Markdown
             {'role': 'user', 'content': userPrompt},
           ],
-          'temperature': 0.4, // Baixa temperatura para ser mais analítico e menos criativo
-          'response_format': { "type": "json_object" }
+          'temperature':
+              0.4, // Baixa temperatura para ser mais analítico e menos criativo
+          'response_format': {"type": "json_object"}
         }),
       );
 
@@ -203,21 +234,22 @@ class DeckOptimizerService {
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         final result = jsonDecode(data['choices'][0]['message']['content']);
-        
+
         // Log de sucesso
         await _logService?.log(
           userId: userId,
           deckId: deckId,
           endpoint: 'optimize',
           model: 'gpt-4o',
-          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Bracket: $bracket',
+          promptSummary:
+              'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Bracket: $bracket',
           responseSummary: result['summary']?.toString(),
           latencyMs: stopwatch.elapsedMilliseconds,
           inputTokens: data['usage']?['prompt_tokens'] as int?,
           outputTokens: data['usage']?['completion_tokens'] as int?,
           success: true,
         );
-        
+
         return result;
       } else {
         // Log de erro
@@ -226,7 +258,8 @@ class DeckOptimizerService {
           deckId: deckId,
           endpoint: 'optimize',
           model: 'gpt-4o',
-          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+          promptSummary:
+              'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
           latencyMs: stopwatch.elapsedMilliseconds,
           success: false,
           errorMessage: 'HTTP ${response.statusCode}: ${response.body}',
@@ -240,7 +273,8 @@ class DeckOptimizerService {
         deckId: deckId,
         endpoint: 'optimize',
         model: 'gpt-4o',
-        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        promptSummary:
+            'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,
         success: false,
         errorMessage: e.toString(),
@@ -253,7 +287,7 @@ class DeckOptimizerService {
     try {
       // Tenta localizar o arquivo prompt.md relativo ao diretório de execução (server/)
       var file = File('lib/ai/prompt.md');
-      
+
       if (!file.existsSync()) {
         // Tenta caminho alternativo caso esteja rodando da raiz
         file = File('server/lib/ai/prompt.md');
@@ -279,16 +313,26 @@ class DeckOptimizerService {
     required String archetype,
     required int targetAdditions,
     int? bracket,
+    required bool keepTheme,
+    String? detectedTheme,
+    List<String>? coreCards,
     String? userId,
     String? deckId,
   }) async {
     final stopwatch = Stopwatch()..start();
-    
+
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
       "bracket": bracket,
       "target_additions": targetAdditions,
+      "constraints": {
+        "keep_theme": keepTheme,
+        if (detectedTheme != null) "deck_theme": detectedTheme,
+        if (coreCards != null && coreCards.isNotEmpty) "core_cards": coreCards,
+        "notes":
+            "Se keep_theme=true: complete sem desviar do tema; preserve as core_cards (nunca sugerir remover).",
+      },
       "context": {
         "high_synergy_options": synergyPool,
         "format_staples": staplesPool
@@ -319,31 +363,33 @@ class DeckOptimizerService {
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         final result = jsonDecode(data['choices'][0]['message']['content']);
-        
+
         // Log de sucesso
         await _logService?.log(
           userId: userId,
           deckId: deckId,
           endpoint: 'complete',
           model: 'gpt-4o',
-          promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Additions: $targetAdditions',
+          promptSummary:
+              'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Additions: $targetAdditions',
           responseSummary: result['summary']?.toString(),
           latencyMs: stopwatch.elapsedMilliseconds,
           inputTokens: data['usage']?['prompt_tokens'] as int?,
           outputTokens: data['usage']?['completion_tokens'] as int?,
           success: true,
         );
-        
+
         return result;
       }
-      
+
       // Log de erro HTTP
       await _logService?.log(
         userId: userId,
         deckId: deckId,
         endpoint: 'complete',
         model: 'gpt-4o',
-        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        promptSummary:
+            'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,
         success: false,
         errorMessage: 'HTTP ${response.statusCode}',
@@ -356,7 +402,8 @@ class DeckOptimizerService {
         deckId: deckId,
         endpoint: 'complete',
         model: 'gpt-4o',
-        promptSummary: 'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
+        promptSummary:
+            'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,
         success: false,
         errorMessage: e.toString(),

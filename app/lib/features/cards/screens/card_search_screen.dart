@@ -43,7 +43,8 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
   void _onScroll() {
     final provider = context.read<CardProvider>();
-    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore) return;
+    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore)
+      return;
     final position = _scrollController.position;
     if (!position.hasPixels) return;
     if (position.pixels >= position.maxScrollExtent - 240) {
@@ -92,12 +93,17 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
     // Em Commander/Brawl, se NÃO for basic land E não estiver em modo Commander
     // (escolhendo o comandante), adiciona direto com quantidade 1 sem modal
-    if (isCommanderFormat && !isBasicLand && !isCommanderMode && !mustPickCommanderFirst) {
+    if (isCommanderFormat &&
+        !isBasicLand &&
+        !isCommanderMode &&
+        !mustPickCommanderFirst) {
       // Verifica se a carta é permitida pela identidade do comandante
       if (!canOpenAddDialog) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Esta carta não é permitida pela identidade de cor do comandante'),
+            content: Text(
+              'Esta carta não é permitida pela identidade de cor do comandante',
+            ),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -260,10 +266,34 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                           ? isCommanderEligible
                           : allowedByIdentity);
               return ListTile(
-                leading:
-                    card.imageUrl != null
-                        ? Image.network(card.imageUrl!, width: 40)
-                        : const Icon(Icons.image_not_supported),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 40,
+                    height: 56,
+                    child:
+                        card.imageUrl != null
+                            ? Image.network(
+                              card.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (_, __, ___) => Container(
+                                    color: Colors.grey[800],
+                                    child: const Icon(
+                                      Icons.image_not_supported,
+                                      size: 20,
+                                    ),
+                                  ),
+                            )
+                            : Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.image_not_supported,
+                                size: 20,
+                              ),
+                            ),
+                  ),
+                ),
                 title: Text(card.name),
                 subtitle: Text(
                   [
@@ -279,6 +309,8 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                         !allowedByIdentity)
                       'Fora da identidade do comandante',
                   ].join(' • '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.add_circle_outline),
@@ -340,78 +372,80 @@ class _AddCardDialogState extends State<_AddCardDialog> {
 
     return AlertDialog(
       title: Text('Adicionar ${widget.card.name}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!widget.canAddByCommanderIdentity)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'Essa carta está fora da identidade de cor do comandante.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!widget.canAddByCommanderIdentity)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Essa carta está fora da identidade de cor do comandante.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Quantidade:'),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove),
+                      onPressed:
+                          _isSubmitting
+                              ? null
+                              : _quantity > 1
+                              ? () => setState(() => _quantity--)
+                              : null,
+                    ),
+                    Text('$_quantity', style: const TextStyle(fontSize: 18)),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed:
+                          _isSubmitting
+                              ? null
+                              : canIncreaseQuantity
+                              ? () => setState(() => _quantity++)
+                              : null,
+                    ),
+                  ],
+                ),
+              ],
             ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Quantidade:'),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove),
-                    onPressed:
-                        _isSubmitting
-                            ? null
-                            : _quantity > 1
-                            ? () => setState(() => _quantity--)
-                            : null,
-                  ),
-                  Text('$_quantity', style: const TextStyle(fontSize: 18)),
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed:
-                        _isSubmitting
-                            ? null
-                            : canIncreaseQuantity
-                            ? () => setState(() => _quantity++)
-                            : null,
-                  ),
-                ],
+            if (isCommanderFormat &&
+                isCommanderEligible &&
+                !widget.hasCommanderSelected &&
+                !widget.forceCommander)
+              CheckboxListTile(
+                title: const Text('É Comandante?'),
+                value: _isCommander,
+                onChanged:
+                    _isSubmitting
+                        ? null
+                        : (val) => setState(() {
+                          _isCommander = val ?? false;
+                          if (_isCommander) _quantity = 1;
+                        }),
               ),
-            ],
-          ),
-          if (isCommanderFormat &&
-              isCommanderEligible &&
-              !widget.hasCommanderSelected &&
-              !widget.forceCommander)
-            CheckboxListTile(
-              title: const Text('É Comandante?'),
-              value: _isCommander,
-              onChanged:
-                  _isSubmitting
-                      ? null
-                      : (val) => setState(() {
-                        _isCommander = val ?? false;
-                        if (_isCommander) _quantity = 1;
-                      }),
-            ),
-          if (widget.forceCommander)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Esse deck precisa de um comandante. Esta carta será definida como comandante.',
+            if (widget.forceCommander)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Esse deck precisa de um comandante. Esta carta será definida como comandante.',
+                ),
               ),
-            ),
-          if (_isSubmitting)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: SizedBox(
-                height: 22,
-                width: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
+            if (_isSubmitting)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  height: 22,
+                  width: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(

@@ -23,6 +23,7 @@ import '../routes/decks/[id]/simulate/index.dart' as decks_$id_simulate_index;
 import '../routes/decks/[id]/recommendations/index.dart' as decks_$id_recommendations_index;
 import '../routes/decks/[id]/pricing/index.dart' as decks_$id_pricing_index;
 import '../routes/decks/[id]/cards/index.dart' as decks_$id_cards_index;
+import '../routes/decks/[id]/cards/set/index.dart' as decks_$id_cards_set_index;
 import '../routes/decks/[id]/cards/replace/index.dart' as decks_$id_cards_replace_index;
 import '../routes/decks/[id]/cards/bulk/index.dart' as decks_$id_cards_bulk_index;
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
@@ -75,6 +76,7 @@ Handler buildRootHandler() {
     ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
     ..mount('/decks/<id>/cards/bulk', (context,id,) => buildDecks$idCardsBulkHandler(id,)(context))
     ..mount('/decks/<id>/cards/replace', (context,id,) => buildDecks$idCardsReplaceHandler(id,)(context))
+    ..mount('/decks/<id>/cards/set', (context,id,) => buildDecks$idCardsSetHandler(id,)(context))
     ..mount('/decks/<id>/cards', (context,id,) => buildDecks$idCardsHandler(id,)(context))
     ..mount('/decks/<id>/pricing', (context,id,) => buildDecks$idPricingHandler(id,)(context))
     ..mount('/decks/<id>/recommendations', (context,id,) => buildDecks$idRecommendationsHandler(id,)(context))
@@ -190,6 +192,13 @@ Handler buildDecks$idCardsReplaceHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
     ..all('/', (context) => decks_$id_cards_replace_index.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildDecks$idCardsSetHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => decks_$id_cards_set_index.onRequest(context,id,));
   return pipeline.addHandler(router);
 }
 

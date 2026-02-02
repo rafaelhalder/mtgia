@@ -16,6 +16,8 @@ class DeckDetails extends Deck {
     super.synergyScore,
     super.strengths,
     super.weaknesses,
+    super.commanderName,
+    super.commanderImageUrl,
     super.pricingCurrency,
     super.pricingTotal,
     super.pricingMissingCards,
@@ -47,6 +49,11 @@ class DeckDetails extends Deck {
       });
     }
 
+    final inferredCommanderName =
+        commanderList.isNotEmpty ? commanderList.first.name : null;
+    final inferredCommanderImageUrl =
+        commanderList.isNotEmpty ? commanderList.first.imageUrl : null;
+
     return DeckDetails(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -57,6 +64,10 @@ class DeckDetails extends Deck {
       synergyScore: json['synergy_score'] as int?,
       strengths: json['strengths'] as String?,
       weaknesses: json['weaknesses'] as String?,
+      commanderName:
+          (json['commander_name'] as String?) ?? inferredCommanderName,
+      commanderImageUrl:
+          (json['commander_image_url'] as String?) ?? inferredCommanderImageUrl,
       pricingCurrency: json['pricing_currency'] as String?,
       pricingTotal: (json['pricing_total'] as num?)?.toDouble(),
       pricingMissingCards: json['pricing_missing_cards'] as int?,
@@ -84,6 +95,8 @@ class DeckDetails extends Deck {
     int? synergyScore,
     String? strengths,
     String? weaknesses,
+    String? commanderName,
+    String? commanderImageUrl,
     String? pricingCurrency,
     double? pricingTotal,
     int? pricingMissingCards,
@@ -105,6 +118,8 @@ class DeckDetails extends Deck {
       synergyScore: synergyScore ?? this.synergyScore,
       strengths: strengths ?? this.strengths,
       weaknesses: weaknesses ?? this.weaknesses,
+      commanderName: commanderName ?? this.commanderName,
+      commanderImageUrl: commanderImageUrl ?? this.commanderImageUrl,
       pricingCurrency: pricingCurrency ?? this.pricingCurrency,
       pricingTotal: pricingTotal ?? this.pricingTotal,
       pricingMissingCards: pricingMissingCards ?? this.pricingMissingCards,

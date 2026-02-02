@@ -4,6 +4,33 @@ import 'package:postgres/postgres.dart';
 
 import '../../../lib/deck_rules_service.dart';
 
+String? _normalizeScryfallImageUrl(String? url) {
+  if (url == null) return null;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return null;
+  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
+
+  try {
+    final uri = Uri.parse(trimmed);
+    final qp = Map<String, String>.from(uri.queryParameters);
+
+    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
+
+    final exact = qp['exact'];
+    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
+      final left = exact.split('//').first.trim();
+      if (left.isNotEmpty) qp['exact'] = left;
+    }
+
+    return uri.replace(queryParameters: qp).toString();
+  } catch (_) {
+    return trimmed.replaceAllMapped(
+      RegExp(r'([?&]set=)([^&]+)'),
+      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
+    );
+  }
+}
+
 bool? _hasDeckMetaColumnsCache;
 Future<bool> _hasDeckMetaColumns(Pool pool) async {
   if (_hasDeckMetaColumnsCache != null) return _hasDeckMetaColumnsCache!;
@@ -306,14 +333,14 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     // 2. Buscar todas as cartas associadas a esse deck com detalhes
     final cardsResult = await conn.execute(
       Sql.named('''
-        SELECT
-          dc.quantity,
-          dc.is_commander,
-          c.id,
-          c.name,
-          c.mana_cost,
-          c.type_line,
-          c.oracle_text,
+	        SELECT
+	          dc.quantity,
+	          dc.is_commander,
+	          c.id,
+	          c.name,
+	          c.mana_cost,
+	          c.type_line,
+	          c.oracle_text,
           c.colors,
           c.color_identity,
           c.image_url,
@@ -326,7 +353,11 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
       parameters: {'deckId': deckId},
     );
 
-    final cardsList = cardsResult.map((row) => row.toColumnMap()).toList();
+    final cardsList = cardsResult.map((row) {
+      final m = row.toColumnMap();
+      m['image_url'] = _normalizeScryfallImageUrl(m['image_url']?.toString());
+      return m;
+    }).toList();
 
     // 3. Organizar para visualização (Separar Comandante e Agrupar por Tipo)
     final commander = <Map<String, dynamic>>[];

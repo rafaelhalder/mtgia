@@ -33,12 +33,133 @@ class DeckProvider extends ChangeNotifier {
 
   DeckProvider({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
+  Map<String, Map<String, dynamic>> _buildCurrentCardsMap(DeckDetails deck) {
+    final currentCards = <String, Map<String, dynamic>>{};
+
+    for (final commander in deck.commander) {
+      currentCards[commander.id] = {
+        'card_id': commander.id,
+        'quantity': commander.quantity,
+        'is_commander': true,
+      };
+    }
+
+    for (final entry in deck.mainBoard.entries) {
+      for (final card in entry.value) {
+        if (!card.isCommander) {
+          currentCards[card.id] = {
+            'card_id': card.id,
+            'quantity': card.quantity,
+            'is_commander': false,
+          };
+        }
+      }
+    }
+
+    return currentCards;
+  }
+
+  Future<void> removeCardFromDeck({
+    required String deckId,
+    required String cardId,
+  }) async {
+    if (_selectedDeck == null || _selectedDeck!.id != deckId) {
+      await fetchDeckDetails(deckId);
+    }
+    final deck = _selectedDeck;
+    if (deck == null) throw Exception('Deck não encontrado');
+
+    final currentCards = _buildCurrentCardsMap(deck);
+    currentCards.remove(cardId);
+
+    final response = await _apiClient.put('/decks/$deckId', {
+      'cards': currentCards.values.toList(),
+    });
+
+    if (response.statusCode != 200) {
+      final data = response.data;
+      final msg =
+          (data is Map && data['error'] != null)
+              ? data['error'].toString()
+              : 'Falha ao remover carta: ${response.statusCode}';
+      throw Exception(msg);
+    }
+
+    invalidateDeckCache(deckId);
+    await fetchDeckDetails(deckId);
+    await fetchDecks();
+  }
+
+  Future<void> updateDeckCardEntry({
+    required String deckId,
+    required String oldCardId,
+    required String newCardId,
+    required int quantity,
+    String? cardName,
+    bool consolidateSameName = false,
+  }) async {
+    if (quantity <= 0) {
+      throw Exception('Quantidade deve ser > 0');
+    }
+
+    // Commander/Brawl (ou quando explicitamente pedido): resolve duplicatas por NOME no backend.
+    // Isso garante que, se o deck já estiver com 2 edições da mesma carta, o usuário consegue corrigir.
+    if (consolidateSameName) {
+      final response = await _apiClient.post('/decks/$deckId/cards/set', {
+        'card_id': newCardId,
+        'quantity': quantity,
+        'replace_same_name': true,
+      });
+
+      if (response.statusCode != 200) {
+        final data = response.data;
+        final msg =
+            (data is Map && data['error'] != null)
+                ? data['error'].toString()
+                : 'Falha ao atualizar carta: ${response.statusCode}';
+        throw Exception(msg);
+      }
+    } else {
+      // Outros formatos: se trocou a edição, troca primeiro; depois faz SET absoluto.
+      if (oldCardId != newCardId) {
+        await replaceCardEdition(
+          deckId: deckId,
+          oldCardId: oldCardId,
+          newCardId: newCardId,
+        );
+      }
+
+      final response = await _apiClient.post('/decks/$deckId/cards/set', {
+        'card_id': newCardId,
+        'quantity': quantity,
+        'replace_same_name': false,
+      });
+
+      if (response.statusCode != 200) {
+        final data = response.data;
+        final msg =
+            (data is Map && data['error'] != null)
+                ? data['error'].toString()
+                : 'Falha ao atualizar carta: ${response.statusCode}';
+        throw Exception(msg);
+      }
+    }
+
+    invalidateDeckCache(deckId);
+    await fetchDeckDetails(deckId);
+    await fetchDecks();
+  }
+
   /// Busca detalhes de um deck específico (com cache)
-  Future<void> fetchDeckDetails(String deckId, {bool forceRefresh = false}) async {
+  Future<void> fetchDeckDetails(
+    String deckId, {
+    bool forceRefresh = false,
+  }) async {
     // Verifica cache primeiro (se não for forceRefresh)
     if (!forceRefresh && _deckDetailsCache.containsKey(deckId)) {
       final cacheTime = _deckDetailsCacheTime[deckId];
-      if (cacheTime != null && DateTime.now().difference(cacheTime) < _cacheDuration) {
+      if (cacheTime != null &&
+          DateTime.now().difference(cacheTime) < _cacheDuration) {
         _selectedDeck = _deckDetailsCache[deckId];
         _detailsErrorMessage = null;
         _detailsStatusCode = 200;
@@ -63,7 +184,7 @@ class DeckProvider extends ChangeNotifier {
         // Salva no cache
         _deckDetailsCache[deckId] = _selectedDeck!;
         _deckDetailsCacheTime[deckId] = DateTime.now();
-        
+
         _detailsErrorMessage = null;
         _detailsStatusCode = 200;
       } else {
@@ -332,14 +453,16 @@ class DeckProvider extends ChangeNotifier {
   /// Solicita sugestões de otimização para um arquétipo específico
   Future<Map<String, dynamic>> optimizeDeck(
     String deckId,
-    String archetype, [
+    String archetype, {
     int? bracket,
-  ]) async {
+    bool keepTheme = true,
+  }) async {
     try {
       final payload = <String, dynamic>{
         'deck_id': deckId,
         'archetype': archetype,
         if (bracket != null) 'bracket': bracket,
+        'keep_theme': keepTheme,
       };
 
       // Debug snapshot (sem token): útil para você colar o JSON de request/response.
@@ -406,7 +529,7 @@ class DeckProvider extends ChangeNotifier {
     if (response.data is Map && (response.data as Map)['error'] != null) {
       throw Exception((response.data as Map)['error'].toString());
     }
-    throw Exception('Falha ao adicionar em lote: ${response.statusCode}');
+    throw Exception('Falha ao adicionar em lote : ${response.statusCode}');
   }
 
   Future<void> updateDeckStrategy({
@@ -605,7 +728,9 @@ class DeckProvider extends ChangeNotifier {
       }
 
       // 3. Buscar IDs das cartas a adicionar pelo nome (EM PARALELO)
-      AppLogger.debug('🔍 [DeckProvider] Buscando IDs das cartas a adicionar...');
+      AppLogger.debug(
+        '🔍 [DeckProvider] Buscando IDs das cartas a adicionar...',
+      );
       final cardsToAddIds = <Map<String, dynamic>>[];
 
       final addFutures = cardsToAdd.map((cardName) async {
@@ -904,7 +1029,8 @@ class DeckProvider extends ChangeNotifier {
         final cardId = addition['card_id'] as String?;
         if (cardId == null) continue;
 
-        final typeLine = ((addition['type_line'] as String?) ?? '').toLowerCase();
+        final typeLine =
+            ((addition['type_line'] as String?) ?? '').toLowerCase();
         final isBasicLand = typeLine.contains('basic land');
         final limit = isBasicLand ? 99 : defaultLimit;
 
@@ -996,7 +1122,8 @@ class DeckProvider extends ChangeNotifier {
         'name': name,
         'format': format,
         'list': list,
-        if (description != null && description.isNotEmpty) 'description': description,
+        if (description != null && description.isNotEmpty)
+          'description': description,
         if (commander != null && commander.isNotEmpty) 'commander': commander,
       });
 
@@ -1006,7 +1133,7 @@ class DeckProvider extends ChangeNotifier {
       if (response.statusCode == 200) {
         // Recarrega a lista de decks
         await fetchDecks();
-        
+
         final data = response.data as Map<String, dynamic>;
         return {
           'success': true,
@@ -1017,28 +1144,23 @@ class DeckProvider extends ChangeNotifier {
         };
       } else {
         final data = response.data;
-        final error = (data is Map && data['error'] != null)
-            ? data['error'].toString()
-            : 'Erro ao importar deck: ${response.statusCode}';
-        final notFound = (data is Map && data['not_found'] != null)
-            ? List<String>.from(data['not_found'])
-            : <String>[];
-        
+        final error =
+            (data is Map && data['error'] != null)
+                ? data['error'].toString()
+                : 'Erro ao importar deck: ${response.statusCode}';
+        final notFound =
+            (data is Map && data['not_found'] != null)
+                ? List<String>.from(data['not_found'])
+                : <String>[];
+
         _errorMessage = error;
-        return {
-          'success': false,
-          'error': error,
-          'not_found_lines': notFound,
-        };
+        return {'success': false, 'error': error, 'not_found_lines': notFound};
       }
     } catch (e) {
       _isLoading = false;
       _errorMessage = 'Erro de conexão: $e';
       notifyListeners();
-      return {
-        'success': false,
-        'error': 'Erro de conexão: $e',
-      };
+      return {'success': false, 'error': 'Erro de conexão: $e'};
     }
   }
 
@@ -1066,16 +1188,14 @@ class DeckProvider extends ChangeNotifier {
         final data = response.data;
         return {
           'success': false,
-          'error': (data is Map && data['error'] != null)
-              ? data['error'].toString()
-              : 'Erro ao validar lista',
+          'error':
+              (data is Map && data['error'] != null)
+                  ? data['error'].toString()
+                  : 'Erro ao validar lista',
         };
       }
     } catch (e) {
-      return {
-        'success': false,
-        'error': 'Erro de conexão: $e',
-      };
+      return {'success': false, 'error': 'Erro de conexão: $e'};
     }
   }
 
@@ -1095,10 +1215,10 @@ class DeckProvider extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
-        
+
         // Invalida cache do deck
         invalidateDeckCache(deckId);
-        
+
         return {
           'success': true,
           'cards_imported': data['cards_imported'] ?? 0,
@@ -1107,24 +1227,19 @@ class DeckProvider extends ChangeNotifier {
         };
       } else {
         final data = response.data;
-        final error = (data is Map && data['error'] != null)
-            ? data['error'].toString()
-            : 'Erro ao importar: ${response.statusCode}';
-        final notFound = (data is Map && data['not_found_lines'] != null)
-            ? List<String>.from(data['not_found_lines'])
-            : <String>[];
-        
-        return {
-          'success': false,
-          'error': error,
-          'not_found_lines': notFound,
-        };
+        final error =
+            (data is Map && data['error'] != null)
+                ? data['error'].toString()
+                : 'Erro ao importar: ${response.statusCode}';
+        final notFound =
+            (data is Map && data['not_found_lines'] != null)
+                ? List<String>.from(data['not_found_lines'])
+                : <String>[];
+
+        return {'success': false, 'error': error, 'not_found_lines': notFound};
       }
     } catch (e) {
-      return {
-        'success': false,
-        'error': 'Erro de conexão: $e',
-      };
+      return {'success': false, 'error': 'Erro de conexão: $e'};
     }
   }
 }
