@@ -130,6 +130,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
         await file.delete();
       } catch (_) {}
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao capturar: $e')),
       );
@@ -273,7 +274,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.9),
+                color: Colors.amber.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
@@ -300,7 +301,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             child: Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
+                color: Colors.black.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(

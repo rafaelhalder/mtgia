@@ -29,7 +29,7 @@ class ScannedCardPreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -68,7 +68,7 @@ class ScannedCardPreview extends StatelessWidget {
                         Text(
                           'Detectado: "${result.primaryName}"',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 12,
                           ),
                         ),
@@ -265,7 +265,7 @@ class CardNotFoundWidget extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red[900]!.withOpacity(0.9),
+        color: Colors.red[900]!.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

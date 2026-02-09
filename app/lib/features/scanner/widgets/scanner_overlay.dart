@@ -32,7 +32,7 @@ class _ScannerOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.black.withOpacity(0.6)
+      ..color = Colors.black.withValues(alpha: 0.6)
       ..style = PaintingStyle.fill;
 
     // Área da carta (proporção 63:88 - padrão MTG)
@@ -62,7 +62,7 @@ class _ScannerOverlayPainter extends CustomPainter {
 
     // Área do nome (topo da carta) - highlight verde
     final namePaint = Paint()
-      ..color = Colors.green.withOpacity(0.25)
+      ..color = Colors.green.withValues(alpha: 0.25)
       ..style = PaintingStyle.fill;
     
     final nameRect = RRect.fromRectAndCorners(
@@ -163,7 +163,7 @@ class ScannerTips extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
+        color: Colors.black.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
