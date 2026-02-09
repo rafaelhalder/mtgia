@@ -19,6 +19,7 @@ import 'features/decks/screens/deck_import_screen.dart';
 import 'features/cards/providers/card_provider.dart';
 import 'features/cards/screens/card_search_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/scanner/screens/card_scanner_screen.dart';
 
 void main() {
   runApp(const ManaLoomApp());
@@ -113,6 +114,13 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
                         final id = state.pathParameters['id']!;
                         final mode = state.uri.queryParameters['mode'];
                         return CardSearchScreen(deckId: id, mode: mode);
+                      },
+                    ),
+                    GoRoute(
+                      path: 'scan',
+                      builder: (context, state) {
+                        final id = state.pathParameters['id']!;
+                        return CardScannerScreen(deckId: id);
                       },
                     ),
                   ],

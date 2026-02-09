@@ -136,14 +136,14 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       };
     });
 
-    if (result is Map && result['status'] is int && result['error'] != null) {
+    if (result['status'] != null && result['error'] != null) {
       return Response.json(
         statusCode: result['status'] as int,
         body: {'error': result['error']},
       );
     }
 
-    return Response.json(body: (result as Map).cast<String, dynamic>());
+    return Response.json(body: result.cast<String, dynamic>());
   } catch (e) {
     return Response.json(
       statusCode: HttpStatus.internalServerError,

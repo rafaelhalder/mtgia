@@ -89,13 +89,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          context.go('/decks/${widget.deckId}/search');
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Adicionar Cartas'),
-      ),
+      floatingActionButton: _buildAddCardsMenu(context),
       body: Consumer<DeckProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading) {
@@ -658,6 +652,51 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Menu expansível para adicionar cartas (busca ou scanner)
+  Widget _buildAddCardsMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        switch (value) {
+          case 'search':
+            context.go('/decks/${widget.deckId}/search');
+            break;
+          case 'scan':
+            context.go('/decks/${widget.deckId}/scan');
+            break;
+        }
+      },
+      offset: const Offset(0, -120),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'search',
+          child: ListTile(
+            leading: const Icon(Icons.search),
+            title: const Text('Buscar Carta'),
+            subtitle: const Text('Pesquisar por nome'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'scan',
+          child: ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('Escanear Carta'),
+            subtitle: const Text('Usar câmera (OCR)'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+          ),
+        ),
+      ],
+      child: FloatingActionButton.extended(
+        onPressed: null, // O PopupMenuButton cuida do tap
+        icon: const Icon(Icons.add),
+        label: const Text('Adicionar Cartas'),
       ),
     );
   }
