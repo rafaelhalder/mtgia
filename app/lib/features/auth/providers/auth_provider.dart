@@ -24,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Inicializa o provider verificando se há token salvo
   Future<void> initialize() async {
+    debugPrint('[🔑 Auth] initialize() → loading');
     _status = AuthStatus.loading;
     notifyListeners();
 
@@ -31,11 +32,14 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedToken = prefs.getString('auth_token');
       final savedUserJson = prefs.getString('user_data');
+      debugPrint('[🔑 Auth] savedToken exists: ${savedToken != null}, savedUser exists: ${savedUserJson != null}');
 
       if (savedToken != null && savedUserJson != null) {
         _token = savedToken;
         _user = User.fromJson(jsonDecode(savedUserJson));
+        debugPrint('[🔑 Auth] validando token com backend...');
         final isValid = await _validateTokenWithBackend();
+        debugPrint('[🔑 Auth] token válido: $isValid');
         _status = isValid ? AuthStatus.authenticated : AuthStatus.unauthenticated;
         if (!isValid) {
           await prefs.remove('auth_token');
@@ -47,33 +51,43 @@ class AuthProvider extends ChangeNotifier {
         _status = AuthStatus.unauthenticated;
       }
     } catch (e) {
+      debugPrint('[❌ Auth] initialize() erro: $e');
       _status = AuthStatus.unauthenticated;
     }
     
+    debugPrint('[🔑 Auth] initialize() concluído → $_status');
     notifyListeners();
   }
 
   /// Login
   Future<bool> login(String email, String password) async {
+    debugPrint('[🔑 Auth] login() chamado com email=$email');
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      debugPrint('[🔑 Auth] enviando POST /auth/login...');
       final response = await _apiClient.post('/auth/login', {
         'email': email,
         'password': password,
       });
+      debugPrint('[🔑 Auth] resposta recebida: statusCode=${response.statusCode}');
+      debugPrint('[🔑 Auth] resposta body: ${response.data}');
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
         _token = data['token'] as String?;
+        debugPrint('[🔑 Auth] token recebido: ${_token != null ? "sim (${_token!.substring(0, 20)}...)" : "NÃO"}');
         _user = User.fromJson(data['user'] as Map<String, dynamic>);
+        debugPrint('[🔑 Auth] user parsed: ${_user?.username}');
         
         // Salvar credenciais
         await _saveCredentials();
+        debugPrint('[🔑 Auth] credenciais salvas');
         
         _status = AuthStatus.authenticated;
+        debugPrint('[🔑 Auth] status → authenticated ✅');
         notifyListeners();
         return true;
       } else {
@@ -82,12 +96,14 @@ class AuthProvider extends ChangeNotifier {
         } else {
           _errorMessage = 'Credenciais inválidas';
         }
+        debugPrint('[🔑 Auth] login falhou: $_errorMessage');
         _status = AuthStatus.unauthenticated;
         notifyListeners();
         return false;
       }
     } catch (e) {
       _errorMessage = 'Erro de conexão: $e';
+      debugPrint('[❌ Auth] login() EXCEPTION: $e');
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;

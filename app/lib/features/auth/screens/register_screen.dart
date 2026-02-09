@@ -41,15 +41,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
 
     if (success) {
-      context.go('/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Erro ao criar conta'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      // Navegação é feita automaticamente pelo redirect do GoRouter
+      // quando o status muda para 'authenticated'.
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(authProvider.errorMessage ?? 'Erro ao criar conta'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
   }
 
   @override

@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../providers/scanner_provider.dart';
 import '../widgets/scanner_overlay.dart';
 import '../widgets/scanned_card_preview.dart';
-import '../../cards/providers/card_provider.dart';
 import '../../decks/providers/deck_provider.dart';
 import '../../decks/models/deck_card_item.dart';
 
@@ -28,6 +27,8 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   bool _isInitialized = false;
   bool _hasPermission = false;
   String? _permissionError;
+  bool _isInitializingCamera = false;
+  String? _lastAutoSelectedCardId;
 
   @override
   void initState() {
@@ -42,75 +43,100 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       return;
     }
 
-    if (state == AppLifecycleState.inactive) {
-      _cameraController?.dispose();
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      final controller = _cameraController;
+      _cameraController = null;
+      _isInitialized = false;
+      controller?.dispose();
+      if (mounted) setState(() {});
     } else if (state == AppLifecycleState.resumed) {
       _initializeCamera();
     }
   }
 
   Future<void> _initializeCamera() async {
+    if (_isInitializingCamera) return;
+    _isInitializingCamera = true;
+
     // Verifica permissão
-    final status = await Permission.camera.request();
-    if (!status.isGranted) {
-      setState(() {
-        _hasPermission = false;
-        _permissionError = status.isPermanentlyDenied
-            ? 'Permissão negada permanentemente. Abra as configurações do app.'
-            : 'Permissão de câmera necessária para escanear cartas.';
-      });
-      return;
-    }
-
-    setState(() {
-      _hasPermission = true;
-      _permissionError = null;
-    });
-
-    // Obtém câmeras disponíveis
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) {
-      setState(() {
-        _permissionError = 'Nenhuma câmera encontrada no dispositivo.';
-      });
-      return;
-    }
-
-    // Usa câmera traseira
-    final camera = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.back,
-      orElse: () => cameras.first,
-    );
-
-    _cameraController = CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
-
     try {
-      await _cameraController!.initialize();
-      
+      final status = await Permission.camera.request();
+      if (!mounted) return;
+      if (!status.isGranted) {
+        setState(() {
+          _hasPermission = false;
+          _isInitialized = false;
+          _permissionError =
+              status.isPermanentlyDenied
+                  ? 'Permissão negada permanentemente. Abra as configurações do app.'
+                  : 'Permissão de câmera necessária para escanear cartas.';
+        });
+        return;
+      }
+
+      setState(() {
+        _hasPermission = true;
+        _permissionError = null;
+        _isInitialized = false;
+      });
+
+      // Obtém câmeras disponíveis
+      final cameras = await availableCameras();
+      if (!mounted) return;
+      if (cameras.isEmpty) {
+        setState(() {
+          _permissionError = 'Nenhuma câmera encontrada no dispositivo.';
+        });
+        return;
+      }
+
+      // Usa câmera traseira
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      final previous = _cameraController;
+      _cameraController = null;
+      await previous?.dispose();
+
+      final controller = CameraController(
+        camera,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await controller.initialize();
+
       // Configura foco automático
       try {
-        await _cameraController!.setFocusMode(FocusMode.auto);
+        await controller.setFocusMode(FocusMode.auto);
       } catch (_) {
         // Ignora se não suportado
       }
 
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
       setState(() {
+        _cameraController = controller;
         _isInitialized = true;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
+        _isInitialized = false;
         _permissionError = 'Erro ao inicializar câmera: $e';
       });
+    } finally {
+      _isInitializingCamera = false;
     }
   }
 
   Future<void> _captureAndProcess() async {
-    if (_cameraController == null || 
+    if (_cameraController == null ||
         !_cameraController!.value.isInitialized ||
         _scannerProvider.state == ScannerState.processing ||
         _scannerProvider.state == ScannerState.searching) {
@@ -131,21 +157,17 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       } catch (_) {}
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao capturar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erro ao capturar: $e')));
     }
   }
 
   void _addCardToDeck(DeckCardItem card) async {
     final deckProvider = context.read<DeckProvider>();
-    
+
     // Adiciona a carta ao deck
-    final success = await deckProvider.addCardToDeck(
-      widget.deckId,
-      card,
-      1,
-    );
+    final success = await deckProvider.addCardToDeck(widget.deckId, card, 1);
 
     if (!mounted) return;
 
@@ -184,7 +206,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ScannerProvider(context.read<CardProvider>()),
+      create: (_) => ScannerProvider(),
       child: Consumer<ScannerProvider>(
         builder: (context, scannerProvider, _) {
           _scannerProvider = scannerProvider;
@@ -205,9 +227,10 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                     scannerProvider.useFoilMode
                         ? Icons.auto_fix_high
                         : Icons.auto_fix_off,
-                    color: scannerProvider.useFoilMode
-                        ? Colors.amber
-                        : Colors.white,
+                    color:
+                        scannerProvider.useFoilMode
+                            ? Colors.amber
+                            : Colors.white,
                   ),
                   tooltip: 'Modo Foil',
                   onPressed: scannerProvider.toggleFoilMode,
@@ -223,6 +246,22 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   }
 
   Widget _buildBody(ScannerProvider scannerProvider) {
+    if (scannerProvider.state == ScannerState.idle) {
+      _lastAutoSelectedCardId = null;
+    }
+
+    final auto = scannerProvider.autoSelectedCard;
+    if (scannerProvider.state == ScannerState.found &&
+        auto != null &&
+        auto.id.isNotEmpty &&
+        _lastAutoSelectedCardId != auto.id) {
+      _lastAutoSelectedCardId = auto.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _addCardToDeck(auto);
+      });
+    }
+
     // Erro de permissão
     if (!_hasPermission || _permissionError != null) {
       return _buildPermissionError();
@@ -236,35 +275,33 @@ class _CardScannerScreenState extends State<CardScannerScreen>
           children: [
             CircularProgressIndicator(color: Colors.white),
             SizedBox(height: 16),
-            Text(
-              'Iniciando câmera...',
-              style: TextStyle(color: Colors.white),
-            ),
+            Text('Iniciando câmera...', style: TextStyle(color: Colors.white)),
           ],
         ),
       );
     }
 
-    final isProcessing = scannerProvider.state == ScannerState.processing ||
+    final isProcessing =
+        scannerProvider.state == ScannerState.processing ||
         scannerProvider.state == ScannerState.searching;
 
     return Stack(
       fit: StackFit.expand,
       children: [
         // Preview da câmera
-        CameraPreview(_cameraController!),
+        Center(
+          child: AspectRatio(
+            aspectRatio: _cameraController!.value.aspectRatio,
+            child: CameraPreview(_cameraController!),
+          ),
+        ),
 
         // Overlay com guia
         ScannerOverlay(isProcessing: isProcessing),
 
         // Dicas (apenas no estado idle)
         if (scannerProvider.state == ScannerState.idle)
-          const Positioned(
-            top: 100,
-            left: 0,
-            right: 0,
-            child: ScannerTips(),
-          ),
+          const Positioned(top: 100, left: 0, right: 0, child: ScannerTips()),
 
         // Modo foil ativo
         if (scannerProvider.useFoilMode)

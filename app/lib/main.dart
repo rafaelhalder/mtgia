@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'core/api/api_client.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 import 'features/decks/screens/deck_list_screen.dart';
@@ -45,27 +46,45 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _deckProvider = DeckProvider();
     _cardProvider = CardProvider();
 
+    // Log da URL da API no boot
+    ApiClient.debugLogBaseUrl();
+
     _router = GoRouter(
       initialLocation: '/',
       refreshListenable: _authProvider,
       redirect: (context, state) {
         final location = state.matchedLocation;
+        final status = _authProvider.status;
+
+        debugPrint('[🧭 Router] redirect: location=$location | status=$status');
 
         // Sempre permite a Splash (ela decide para onde ir).
         if (location == '/') return null;
 
+        // Não redirecionar enquanto o auth está carregando ou inicializando
+        // — evita loop de redirect durante login/register/splash.
+        if (status == AuthStatus.loading || status == AuthStatus.initial) {
+          debugPrint('[🧭 Router] → null (status=$status, aguardando)');
+          return null;
+        }
+
         final isAuthRoute = location == '/login' || location == '/register';
         final isProtectedRoute =
-            location.startsWith('/home') || location.startsWith('/decks');
+            location.startsWith('/home') ||
+            location.startsWith('/decks') ||
+            location.startsWith('/profile');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
+          debugPrint('[🧭 Router] → /login (rota protegida sem auth)');
           return '/login';
         }
 
         if (isAuthRoute && _authProvider.isAuthenticated) {
+          debugPrint('[🧭 Router] → /home (já autenticado)');
           return '/home';
         }
 
+        debugPrint('[🧭 Router] → null (sem redirect)');
         return null;
       },
       routes: [

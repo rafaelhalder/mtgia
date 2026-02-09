@@ -47,5 +47,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Precisamos acessar a câmera para escanear cartas de Magic: The Gathering</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

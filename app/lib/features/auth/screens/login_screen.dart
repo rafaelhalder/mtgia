@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -24,26 +25,38 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('[📱 LoginScreen] _handleLogin() chamado');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('[📱 LoginScreen] formulário inválido, abortando');
+      return;
+    }
 
     final authProvider = context.read<AuthProvider>();
+    debugPrint('[📱 LoginScreen] chamando authProvider.login()...');
     final success = await authProvider.login(
       _emailController.text.trim(),
       _passwordController.text,
     );
+    debugPrint('[📱 LoginScreen] login retornou: success=$success');
 
-    if (!mounted) return;
+    if (!mounted) {
+      debugPrint('[📱 LoginScreen] widget desmontado após login!');
+      return;
+    }
 
     if (success) {
-      context.go('/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Erro ao fazer login'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      debugPrint('[📱 LoginScreen] ✅ login OK — aguardando redirect do GoRouter');
+      // Navegação é feita automaticamente pelo redirect do GoRouter
+      // quando o status muda para 'authenticated'.
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(authProvider.errorMessage ?? 'Erro ao fazer login'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
   }
 
   @override

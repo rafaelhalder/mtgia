@@ -48,11 +48,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (!mounted) return;
 
-    if (authProvider.isAuthenticated) {
-      context.go('/home');
-    } else {
-      context.go('/login');
-    }
+    // Navega para /login; o redirect do GoRouter redireciona
+    // automaticamente para /home se o usuário já estiver autenticado.
+    context.go('/login');
   }
 
   @override

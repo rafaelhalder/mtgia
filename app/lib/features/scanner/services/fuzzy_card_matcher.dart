@@ -1,12 +1,12 @@
 import 'dart:math' as math;
-import '../../cards/providers/card_provider.dart';
 import '../../decks/models/deck_card_item.dart';
+import 'scanner_card_search_service.dart';
 
 /// Busca de cartas com tolerância a erros de OCR
 class FuzzyCardMatcher {
-  final CardProvider _cardProvider;
+  final ScannerCardSearchService _searchService;
 
-  FuzzyCardMatcher(this._cardProvider);
+  FuzzyCardMatcher(this._searchService);
 
   /// Busca cartas mesmo com erros de OCR
   Future<List<DeckCardItem>> searchWithFuzzy(String recognizedName) async {
@@ -14,9 +14,10 @@ class FuzzyCardMatcher {
     if (cleanedName.isEmpty) return [];
 
     // 1. Busca direta primeiro
-    await _cardProvider.searchCards(cleanedName);
-    if (_cardProvider.searchResults.isNotEmpty) {
-      return _cardProvider.searchResults;
+    final direct = await _searchService.searchByName(cleanedName, limit: 50);
+    final directRanked = _rankResults(cleanedName, direct);
+    if (directRanked.isNotEmpty) {
+      return directRanked;
     }
 
     // 2. Tenta variações comuns de erro OCR
@@ -24,9 +25,10 @@ class FuzzyCardMatcher {
 
     for (final variation in variations) {
       if (variation != cleanedName && variation.length >= 3) {
-        await _cardProvider.searchCards(variation);
-        if (_cardProvider.searchResults.isNotEmpty) {
-          return _cardProvider.searchResults;
+        final results = await _searchService.searchByName(variation, limit: 50);
+        final ranked = _rankResults(cleanedName, results);
+        if (ranked.isNotEmpty) {
+          return ranked;
         }
       }
     }
@@ -36,36 +38,81 @@ class FuzzyCardMatcher {
     if (words.length > 1) {
       // Tenta primeiras duas palavras
       final partial = words.take(2).join(' ');
-      await _cardProvider.searchCards(partial);
-      
-      if (_cardProvider.searchResults.isNotEmpty) {
+      final partialResults = await _searchService.searchByName(
+        partial,
+        limit: 50,
+      );
+
+      if (partialResults.isNotEmpty) {
         // Filtra resultados que são similares ao nome completo
-        return _cardProvider.searchResults.where((card) {
-          return _isSimilar(card.name, cleanedName, threshold: 0.6);
-        }).toList();
+        final filtered =
+            partialResults.where((card) {
+              return _isSimilar(card.name, cleanedName, threshold: 0.6);
+            }).toList();
+        return _rankResults(cleanedName, filtered);
       }
 
       // Tenta só primeira palavra
-      await _cardProvider.searchCards(words.first);
-      if (_cardProvider.searchResults.isNotEmpty) {
-        return _cardProvider.searchResults.where((card) {
-          return _isSimilar(card.name, cleanedName, threshold: 0.5);
-        }).toList();
+      final firstWordResults = await _searchService.searchByName(
+        words.first,
+        limit: 50,
+      );
+      if (firstWordResults.isNotEmpty) {
+        final filtered =
+            firstWordResults.where((card) {
+              return _isSimilar(card.name, cleanedName, threshold: 0.5);
+            }).toList();
+        return _rankResults(cleanedName, filtered);
       }
     }
 
     // 4. Tenta remover caracteres problemáticos e buscar novamente
-    final simplified = cleanedName
-        .replaceAll(RegExp(r'[^a-zA-Z\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    
+    final simplified =
+        cleanedName
+            .replaceAll(RegExp(r'[^a-zA-Z\s]'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+
     if (simplified != cleanedName && simplified.length >= 3) {
-      await _cardProvider.searchCards(simplified);
-      return _cardProvider.searchResults;
+      final simplifiedResults = await _searchService.searchByName(
+        simplified,
+        limit: 50,
+      );
+      return _rankResults(cleanedName, simplifiedResults);
     }
 
     return [];
+  }
+
+  List<DeckCardItem> _rankResults(
+    String recognizedName,
+    List<DeckCardItem> cards,
+  ) {
+    if (cards.isEmpty) return const [];
+    final query = recognizedName.trim().toLowerCase();
+
+    final list = [...cards];
+    list.sort((a, b) {
+      final aName = a.name.trim().toLowerCase();
+      final bName = b.name.trim().toLowerCase();
+
+      final aExact = aName == query;
+      final bExact = bName == query;
+      if (aExact != bExact) return aExact ? -1 : 1;
+
+      final aScore = similarity(recognizedName, a.name);
+      final bScore = similarity(recognizedName, b.name);
+      final byScore = bScore.compareTo(aScore);
+      if (byScore != 0) return byScore;
+
+      // Desempate determinístico por data/edição (se disponível) e set code.
+      final bySet =
+          b.setReleaseDate?.compareTo(a.setReleaseDate ?? '') ??
+          (b.setCode).compareTo(a.setCode);
+      if (bySet != 0) return bySet;
+      return a.id.compareTo(b.id);
+    });
+    return list;
   }
 
   /// Gera variações comuns de erro de OCR
@@ -116,7 +163,7 @@ class FuzzyCardMatcher {
         for (final to in toList) {
           // Substitui primeira ocorrência
           variations.add(text.replaceFirst(from, to));
-          
+
           // Substitui todas as ocorrências
           variations.add(text.replaceAll(from, to));
         }
@@ -135,10 +182,13 @@ class FuzzyCardMatcher {
 
   /// Converte para Title Case
   String _toTitleCase(String text) {
-    return text.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+    return text
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
   }
 
   /// Verifica similaridade usando distância de Levenshtein

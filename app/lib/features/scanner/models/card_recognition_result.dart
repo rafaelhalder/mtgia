@@ -5,6 +5,7 @@ class CardRecognitionResult {
   final bool success;
   final String? primaryName;
   final List<String> alternatives;
+  final List<String> setCodeCandidates;
   final double confidence;
   final String? error;
   final List<CardNameCandidate> allCandidates;
@@ -13,6 +14,7 @@ class CardRecognitionResult {
     required this.success,
     this.primaryName,
     this.alternatives = const [],
+    this.setCodeCandidates = const [],
     this.confidence = 0,
     this.error,
     this.allCandidates = const [],
@@ -21,6 +23,7 @@ class CardRecognitionResult {
   factory CardRecognitionResult.success({
     required String primaryName,
     List<String> alternatives = const [],
+    List<String> setCodeCandidates = const [],
     double confidence = 0,
     List<CardNameCandidate> allCandidates = const [],
   }) {
@@ -28,16 +31,14 @@ class CardRecognitionResult {
       success: true,
       primaryName: primaryName,
       alternatives: alternatives,
+      setCodeCandidates: setCodeCandidates,
       confidence: confidence,
       allCandidates: allCandidates,
     );
   }
 
   factory CardRecognitionResult.failed(String error) {
-    return CardRecognitionResult._(
-      success: false,
-      error: error,
-    );
+    return CardRecognitionResult._(success: false, error: error);
   }
 }
 

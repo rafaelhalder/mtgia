@@ -8,7 +8,7 @@ import '../models/card_recognition_result.dart';
 
 /// Serviço AVANÇADO de reconhecimento de cartas MTG usando ML Kit
 /// Múltiplas estratégias de OCR para máxima precisão em TODAS as eras (1993-2026)
-/// 
+///
 /// Estratégias implementadas:
 /// 1. Processamento da imagem original
 /// 2. Crop da região do nome (topo da carta)
@@ -79,6 +79,33 @@ class CardRecognitionService {
     RegExp(r'^[A-Z][a-z]+\s*//\s*[A-Z]'),
   ];
 
+  static const _setCodeStopwords = <String>{
+    'THE',
+    'AND',
+    'FOR',
+    'YOU',
+    'WITH',
+    'FROM',
+    'THIS',
+    'THAT',
+    'NOT',
+    'YES',
+    'CAN',
+    'MAY',
+    'ALL',
+    'ANY',
+    'ONE',
+    'TWO',
+    'THREE',
+    'FOUR',
+    'FIVE',
+    'SIX',
+    'SEVEN',
+    'EIGHT',
+    'NINE',
+    'TEN',
+  };
+
   // ══════════════════════════════════════════════════════════════════════════
   // MÉTODO PRINCIPAL - MÚLTIPLAS ESTRATÉGIAS
   // ══════════════════════════════════════════════════════════════════════════
@@ -91,8 +118,10 @@ class CardRecognitionService {
       return CardRecognitionResult.failed('Erro ao decodificar imagem');
     }
 
-    CardRecognitionResult bestResult = CardRecognitionResult.failed('Nenhum resultado');
-    
+    CardRecognitionResult bestResult = CardRecognitionResult.failed(
+      'Nenhum resultado',
+    );
+
     // ═══════════════════════════════════════════════════════════════════════
     // ESTRATÉGIA 1: Imagem original (mais rápido, funciona bem em 70% casos)
     // ═══════════════════════════════════════════════════════════════════════
@@ -182,8 +211,9 @@ class CardRecognitionService {
   Future<CardRecognitionResult> _processNameRegion(img.Image original) async {
     // Calcula região do nome (primeiros ~12% da altura, excluindo mana cost à direita)
     final nameHeight = (original.height * 0.12).round().clamp(40, 250);
-    final nameWidth = (original.width * 0.70).round(); // Exclui área de mana cost
-    
+    final nameWidth =
+        (original.width * 0.70).round(); // Exclui área de mana cost
+
     var cropped = img.copyCrop(
       original,
       x: (original.width * 0.05).round(),
@@ -201,7 +231,9 @@ class CardRecognitionService {
   }
 
   /// Processa com alto contraste
-  Future<CardRecognitionResult> _processWithHighContrast(img.Image original) async {
+  Future<CardRecognitionResult> _processWithHighContrast(
+    img.Image original,
+  ) async {
     var processed = img.grayscale(original);
     processed = img.adjustColor(processed, contrast: 1.8, brightness: 1.15);
     processed = _sharpen(processed);
@@ -210,7 +242,9 @@ class CardRecognitionService {
   }
 
   /// Processa com binarização adaptativa
-  Future<CardRecognitionResult> _processWithBinarization(img.Image original) async {
+  Future<CardRecognitionResult> _processWithBinarization(
+    img.Image original,
+  ) async {
     var processed = img.grayscale(original);
     processed = _adaptiveThreshold(processed, blockSize: 25, constant: 12);
 
@@ -218,16 +252,20 @@ class CardRecognitionService {
   }
 
   /// Processa múltiplas regiões da carta
-  Future<CardRecognitionResult> _processMultipleRegions(img.Image original) async {
+  Future<CardRecognitionResult> _processMultipleRegions(
+    img.Image original,
+  ) async {
     // Regiões para diferentes layouts de carta
     final regions = <_Region>[
-      _Region(0.02, 0.02, 0.70, 0.15, 'top_name'),      // Nome padrão
-      _Region(0.02, 0.05, 0.95, 0.18, 'top_full'),      // Topo completo
-      _Region(0.10, 0.78, 0.90, 0.95, 'bottom'),        // Showcase/borderless
-      _Region(0.05, 0.40, 0.95, 0.55, 'middle'),        // DFC verso
+      _Region(0.02, 0.02, 0.70, 0.15, 'top_name'), // Nome padrão
+      _Region(0.02, 0.05, 0.95, 0.18, 'top_full'), // Topo completo
+      _Region(0.10, 0.78, 0.90, 0.95, 'bottom'), // Showcase/borderless
+      _Region(0.05, 0.40, 0.95, 0.55, 'middle'), // DFC verso
     ];
 
-    CardRecognitionResult bestResult = CardRecognitionResult.failed('Nenhuma região');
+    CardRecognitionResult bestResult = CardRecognitionResult.failed(
+      'Nenhuma região',
+    );
 
     for (final region in regions) {
       final x = (original.width * region.left).round();
@@ -278,7 +316,9 @@ class CardRecognitionService {
         strategy,
       );
     } finally {
-      try { await tempFile?.delete(); } catch (_) {}
+      try {
+        await tempFile?.delete();
+      } catch (_) {}
     }
   }
 
@@ -328,18 +368,56 @@ class CardRecognitionService {
 
     // Calcula confiança
     final confidence = _calculateConfidence(unique);
+    final setCodeCandidates = _extractSetCodeCandidates(recognizedText.text);
 
     return CardRecognitionResult.success(
       primaryName: unique.first.text,
-      alternatives: unique
-          .skip(1)
-          .take(5)
-          .map((c) => c.text)
-          .where((t) => t != unique.first.text)
-          .toList(),
+      alternatives:
+          unique
+              .skip(1)
+              .take(5)
+              .map((c) => c.text)
+              .where((t) => t != unique.first.text)
+              .toList(),
+      setCodeCandidates: setCodeCandidates,
       confidence: confidence,
       allCandidates: unique,
     );
+  }
+
+  List<String> _extractSetCodeCandidates(String rawText) {
+    final text = rawText.replaceAll('\n', ' ');
+    final matches = RegExp(r'\b[A-Za-z0-9]{2,6}\b').allMatches(text);
+
+    final seen = <String>{};
+    final candidates = <String>[];
+
+    for (final m in matches) {
+      final token = m.group(0);
+      if (token == null) continue;
+
+      final upper = token.toUpperCase();
+      if (_setCodeStopwords.contains(upper)) continue;
+
+      // Set codes normalmente têm 3-5 chars ou incluem dígitos (ex: 2XM, M21).
+      final hasDigit = upper.contains(RegExp(r'\d'));
+      final len = upper.length;
+      final looksLikeSetCode = (len >= 3 && len <= 5) || (hasDigit && len <= 6);
+      if (!looksLikeSetCode) continue;
+
+      // Evita pegar só números (collector numbers etc).
+      if (RegExp(r'^\d+$').hasMatch(upper)) continue;
+
+      // Evita tokens muito "palavra comum" do OCR que já filtramos como não-nome.
+      if (_nonNameKeywords.contains(upper.toLowerCase())) continue;
+
+      if (seen.add(upper)) {
+        candidates.add(upper);
+        if (candidates.length >= 10) break;
+      }
+    }
+
+    return candidates;
   }
 
   /// Avalia se um texto é candidato a nome de carta
@@ -396,7 +474,12 @@ class CardRecognitionService {
     if (RegExp(r'^\d+\s*/\s*\d+$').hasMatch(cleaned)) return 0;
 
     // Custo de mana
-    if (RegExp(r'^[\dWUBRGCX\{\}\s]+$', caseSensitive: false).hasMatch(cleaned)) return 0;
+    if (RegExp(
+      r'^[\dWUBRGCX\{\}\s]+$',
+      caseSensitive: false,
+    ).hasMatch(cleaned)) {
+      return 0;
+    }
 
     // Texto de regras longo
     if (cleaned.contains(':') && cleaned.length > 25) return 0;
@@ -453,7 +536,8 @@ class CardRecognitionService {
 
     // Múltiplas palavras capitalizadas
     final words = cleaned.split(RegExp(r'\s+'));
-    final capCount = words.where((w) => w.isNotEmpty && _isUpperCase(w[0])).length;
+    final capCount =
+        words.where((w) => w.isNotEmpty && _isUpperCase(w[0])).length;
     if (capCount >= 2 && capCount <= 6) {
       score += capCount * 7;
     }
@@ -500,7 +584,10 @@ class CardRecognitionService {
   /// Verifica se é linha de tipo
   bool _isTypeLine(String text) {
     final patterns = [
-      RegExp(r'^(legendary\s+)?(artifact\s+)?(creature|artifact|enchantment|instant|sorcery|land|planeswalker|battle)', caseSensitive: false),
+      RegExp(
+        r'^(legendary\s+)?(artifact\s+)?(creature|artifact|enchantment|instant|sorcery|land|planeswalker|battle)',
+        caseSensitive: false,
+      ),
       RegExp(r'^\w+\s*[—–-]\s*\w+'),
       RegExp(r'^basic\s+(land|snow)', caseSensitive: false),
     ];
@@ -534,17 +621,37 @@ class CardRecognitionService {
 
   /// Converte para Title Case inteligente
   String _toTitleCase(String text) {
-    const smallWords = {'a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'of', 'to', 'in', 'on', 'at', 'by'};
-    
-    return text.split(' ').asMap().entries.map((e) {
-      final word = e.value;
-      if (word.isEmpty) return word;
-      
-      if (e.key == 0 || !smallWords.contains(word.toLowerCase())) {
-        return word[0].toUpperCase() + word.substring(1).toLowerCase();
-      }
-      return word.toLowerCase();
-    }).join(' ');
+    const smallWords = {
+      'a',
+      'an',
+      'the',
+      'and',
+      'but',
+      'or',
+      'for',
+      'nor',
+      'of',
+      'to',
+      'in',
+      'on',
+      'at',
+      'by',
+    };
+
+    return text
+        .split(' ')
+        .asMap()
+        .entries
+        .map((e) {
+          final word = e.value;
+          if (word.isEmpty) return word;
+
+          if (e.key == 0 || !smallWords.contains(word.toLowerCase())) {
+            return word[0].toUpperCase() + word.substring(1).toLowerCase();
+          }
+          return word.toLowerCase();
+        })
+        .join(' ');
   }
 
   /// Verifica se caractere é maiúsculo
@@ -590,15 +697,19 @@ class CardRecognitionService {
 
   /// Aplica sharpening
   img.Image _sharpen(img.Image image) {
-    return img.convolution(image, filter: [
-      0, -1, 0,
-      -1, 5, -1,
-      0, -1, 0,
-    ], div: 1);
+    return img.convolution(
+      image,
+      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+      div: 1,
+    );
   }
 
   /// Threshold adaptativo
-  img.Image _adaptiveThreshold(img.Image image, {int blockSize = 15, int constant = 10}) {
+  img.Image _adaptiveThreshold(
+    img.Image image, {
+    int blockSize = 15,
+    int constant = 10,
+  }) {
     final result = img.Image.from(image);
     final half = blockSize ~/ 2;
 
@@ -619,9 +730,13 @@ class CardRecognitionService {
         final threshold = (sum / count) - constant;
         final lum = img.getLuminance(image.getPixel(x, y));
 
-        result.setPixel(x, y, lum < threshold 
-            ? img.ColorRgb8(0, 0, 0) 
-            : img.ColorRgb8(255, 255, 255));
+        result.setPixel(
+          x,
+          y,
+          lum < threshold
+              ? img.ColorRgb8(0, 0, 0)
+              : img.ColorRgb8(255, 255, 255),
+        );
       }
     }
 
