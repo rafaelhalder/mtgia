@@ -593,8 +593,11 @@ class DeckProvider extends ChangeNotifier {
       return (response.data as Map).cast<String, dynamic>();
     }
 
-    if (response.data is Map && (response.data as Map)['error'] != null) {
-      throw Exception((response.data as Map)['error'].toString());
+    // Retorna o body completo (com card_name) em vez de lançar exceção,
+    // para que a UI consiga identificar a carta problemática.
+    if (response.data is Map) {
+      final body = (response.data as Map).cast<String, dynamic>();
+      if (body['ok'] == false) return body;
     }
     throw Exception('Falha ao validar deck: ${response.statusCode}');
   }

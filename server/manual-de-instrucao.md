@@ -2780,3 +2780,51 @@ ON CONFLICT (card_id, price_date) DO UPDATE SET price_usd = EXCLUDED.price_usd
 2. Atualiza `cards.price` + insere/atualiza `price_history` do dia
 3. No dia seguinte, ao rodar novamente, teremos 2 datas → movers calculados
 4. App abre Market → `GET /market/movers` → gainers/losers aparecem
+
+---
+
+## Feedback Visual de Validação — Cartas Inválidas em Destaque
+
+### O Porquê
+Quando `POST /decks/:id/validate` retorna erro 400 (ex: carta com cópias acima do limite, carta banida, comandante com quantidade ≠ 1), o usuário precisa saber **exatamente qual carta** causou o problema, sem precisar ler mensagens de erro e procurar manualmente na lista.
+
+### O Como
+
+#### 1. Server: `DeckRulesException` com campo `cardName`
+- `DeckRulesException` agora aceita `cardName` opcional:
+  ```dart
+  class DeckRulesException implements Exception {
+    DeckRulesException(this.message, {this.cardName});
+    final String message;
+    final String? cardName;
+  }
+  ```
+- Todos os `throw DeckRulesException(...)` que identificam uma carta específica agora passam `cardName: info.name`.
+- O endpoint `POST /decks/:id/validate` retorna `card_name` no body de erro:
+  ```json
+  { "ok": false, "error": "Regra violada: ...", "card_name": "Jin-Gitaxias // The Great Synthesis" }
+  ```
+
+#### 2. Flutter Provider: retorno em vez de exceção
+- `DeckProvider.validateDeck()` agora retorna o body completo do 400 (com `card_name`) em vez de lançar exceção, para que a UI possa usar os dados estruturados.
+
+#### 3. Flutter UI: `deck_details_screen.dart`
+- **Estado:** `Set<String> _invalidCardNames` armazena nomes de cartas problemáticas.
+- **Extração:** `_extractInvalidCardNames()` usa o campo `card_name` do response (ou fallback regex na mensagem de erro).
+- **Verificação:** `_isCardInvalid(card)` compara `card.name` com o set (case-insensitive).
+- **Destaque visual:**
+  - Borda vermelha (`BorderSide(color: error, width: 2)`) no `Card`.
+  - Background tinto (`error.withValues(alpha: 0.08)`).
+  - Badge "⚠ Inválida" (`Positioned` no canto superior direito) com `Stack`.
+- **Ordenação:** Cartas inválidas são ordenadas para o **topo** de cada grupo de tipo no Tab "Cartas".
+- **Banner de alerta:** Container vermelho no topo do Tab "Cartas" listando as cartas problemáticas.
+- **Navegação:** Ao tocar no badge de validação "Inválido" no header, o app navega automaticamente para o Tab "Cartas".
+- Aplica-se tanto às cartas do mainBoard (Tab 2) quanto ao comandante (Tab 1).
+
+### Arquivos Modificados
+| Arquivo | Mudança |
+|---------|---------|
+| `server/lib/deck_rules_service.dart` | `DeckRulesException` com `cardName`; parâmetro em todos os throws relevantes |
+| `server/routes/decks/[id]/validate/index.dart` | Retorna `card_name` no body de erro |
+| `app/lib/features/decks/providers/deck_provider.dart` | `validateDeck()` retorna body em vez de throw para 400 |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Highlight vermelho, badge "Inválida", sort to top, banner de alerta |

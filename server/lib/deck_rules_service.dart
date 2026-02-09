@@ -61,6 +61,7 @@ class DeckRulesService {
       if (qty > limit) {
         throw DeckRulesException(
           'Regra violada: "$name" excede o limite de $limit cópia(s) para o formato $normalizedFormat.',
+          cardName: name,
         );
       }
     }
@@ -93,27 +94,32 @@ class DeckRulesService {
       if (!isBasicLand && quantity > limit) {
         throw DeckRulesException(
           'Regra violada: "${info.name}" excede o limite de $limit cópia(s) para o formato $normalizedFormat.',
+          cardName: info.name,
         );
       }
 
       if (isCommander && quantity != 1) {
         throw DeckRulesException(
-            'Regra violada: comandante deve ter quantidade 1 ("${info.name}").');
+            'Regra violada: comandante deve ter quantidade 1 ("${info.name}").',
+            cardName: info.name);
       }
 
       final status = legalities[cardId];
       if (status == null) continue;
       if (status == 'banned') {
         throw DeckRulesException(
-            'Regra violada: "${info.name}" é BANIDA no formato $normalizedFormat.');
+            'Regra violada: "${info.name}" é BANIDA no formato $normalizedFormat.',
+            cardName: info.name);
       }
       if (status == 'not_legal') {
         throw DeckRulesException(
-            'Regra violada: "${info.name}" não é válida no formato $normalizedFormat.');
+            'Regra violada: "${info.name}" não é válida no formato $normalizedFormat.',
+            cardName: info.name);
       }
       if (status == 'restricted' && quantity > 1) {
         throw DeckRulesException(
-            'Regra violada: "${info.name}" é RESTRITA no formato $normalizedFormat (máx. 1).');
+            'Regra violada: "${info.name}" é RESTRITA no formato $normalizedFormat (máx. 1).',
+            cardName: info.name);
       }
     }
 
@@ -176,6 +182,7 @@ class DeckRulesService {
         throw DeckRulesException(
           'Regra violada: "${cmd1.name}" e "${cmd2.name}" não podem ser comandantes juntos. '
           'Precisam ter "Partner", "Partner with [nome]" ou um ter "Choose a Background" e o outro ser Background.',
+          cardName: cmd1.name,
         );
       }
     }
@@ -193,6 +200,7 @@ class DeckRulesService {
       if (!_isCommanderEligible(commanderInfo)) {
         throw DeckRulesException(
           'Regra violada: "${commanderInfo.name}" não pode ser comandante (precisa ser criatura lendária ou dizer "can be your commander").',
+          cardName: commanderInfo.name,
         );
       }
     }
@@ -208,6 +216,7 @@ class DeckRulesService {
       if (!_isCommanderEligible(info) && !_isBackground(info)) {
         throw DeckRulesException(
           'Regra violada: "${info.name}" não pode ser comandante.',
+          cardName: info.name,
         );
       }
       
@@ -229,6 +238,7 @@ class DeckRulesService {
         if (!commanderIdentitySet.contains(c.toUpperCase())) {
           throw DeckRulesException(
             'Regra violada: "${info.name}" tem identidade de cor fora do(s) comandante(s).',
+            cardName: info.name,
           );
         }
       }
@@ -407,8 +417,9 @@ class DeckRulesService {
 }
 
 class DeckRulesException implements Exception {
-  DeckRulesException(this.message);
+  DeckRulesException(this.message, {this.cardName});
   final String message;
+  final String? cardName;
   @override
   String toString() => message;
 }

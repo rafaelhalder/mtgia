@@ -32,6 +32,29 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
   bool _validationAutoLoaded = false;
   bool _isValidating = false;
   Map<String, dynamic>? _validationResult;
+  Set<String> _invalidCardNames = {};
+
+  /// Extrai o nome da carta problemática do resultado da validação.
+  /// Usa o campo estruturado 'card_name' quando disponível,
+  /// senão faz fallback via regex na mensagem de erro.
+  Set<String> _extractInvalidCardNames(Map<String, dynamic>? result) {
+    if (result == null || result['ok'] == true) return {};
+    final cardName = result['card_name'] as String?;
+    if (cardName != null && cardName.isNotEmpty) return {cardName};
+    // Fallback: extrair nome entre aspas da mensagem de erro
+    final error = result['error'] as String?;
+    if (error == null) return {};
+    final matches = RegExp(r'"([^"]+)"').allMatches(error);
+    return matches.map((m) => m.group(1)!).toSet();
+  }
+
+  /// Verifica se uma carta está na lista de cartas inválidas.
+  bool _isCardInvalid(DeckCardItem card) {
+    if (_invalidCardNames.isEmpty) return false;
+    return _invalidCardNames.any(
+      (name) => name.toLowerCase() == card.name.toLowerCase(),
+    );
+  }
 
   @override
   void initState() {
@@ -227,6 +250,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                     duration: const Duration(seconds: 4),
                                   ),
                                 );
+                                // Navega para a aba Cartas para destacar a carta problemática
+                                if (_invalidCardNames.isNotEmpty) {
+                                  _tabController.animateTo(1);
+                                }
                               }
                             },
                             borderRadius: BorderRadius.circular(20),
@@ -427,7 +454,21 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       const SizedBox(height: 8),
                       ...deck.commander.map(
                         (c) => Card(
-                          child: ListTile(
+                          shape: _isCardInvalid(c)
+                              ? RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: theme.colorScheme.error,
+                                    width: 2,
+                                  ),
+                                )
+                              : null,
+                          color: _isCardInvalid(c)
+                              ? theme.colorScheme.error.withValues(alpha: 0.08)
+                              : null,
+                          child: Stack(
+                            children: [
+                              ListTile(
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
                               child: SizedBox(
@@ -459,6 +500,42 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             title: Text(c.name),
                             subtitle: Text(c.typeLine),
                             onTap: () => _showCardDetails(context, c),
+                          ),
+                              if (_isCardInvalid(c))
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.error,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.warning_amber_rounded,
+                                          size: 12,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'Inválida',
+                                          style: theme.textTheme.labelSmall?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 9,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -604,7 +681,49 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         hasCommander: deck.commander.isNotEmpty,
                       ),
                     ),
+                  if (_invalidCardNames.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.colorScheme.error.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: theme.colorScheme.error,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${_invalidCardNames.length} carta(s) com problema: ${_invalidCardNames.join(", ")}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ...deck.mainBoard.entries.map((entry) {
+                    // Ordena cartas inválidas para o topo do grupo
+                    final sortedCards = List<DeckCardItem>.from(entry.value);
+                    if (_invalidCardNames.isNotEmpty) {
+                      sortedCards.sort((a, b) {
+                        final aInvalid = _isCardInvalid(a) ? 0 : 1;
+                        final bInvalid = _isCardInvalid(b) ? 0 : 1;
+                        return aInvalid.compareTo(bInvalid);
+                      });
+                    }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -618,7 +737,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             ),
                           ),
                         ),
-                        ...entry.value
+                        ...sortedCards
                             .where((card) => !_hiddenCardIds.contains(card.id))
                             .map(
                               (card) => Dismissible(
@@ -742,7 +861,21 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 },
                                 child: Card(
                                   margin: const EdgeInsets.only(bottom: 8),
-                                  child: ListTile(
+                                  shape: _isCardInvalid(card)
+                                      ? RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          side: BorderSide(
+                                            color: theme.colorScheme.error,
+                                            width: 2,
+                                          ),
+                                        )
+                                      : null,
+                                  color: _isCardInvalid(card)
+                                      ? theme.colorScheme.error.withValues(alpha: 0.08)
+                                      : null,
+                                  child: Stack(
+                                    children: [
+                                      ListTile(
                                     contentPadding: const EdgeInsets.all(8),
                                     leading: ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
@@ -880,6 +1013,42 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                     ),
                                     onTap:
                                         () => _showCardDetails(context, card),
+                                  ),
+                                      if (_isCardInvalid(card))
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: theme.colorScheme.error,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(
+                                                  Icons.warning_amber_rounded,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  'Inválida',
+                                                  style: theme.textTheme.labelSmall?.copyWith(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 9,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -1028,12 +1197,19 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     try {
       final res = await context.read<DeckProvider>().validateDeck(widget.deckId);
       if (!mounted) return;
-      setState(() => _validationResult = res);
+      setState(() {
+        _validationResult = res;
+        _invalidCardNames = _extractInvalidCardNames(res);
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _validationResult = {
+      final errorResult = {
         'ok': false,
         'error': e.toString().replaceFirst('Exception: ', ''),
+      };
+      setState(() {
+        _validationResult = errorResult;
+        _invalidCardNames = _extractInvalidCardNames(errorResult);
       });
     } finally {
       if (mounted) setState(() => _isValidating = false);
@@ -1054,7 +1230,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       final res = await provider.validateDeck(deckId);
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      setState(() => _validationResult = res);
+      setState(() {
+        _validationResult = res;
+        _invalidCardNames = _extractInvalidCardNames(res);
+      });
 
       final ok = res['ok'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
