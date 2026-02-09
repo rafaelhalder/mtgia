@@ -41,15 +41,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
 
     if (success) {
-      context.go('/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Erro ao criar conta'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      // Navegação é feita automaticamente pelo redirect do GoRouter
+      // quando o status muda para 'authenticated'.
+      return;
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(authProvider.errorMessage ?? 'Erro ao criar conta'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
   }
 
   @override
@@ -106,8 +108,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _usernameController,
                       decoration: InputDecoration(
                         labelText: 'Nome de Usuário',
-                        hintText: 'seuusuario',
-                        prefixIcon: const Icon(Icons.person_outline),
+                        hintText: 'ex: mage42',
+                        helperText: 'Único e permanente — seu @. Depois você pode escolher um nick no perfil.',
+                        helperMaxLines: 2,
+                        prefixIcon: const Icon(Icons.alternate_email),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

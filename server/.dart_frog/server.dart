@@ -10,6 +10,8 @@ import '../routes/index.dart' as index;
 import '../routes/users/me/index.dart' as users_me_index;
 import '../routes/sets/index.dart' as sets_index;
 import '../routes/rules/index.dart' as rules_index;
+import '../routes/market/movers/index.dart' as market_movers_index;
+import '../routes/market/card/[cardId].dart' as market_card_$card_id;
 import '../routes/import/index.dart' as import_index;
 import '../routes/import/validate/index.dart' as import_validate_index;
 import '../routes/import/to-deck/index.dart' as import_to_deck_index;
@@ -29,6 +31,7 @@ import '../routes/decks/[id]/cards/bulk/index.dart' as decks_$id_cards_bulk_inde
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/decks/[id]/ai-analysis/index.dart' as decks_$id_ai_analysis_index;
 import '../routes/cards/index.dart' as cards_index;
+import '../routes/cards/resolve/index.dart' as cards_resolve_index;
 import '../routes/cards/printings/index.dart' as cards_printings_index;
 import '../routes/auth/register.dart' as auth_register;
 import '../routes/auth/me.dart' as auth_me;
@@ -71,6 +74,7 @@ Handler buildRootHandler() {
     ..mount('/ai/weakness-analysis', (context) => buildAiWeaknessAnalysisHandler()(context))
     ..mount('/auth', (context) => buildAuthHandler()(context))
     ..mount('/cards/printings', (context) => buildCardsPrintingsHandler()(context))
+    ..mount('/cards/resolve', (context) => buildCardsResolveHandler()(context))
     ..mount('/cards', (context) => buildCardsHandler()(context))
     ..mount('/decks/<id>/ai-analysis', (context,id,) => buildDecks$idAiAnalysisHandler(id,)(context))
     ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
@@ -90,6 +94,8 @@ Handler buildRootHandler() {
     ..mount('/import/to-deck', (context) => buildImportToDeckHandler()(context))
     ..mount('/import/validate', (context) => buildImportValidateHandler()(context))
     ..mount('/import', (context) => buildImportHandler()(context))
+    ..mount('/market/card', (context) => buildMarketCardHandler()(context))
+    ..mount('/market/movers', (context) => buildMarketMoversHandler()(context))
     ..mount('/rules', (context) => buildRulesHandler()(context))
     ..mount('/sets', (context) => buildSetsHandler()(context))
     ..mount('/users/me', (context) => buildUsersMeHandler()(context))
@@ -157,6 +163,13 @@ Handler buildCardsPrintingsHandler() {
   final pipeline = const Pipeline();
   final router = Router()
     ..all('/', (context) => cards_printings_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildCardsResolveHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => cards_resolve_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
@@ -290,6 +303,20 @@ Handler buildImportHandler() {
   final pipeline = const Pipeline().addMiddleware(import_middleware.middleware);
   final router = Router()
     ..all('/', (context) => import_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildMarketCardHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/<cardId>', (context,cardId,) => market_card_$card_id.onRequest(context,cardId,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildMarketMoversHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => market_movers_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

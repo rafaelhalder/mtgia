@@ -36,6 +36,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE D
 	    ai_description TEXT, -- Cache de explicações da IA
 	    price DECIMAL(10,2), -- Preço da carta (integração Scryfall)
 	    price_updated_at TIMESTAMP WITH TIME ZONE,
+	    collector_number TEXT, -- Número de colecionador (ex: "157")
+	    foil BOOLEAN, -- true=foil, false=non-foil, null=desconhecido
 	    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -43,6 +45,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE D
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS ai_description TEXT;
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS price DECIMAL(10,2);
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_updated_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS collector_number TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS foil BOOLEAN;
 
 -- Índice para busca rápida por nome
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards (name);
@@ -131,8 +135,13 @@ CREATE TABLE IF NOT EXISTS deck_cards (
     card_id UUID REFERENCES cards(id) ON DELETE CASCADE,
     quantity INTEGER DEFAULT 1,
     is_commander BOOLEAN DEFAULT FALSE,
-    UNIQUE(deck_id, card_id)
+    condition TEXT DEFAULT 'NM',
+    UNIQUE(deck_id, card_id),
+    CONSTRAINT chk_deck_cards_condition CHECK (condition IN ('NM', 'LP', 'MP', 'HP', 'DMG'))
 );
+
+-- Para bancos existentes (idempotente)
+ALTER TABLE deck_cards ADD COLUMN IF NOT EXISTS condition TEXT DEFAULT 'NM';
 
 -- 7. Tabela de Matchups (Counters e Estatísticas)
 -- Armazena a vantagem estatística de um deck sobre outro
@@ -294,3 +303,18 @@ CREATE INDEX IF NOT EXISTS idx_ai_logs_deck ON ai_logs (deck_id);
 CREATE INDEX IF NOT EXISTS idx_ai_logs_endpoint ON ai_logs (endpoint);
 CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_logs (success);
+
+-- ============================================================
+-- SOCIAL: Sistema de Follows
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_follows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_follow UNIQUE (follower_id, following_id),
+    CONSTRAINT chk_no_self_follow CHECK (follower_id != following_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows (follower_id);
+CREATE INDEX IF NOT EXISTS idx_user_follows_following ON user_follows (following_id);

@@ -57,7 +57,11 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
   } on DeckRulesException catch (e) {
     return Response.json(
         statusCode: HttpStatus.badRequest,
-        body: {'ok': false, 'error': e.message});
+        body: {
+          'ok': false,
+          'error': e.message,
+          if (e.cardName != null) 'card_name': e.cardName,
+        });
   } catch (e) {
     return Response.json(
         statusCode: HttpStatus.internalServerError,

@@ -39,6 +39,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       ? quantityRaw
       : int.tryParse(quantityRaw?.toString() ?? '');
   final replaceSameName = body['replace_same_name'] == true;
+  final condition = _validateCondition(body['condition']?.toString());
 
   if (cardId == null || cardId.isEmpty) {
     return Response.json(
@@ -117,13 +118,14 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 
       await session.execute(
         Sql.named('''
-          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander)
-          VALUES (@deckId, @cardId, @qty, FALSE)
+          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition)
+          VALUES (@deckId, @cardId, @qty, FALSE, @condition)
           ON CONFLICT (deck_id, card_id) DO UPDATE SET
             quantity = EXCLUDED.quantity,
-            is_commander = (deck_cards.is_commander OR EXCLUDED.is_commander)
+            is_commander = (deck_cards.is_commander OR EXCLUDED.is_commander),
+            condition = EXCLUDED.condition
         '''),
-        parameters: {'deckId': deckId, 'cardId': cardId, 'qty': quantity},
+        parameters: {'deckId': deckId, 'cardId': cardId, 'qty': quantity, 'condition': condition},
       );
 
       return {
@@ -132,6 +134,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         'card_id': cardId,
         'name': cardName,
         'quantity': quantity,
+        'condition': condition,
         'replace_same_name': replaceSameName,
       };
     });
@@ -150,4 +153,12 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       body: {'error': e.toString()},
     );
   }
+}
+
+/// Valida e normaliza o valor de condição da carta.
+String _validateCondition(String? raw) {
+  if (raw == null) return 'NM';
+  final upper = raw.trim().toUpperCase();
+  const valid = {'NM', 'LP', 'MP', 'HP', 'DMG'};
+  return valid.contains(upper) ? upper : 'NM';
 }

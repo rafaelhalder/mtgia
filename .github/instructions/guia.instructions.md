@@ -41,6 +41,14 @@ Desenvolver um aplicativo de Deck Builder de Magic: The Gathering (MTG) revoluci
     *   Simular batalhas entre dois decks (ex: Deck do Usuário vs. Deck Meta) automaticamente.
     *   **Counters:** Identificar quais decks ganham de quais (Matchups) e sugerir estratégias.
     *   **Treinamento:** Usar os logs dessas simulações (`game_log`) para treinar a IA (Reinforcement Learning).
+5.  **Social & Trading:**
+    *   **Comunidade:** Decks públicos, busca de usuários, sistema de follow/feed.
+    *   **Fichário (Binder):** Coleção pessoal de cartas com condição, marcação para troca/venda e preço.
+    *   **Marketplace:** Busca global de cartas disponíveis para troca/venda entre todos os usuários.
+    *   **Trades:** Propostas de negociação com fluxo de status (pending→accepted→shipped→delivered→completed), chat interno, upload de comprovantes, código de rastreio.
+    *   **Mensagens:** Chat direto entre jogadores.
+    *   **Notificações:** Alertas de novos seguidores, propostas de trade, mudanças de status.
+    *   **📋 Roadmap detalhado:** `ROADMAP_SOCIAL_TRADES.md` (documento único de referência — consultar ANTES de implementar qualquer task desse módulo).
 
 ## 2. Estrutura de Dados (Schema Atual)
 Para garantir consistência, consulte sempre as colunas existentes antes de criar queries.
@@ -50,6 +58,8 @@ Para garantir consistência, consulte sempre as colunas existentes antes de cria
 - `username` (TEXT): Nome de usuário único.
 - `email` (TEXT): Email único.
 - `password_hash` (TEXT): Hash da senha.
+- `display_name` (TEXT): Nick público opcional.
+- `avatar_url` (TEXT): URL do avatar.
 
 ### Tabela: `cards` (Todas as cartas do jogo)
 - `id` (UUID): PK.

@@ -1,14 +1,16 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect, Size;
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import '../models/card_recognition_result.dart';
 
 /// Serviço AVANÇADO de reconhecimento de cartas MTG usando ML Kit
 /// Múltiplas estratégias de OCR para máxima precisão em TODAS as eras (1993-2026)
-/// 
+///
 /// Estratégias implementadas:
 /// 1. Processamento da imagem original
 /// 2. Crop da região do nome (topo da carta)
@@ -61,7 +63,29 @@ class CardRecognitionService {
     'illustrated', 'artist', 'illus', 'wotc', 'wizards', 'reserved',
     'collector', 'number', 'rarity', 'mythic', 'rare', 'uncommon', 'common',
     'foil', 'promo', 'set', 'edition',
+    // Texto de rodapé / créditos
+    'copyright', 'licensed', 'trademark', 'rights',
+    'hasbro', 'coast', 'print', 'printed',
   };
+
+  /// Padrões que indicam linha de crédito do artista.
+  /// Cartas MTG mostram "Ill. by <Artista>" ou "Illus. <Artista>" perto
+  /// do texto de tipo/poder. Estes aparecem geralmente em 55-85% da altura.
+  static final _artistLinePatterns = <RegExp>[
+    // "Ill." "Illus." "Illus" no início
+    RegExp(r'^ill(us)?\.?\s', caseSensitive: false),
+    // "Illustrated by" / "Art by"
+    RegExp(r'(illustrated|art)\s+by\b', caseSensitive: false),
+    // Padrão OCR corrompido: ex "Tla En" (Ill. by), "IIl" (Ill), "Tla" é
+    // OCR common misread de "Ill."
+    RegExp(r'^(tla|iia|lla|ila|tia)\s+(en|by)\s', caseSensitive: false),
+    // "© <year>" copyright
+    RegExp(r'[©®™]', caseSensitive: false),
+    // "Wizards of the Coast" / "WOTC"
+    RegExp(r'wizards\s+of\s+the', caseSensitive: false),
+    // Year pattern in footer: "2024 Wizards" / "TM & © 2025"
+    RegExp(r'(19|20)\d{2}\s+(wizards|hasbro|wotc)', caseSensitive: false),
+  ];
 
   /// Padrões de nomes MTG válidos (validação positiva)
   static final _validNamePatterns = <RegExp>[
@@ -79,6 +103,33 @@ class CardRecognitionService {
     RegExp(r'^[A-Z][a-z]+\s*//\s*[A-Z]'),
   ];
 
+  static const _setCodeStopwords = <String>{
+    'THE',
+    'AND',
+    'FOR',
+    'YOU',
+    'WITH',
+    'FROM',
+    'THIS',
+    'THAT',
+    'NOT',
+    'YES',
+    'CAN',
+    'MAY',
+    'ALL',
+    'ANY',
+    'ONE',
+    'TWO',
+    'THREE',
+    'FOUR',
+    'FIVE',
+    'SIX',
+    'SEVEN',
+    'EIGHT',
+    'NINE',
+    'TEN',
+  };
+
   // ══════════════════════════════════════════════════════════════════════════
   // MÉTODO PRINCIPAL - MÚLTIPLAS ESTRATÉGIAS
   // ══════════════════════════════════════════════════════════════════════════
@@ -91,8 +142,10 @@ class CardRecognitionService {
       return CardRecognitionResult.failed('Erro ao decodificar imagem');
     }
 
-    CardRecognitionResult bestResult = CardRecognitionResult.failed('Nenhum resultado');
-    
+    CardRecognitionResult bestResult = CardRecognitionResult.failed(
+      'Nenhum resultado',
+    );
+
     // ═══════════════════════════════════════════════════════════════════════
     // ESTRATÉGIA 1: Imagem original (mais rápido, funciona bem em 70% casos)
     // ═══════════════════════════════════════════════════════════════════════
@@ -182,8 +235,9 @@ class CardRecognitionService {
   Future<CardRecognitionResult> _processNameRegion(img.Image original) async {
     // Calcula região do nome (primeiros ~12% da altura, excluindo mana cost à direita)
     final nameHeight = (original.height * 0.12).round().clamp(40, 250);
-    final nameWidth = (original.width * 0.70).round(); // Exclui área de mana cost
-    
+    final nameWidth =
+        (original.width * 0.70).round(); // Exclui área de mana cost
+
     var cropped = img.copyCrop(
       original,
       x: (original.width * 0.05).round(),
@@ -201,7 +255,9 @@ class CardRecognitionService {
   }
 
   /// Processa com alto contraste
-  Future<CardRecognitionResult> _processWithHighContrast(img.Image original) async {
+  Future<CardRecognitionResult> _processWithHighContrast(
+    img.Image original,
+  ) async {
     var processed = img.grayscale(original);
     processed = img.adjustColor(processed, contrast: 1.8, brightness: 1.15);
     processed = _sharpen(processed);
@@ -210,7 +266,9 @@ class CardRecognitionService {
   }
 
   /// Processa com binarização adaptativa
-  Future<CardRecognitionResult> _processWithBinarization(img.Image original) async {
+  Future<CardRecognitionResult> _processWithBinarization(
+    img.Image original,
+  ) async {
     var processed = img.grayscale(original);
     processed = _adaptiveThreshold(processed, blockSize: 25, constant: 12);
 
@@ -218,16 +276,20 @@ class CardRecognitionService {
   }
 
   /// Processa múltiplas regiões da carta
-  Future<CardRecognitionResult> _processMultipleRegions(img.Image original) async {
+  Future<CardRecognitionResult> _processMultipleRegions(
+    img.Image original,
+  ) async {
     // Regiões para diferentes layouts de carta
     final regions = <_Region>[
-      _Region(0.02, 0.02, 0.70, 0.15, 'top_name'),      // Nome padrão
-      _Region(0.02, 0.05, 0.95, 0.18, 'top_full'),      // Topo completo
-      _Region(0.10, 0.78, 0.90, 0.95, 'bottom'),        // Showcase/borderless
-      _Region(0.05, 0.40, 0.95, 0.55, 'middle'),        // DFC verso
+      _Region(0.02, 0.02, 0.70, 0.15, 'top_name'), // Nome padrão
+      _Region(0.02, 0.05, 0.95, 0.18, 'top_full'), // Topo completo
+      _Region(0.10, 0.78, 0.90, 0.95, 'bottom'), // Showcase/borderless
+      _Region(0.05, 0.40, 0.95, 0.55, 'middle'), // DFC verso
     ];
 
-    CardRecognitionResult bestResult = CardRecognitionResult.failed('Nenhuma região');
+    CardRecognitionResult bestResult = CardRecognitionResult.failed(
+      'Nenhuma região',
+    );
 
     for (final region in regions) {
       final x = (original.width * region.left).round();
@@ -278,7 +340,9 @@ class CardRecognitionService {
         strategy,
       );
     } finally {
-      try { await tempFile?.delete(); } catch (_) {}
+      try {
+        await tempFile?.delete();
+      } catch (_) {}
     }
   }
 
@@ -286,34 +350,65 @@ class CardRecognitionService {
   // ANÁLISE DE TEXTO RECONHECIDO
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Analisa texto e extrai candidatos a nome de carta
+  /// Analisa texto e extrai candidatos a nome de carta.
+  ///
+  /// Se [cardGuideRect] é fornecido, apenas blocos de texto que estão
+  /// significativamente dentro da região do guia são considerados, e as
+  /// posições relativas são calculadas em relação ao guia (= carta),
+  /// não ao frame inteiro. Isso é crítico para:
+  /// 1. Ignorar texto de outras cartas que estejam parcialmente no frame
+  /// 2. Mapear posições corretamente (topo do guia = nome, bottom = collector)
   CardRecognitionResult _analyzeRecognizedText(
     RecognizedText recognizedText,
     double imageWidth,
     double imageHeight,
-    String strategy,
-  ) {
+    String strategy, {
+    Rect? cardGuideRect,
+  }) {
     final candidates = <CardNameCandidate>[];
+
+    // Se temos guia, usamos as dimensões do guia para posicionamento relativo
+    // Caso contrário, usamos o frame inteiro (fallback)
+    final refWidth = cardGuideRect?.width ?? imageWidth;
+    final refHeight = cardGuideRect?.height ?? imageHeight;
 
     // Processa blocos e linhas
     for (final block in recognizedText.blocks) {
+      // Se temos guia, verifica se o bloco está dentro da região do guia
+      if (cardGuideRect != null) {
+        if (!_isInsideGuide(block.boundingBox, cardGuideRect)) continue;
+      }
+
       // Avalia cada linha individualmente
       for (final line in block.lines) {
+        if (cardGuideRect != null) {
+          if (!_isInsideGuide(line.boundingBox, cardGuideRect)) continue;
+        }
+
+        // Recalcula bounding box relativa ao guia (ou usa original)
+        final relBox = cardGuideRect != null
+            ? _relativizeToGuide(line.boundingBox, cardGuideRect)
+            : line.boundingBox;
+
         final candidate = _evaluateCandidate(
           line.text,
-          line.boundingBox,
-          imageWidth,
-          imageHeight,
+          relBox,
+          refWidth,
+          refHeight,
         );
         if (candidate != null) candidates.add(candidate);
       }
 
       // Avalia bloco completo (pode pegar nome com quebra de linha)
+      final blockBox = cardGuideRect != null
+          ? _relativizeToGuide(block.boundingBox, cardGuideRect)
+          : block.boundingBox;
+
       final blockCandidate = _evaluateCandidate(
         block.text,
-        block.boundingBox,
-        imageWidth,
-        imageHeight,
+        blockBox,
+        refWidth,
+        refHeight,
       );
       if (blockCandidate != null) candidates.add(blockCandidate);
     }
@@ -326,19 +421,271 @@ class CardRecognitionService {
     final unique = _deduplicate(candidates);
     unique.sort((a, b) => b.score.compareTo(a.score));
 
+    // Debug: mostra top candidatos para diagnóstico
+    if (unique.isNotEmpty) {
+      final top = unique.take(3).map(
+        (c) {
+          final relY = (c.boundingBox.top / refHeight * 100).round();
+          return '"${c.text}" (score=${c.score.toStringAsFixed(0)}, y=$relY%)';
+        },
+      ).join(', ');
+      debugPrint('[🏷️ Candidatos] $strategy: $top');
+    }
+
     // Calcula confiança
     final confidence = _calculateConfidence(unique);
+    final setCodeCandidates = _extractSetCodeCandidates(recognizedText.text);
+
+    // Extrai informações do colecionador da parte inferior da carta
+    // Usa as dimensões do guia se disponível para que >80% = bottom real da carta
+    final collectorInfo = _extractCollectorInfo(
+      recognizedText,
+      imageWidth,
+      imageHeight,
+      cardGuideRect: cardGuideRect,
+    );
 
     return CardRecognitionResult.success(
       primaryName: unique.first.text,
-      alternatives: unique
-          .skip(1)
-          .take(5)
-          .map((c) => c.text)
-          .where((t) => t != unique.first.text)
-          .toList(),
+      alternatives:
+          unique
+              .skip(1)
+              .take(5)
+              .map((c) => c.text)
+              .where((t) => t != unique.first.text)
+              .toList(),
+      setCodeCandidates: setCodeCandidates,
       confidence: confidence,
       allCandidates: unique,
+      collectorInfo: collectorInfo,
+    );
+  }
+
+  List<String> _extractSetCodeCandidates(String rawText) {
+    final text = rawText.replaceAll('\n', ' ');
+    final matches = RegExp(r'\b[A-Za-z0-9]{2,6}\b').allMatches(text);
+
+    final seen = <String>{};
+    final candidates = <String>[];
+
+    for (final m in matches) {
+      final token = m.group(0);
+      if (token == null) continue;
+
+      final upper = token.toUpperCase();
+      if (_setCodeStopwords.contains(upper)) continue;
+
+      // Set codes normalmente têm 3-5 chars ou incluem dígitos (ex: 2XM, M21).
+      final hasDigit = upper.contains(RegExp(r'\d'));
+      final len = upper.length;
+      final looksLikeSetCode = (len >= 3 && len <= 5) || (hasDigit && len <= 6);
+      if (!looksLikeSetCode) continue;
+
+      // Evita pegar só números (collector numbers etc).
+      if (RegExp(r'^\d+$').hasMatch(upper)) continue;
+
+      // Evita tokens muito "palavra comum" do OCR que já filtramos como não-nome.
+      if (_nonNameKeywords.contains(upper.toLowerCase())) continue;
+
+      if (seen.add(upper)) {
+        candidates.add(upper);
+        if (candidates.length >= 10) break;
+      }
+    }
+
+    return candidates;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FILTRAGEM POR REGIÃO DO GUIA (card guide rect)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Verifica se um bloco de texto está significativamente dentro do guia.
+  /// Usa overlap de 50% — o centro do bloco deve estar dentro do guia.
+  bool _isInsideGuide(Rect textBox, Rect guideRect) {
+    // Centro do bloco de texto
+    final centerX = textBox.left + textBox.width / 2;
+    final centerY = textBox.top + textBox.height / 2;
+
+    // Margem de 10% para tolerar blocos que estão um pouco fora mas são
+    // parte da carta (ex: nome levemente fora do guia)
+    final margin = guideRect.width * 0.10;
+    final expandedGuide = Rect.fromLTRB(
+      guideRect.left - margin,
+      guideRect.top - margin,
+      guideRect.right + margin,
+      guideRect.bottom + margin,
+    );
+
+    return expandedGuide.contains(Offset(centerX, centerY));
+  }
+
+  /// Recalcula o bounding box de um bloco de texto para ser relativo ao guia.
+  /// Assim, um bloco no topo do guia tem relTop ≈ 0, e no bottom ≈ 1.
+  Rect _relativizeToGuide(Rect textBox, Rect guideRect) {
+    return Rect.fromLTWH(
+      textBox.left - guideRect.left,
+      textBox.top - guideRect.top,
+      textBox.width,
+      textBox.height,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EXTRAÇÃO DE INFORMAÇÕES DO COLECIONADOR (parte inferior da carta)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Extrai número de colecionador, set code e status foil da parte inferior
+  /// da carta.
+  ///
+  /// Cartas modernas (2020+) têm na parte inferior um formato como:
+  ///   "157/274 • BLB • EN"    (non-foil)
+  ///   "157/274 ★ BLB ★ EN"    (foil)
+  ///   "157 BLB EN"            (simplificado)
+  ///   "BLB • 157/274"         (ordem alternativa)
+  ///
+  /// Também funciona para layouts mais antigos como "CMM 157"
+  CollectorInfo? _extractCollectorInfo(
+    RecognizedText recognizedText,
+    double imageWidth,
+    double imageHeight, {
+    Rect? cardGuideRect,
+  }) {
+    // Se temos guia, usamos as coordenadas do guia como referência
+    // para encontrar "bottom da carta" (>80% da altura do guia)
+    final refTop = cardGuideRect?.top ?? 0.0;
+    final refHeight = cardGuideRect?.height ?? imageHeight;
+    final refLeft = cardGuideRect?.left ?? 0.0;
+    final refRight = cardGuideRect?.right ?? imageWidth;
+
+    // Coleta texto RAW de blocos/linhas na parte inferior da carta (>80%)
+    final bottomTexts = <String>[];
+
+    for (final block in recognizedText.blocks) {
+      // Se temos guia, verifica se o bloco está horizontalmente dentro
+      final blockCenterX = block.boundingBox.left + block.boundingBox.width / 2;
+      if (cardGuideRect != null) {
+        if (blockCenterX < refLeft - 20 || blockCenterX > refRight + 20) continue;
+      }
+
+      final relTop = (block.boundingBox.top - refTop) / refHeight;
+
+      // Blocos na região inferior da carta (>80% da altura)
+      if (relTop > 0.80) {
+        bottomTexts.add(block.text);
+        for (final line in block.lines) {
+          bottomTexts.add(line.text);
+        }
+      } else {
+        // Mesmo em blocos mais altos, linhas individuais podem estar embaixo
+        for (final line in block.lines) {
+          final lineRelTop = (line.boundingBox.top - refTop) / refHeight;
+          if (lineRelTop > 0.80) {
+            bottomTexts.add(line.text);
+          }
+        }
+      }
+    }
+
+    if (bottomTexts.isEmpty) return null;
+
+    String? collectorNumber;
+    String? totalInSet;
+    String? setCode;
+    bool? isFoil;
+    String? language;
+
+    // Junta todo o texto inferior para análise
+    final rawBottom = bottomTexts.join(' ').trim();
+
+    // ── Detecção de foil (★) vs non-foil (•) ──
+    // A estrela ★ (U+2605) indica foil
+    // O ponto • (U+2022) indica non-foil
+    // Alguns OCRs lêem ★ como * ou ✩ ou ☆
+    if (rawBottom.contains('★') ||
+        rawBottom.contains('✩') ||
+        rawBottom.contains('☆')) {
+      isFoil = true;
+    } else if (rawBottom.contains('•') || rawBottom.contains('·')) {
+      isFoil = false;
+    }
+
+    // ── Padrão principal: "157/274" (collector_number/total) ──
+    final collectorSlashPattern = RegExp(r'(\d{1,4})\s*/\s*(\d{1,4})');
+    final slashMatch = collectorSlashPattern.firstMatch(rawBottom);
+    if (slashMatch != null) {
+      collectorNumber = slashMatch.group(1);
+      totalInSet = slashMatch.group(2);
+    }
+
+    // ── Padrão alternativo: número solto sem barra (ex: "157") ──
+    // Só usa se não encontrou o padrão com barra
+    if (collectorNumber == null) {
+      // Procura números de 1-4 dígitos que NÃO sejam parte de um ano (2024)
+      final soloNumberPattern = RegExp(
+        r'(?<!\d)(\d{1,4})(?!\d|/\d)',
+      );
+      for (final m in soloNumberPattern.allMatches(rawBottom)) {
+        final num = m.group(1)!;
+        final numVal = int.tryParse(num);
+        // Ignora anos (1993-2030) e números muito grandes
+        if (numVal != null && (numVal < 1993 || numVal > 2030) && numVal <= 999) {
+          collectorNumber = num;
+          break;
+        }
+      }
+    }
+
+    // ── Detecção de Set Code (3-5 letras maiúsculas) ──
+    // O set code fica próximo ao collector number, geralmente separado por •/★
+    // Exemplos: BLB, CMM, MH3, 2XM, M21
+    final setCodePattern = RegExp(
+      r'\b([A-Z][A-Z0-9]{1,4})\b',
+    );
+    for (final m in setCodePattern.allMatches(rawBottom.toUpperCase())) {
+      final candidate = m.group(1)!;
+      // Filtra: não pode ser só números, não pode ser stopword, não pode ser idioma longo
+      if (RegExp(r'^\d+$').hasMatch(candidate)) continue;
+      if (_setCodeStopwords.contains(candidate)) continue;
+      // Set codes têm 2-5 caracteres e normalmente 3
+      if (candidate.length < 2 || candidate.length > 5) continue;
+      // Ignora tokens que parecem ser parte de texto de artista/copyright
+      if ({'TM', 'LLC', 'INC', 'CO', 'BY', 'OF', 'II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'XI', 'XII'}
+          .contains(candidate)) continue;
+      setCode = candidate;
+      break;
+    }
+
+    // ── Detecção de idioma (EN, PT, JP, DE, FR, ES, IT, RU, KO, ZH, JA) ──
+    final langPattern = RegExp(
+      r'\b(EN|PT|JP|JA|DE|FR|ES|IT|RU|KO|ZH|PH|CS|CT)\b',
+    );
+    final langMatch = langPattern.firstMatch(rawBottom.toUpperCase());
+    if (langMatch != null) {
+      language = langMatch.group(1);
+    }
+
+    // Se não encontrou nada útil, retorna null
+    if (collectorNumber == null && setCode == null && isFoil == null) {
+      return null;
+    }
+
+    debugPrint(
+      '[🔍 Collector] Bottom: "$rawBottom" → '
+      '#${collectorNumber ?? "?"}'
+      '/${totalInSet ?? "?"} '
+      '${isFoil == true ? "★FOIL" : isFoil == false ? "•NON-FOIL" : "?"} '
+      '${setCode ?? "?"} '
+      '${language ?? "?"}',
+    );
+
+    return CollectorInfo(
+      collectorNumber: collectorNumber,
+      totalInSet: totalInSet,
+      setCode: setCode,
+      isFoil: isFoil,
+      language: language,
+      rawBottomText: rawBottom,
     );
   }
 
@@ -396,13 +743,49 @@ class CardRecognitionService {
     if (RegExp(r'^\d+\s*/\s*\d+$').hasMatch(cleaned)) return 0;
 
     // Custo de mana
-    if (RegExp(r'^[\dWUBRGCX\{\}\s]+$', caseSensitive: false).hasMatch(cleaned)) return 0;
+    if (RegExp(
+      r'^[\dWUBRGCX\{\}\s]+$',
+      caseSensitive: false,
+    ).hasMatch(cleaned)) {
+      return 0;
+    }
 
     // Texto de regras longo
     if (cleaned.contains(':') && cleaned.length > 25) return 0;
 
-    // Linha de tipo
-    if (_isTypeLine(lower)) return 0;
+    // Texto que parece frase longa (flavor text ou rules text)
+    // Nomes de cartas MTG raramente têm mais de 5 palavras
+    final wordCount = cleaned.split(RegExp(r'\s+')).length;
+    if (wordCount > 6) return 0; // frases longas nunca são nomes
+
+    // Frase que começa com artigo/preposição minúscula ou tem padrão de frase
+    // Ex: "A turtle-duckling's greatest defense..."
+    // Ex: "Until end of turn, this creature..."
+    if (RegExp(
+      r'^(a|an|the|this|that|if|when|whenever|until|at|for|each|all|you|it|its)\s',
+      caseSensitive: false,
+    ).hasMatch(cleaned) && wordCount > 3) {
+      return 0; // provavelmente rules text ou flavor text
+    }
+
+    // Texto que contém palavras-chave de regras em quantidade (>= 2 keywords)
+    // Só conta keywords isoladas (word boundaries) para evitar falsos positivos
+    // Ex: "creature has base power" contém "creature" keyword = hit
+    if (wordCount >= 4) {
+      var keywordHits = 0;
+      for (final word in cleaned.toLowerCase().split(RegExp(r'\s+'))) {
+        if (_nonNameKeywords.contains(word) && word.length >= 4) {
+          keywordHits++;
+          if (keywordHits >= 2) return 0; // forte indicação de rules text
+        }
+      }
+    }
+
+    // Linha de tipo (usa original para preservar em-dash —)
+    if (_isTypeLine(original.toLowerCase())) return 0;
+
+    // Linha de crédito de artista ("Ill. by Sylvain Sarrailh" etc)
+    if (_isArtistLine(original)) return 0;
 
     // ═══════════════════════════════════════════════════════════════════════
     // SCORES POR POSIÇÃO
@@ -412,21 +795,28 @@ class CardRecognitionService {
     final relLeft = box.left / imgWidth;
     final relWidth = box.width / imgWidth;
 
-    // Topo (0-18%): nome padrão
+    // Topo (0-18%): nome padrão — posição mais provável do nome da carta
     if (relTop < 0.18) {
       score += 55;
       if (relTop < 0.10) score += 15;
       if (relLeft < 0.15) score += 12;
       if (relWidth > 0.30 && relWidth < 0.80) score += 8;
     }
-    // Inferior (75-95%): showcase/borderless
-    else if (relTop > 0.75 && relTop < 0.95) {
-      score += 40;
+    // Inferior (80-95%): showcase/borderless nomes
+    // NOTA: reduzido de 75% para 80% para evitar pegar texto de artista
+    // que fica entre 55-80%
+    else if (relTop > 0.80 && relTop < 0.95) {
+      score += 35; // reduzido de 40 para não competir com topo
       if (relLeft > 0.10 && relLeft < 0.45) score += 10;
     }
     // Meio-topo (18-35%): alguns layouts
     else if (relTop > 0.18 && relTop < 0.35) {
       score += 20;
+    }
+    // Zona do artista/tipo (55-80%): penalidade
+    // Crédito de artista, tipo de carta, P/T ficam nessa faixa
+    else if (relTop > 0.55 && relTop <= 0.80) {
+      score -= 30;
     }
 
     // Penalidade: muito à direita no topo (provavelmente mana)
@@ -453,7 +843,8 @@ class CardRecognitionService {
 
     // Múltiplas palavras capitalizadas
     final words = cleaned.split(RegExp(r'\s+'));
-    final capCount = words.where((w) => w.isNotEmpty && _isUpperCase(w[0])).length;
+    final capCount =
+        words.where((w) => w.isNotEmpty && _isUpperCase(w[0])).length;
     if (capCount >= 2 && capCount <= 6) {
       score += capCount * 7;
     }
@@ -465,8 +856,12 @@ class CardRecognitionService {
       score -= 20;
     }
 
-    // Apóstrofe (comum: "Jace's", "Urza's")
-    if (cleaned.contains("'")) score += 15;
+    // Apóstrofe possessivo (extremamente comum: "Jace's", "Urza's", "Bender's")
+    if (RegExp(r"'s\b", caseSensitive: false).hasMatch(cleaned)) {
+      score += 20; // Padrão possessivo = forte indicador de nome MTG
+    } else if (cleaned.contains("'")) {
+      score += 12;
+    }
 
     // Hífen (comum: "Will-o'-the-Wisp")
     if (cleaned.contains("-")) score += 10;
@@ -500,11 +895,25 @@ class CardRecognitionService {
   /// Verifica se é linha de tipo
   bool _isTypeLine(String text) {
     final patterns = [
-      RegExp(r'^(legendary\s+)?(artifact\s+)?(creature|artifact|enchantment|instant|sorcery|land|planeswalker|battle)', caseSensitive: false),
-      RegExp(r'^\w+\s*[—–-]\s*\w+'),
+      // "Legendary Creature — Human Wizard", "Artifact Creature — Golem"
+      RegExp(
+        r'^(legendary\s+)?(artifact\s+)?(creature|artifact|enchantment|instant|sorcery|land|planeswalker|battle)',
+        caseSensitive: false,
+      ),
+      // "Creature — Turtle" mas NÃO "Turtle-Duck" (nomes hyphenados)
+      // Type lines usam EM DASH (—) ou EN DASH (–), não hífen simples (-)
+      // Ex: "Creature — Turtle", "Artifact — Equipment"
+      RegExp(r'^\w+\s*[—–]\s*\w+'),
       RegExp(r'^basic\s+(land|snow)', caseSensitive: false),
     ];
     return patterns.any((p) => p.hasMatch(text));
+  }
+
+  /// Verifica se é linha de crédito do artista
+  /// Exemplos reais: "Ill. by Sylvain Sarrailh", "Illustrated by Magali"
+  /// OCR corrompido: "Tla En Sylvain Sarrailh", "IIl by John Avon"
+  bool _isArtistLine(String text) {
+    return _artistLinePatterns.any((p) => p.hasMatch(text));
   }
 
   /// Limpa e normaliza texto
@@ -534,17 +943,37 @@ class CardRecognitionService {
 
   /// Converte para Title Case inteligente
   String _toTitleCase(String text) {
-    const smallWords = {'a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'of', 'to', 'in', 'on', 'at', 'by'};
-    
-    return text.split(' ').asMap().entries.map((e) {
-      final word = e.value;
-      if (word.isEmpty) return word;
-      
-      if (e.key == 0 || !smallWords.contains(word.toLowerCase())) {
-        return word[0].toUpperCase() + word.substring(1).toLowerCase();
-      }
-      return word.toLowerCase();
-    }).join(' ');
+    const smallWords = {
+      'a',
+      'an',
+      'the',
+      'and',
+      'but',
+      'or',
+      'for',
+      'nor',
+      'of',
+      'to',
+      'in',
+      'on',
+      'at',
+      'by',
+    };
+
+    return text
+        .split(' ')
+        .asMap()
+        .entries
+        .map((e) {
+          final word = e.value;
+          if (word.isEmpty) return word;
+
+          if (e.key == 0 || !smallWords.contains(word.toLowerCase())) {
+            return word[0].toUpperCase() + word.substring(1).toLowerCase();
+          }
+          return word.toLowerCase();
+        })
+        .join(' ');
   }
 
   /// Verifica se caractere é maiúsculo
@@ -569,36 +998,46 @@ class CardRecognitionService {
   }
 
   /// Calcula confiança final
+  ///
+  /// O score máximo realista no live_stream para um nome perfeito no topo
+  /// da carta é ~100-110 pontos (posição 55+15+12+8 = 90, texto ~20-30).
+  /// Usar maxScore=150 fazia nomes perfeitos darem 66% — recalibrado.
   double _calculateConfidence(List<CardNameCandidate> candidates) {
     if (candidates.isEmpty) return 0;
 
-    const maxScore = 150.0;
+    const maxScore = 115.0; // calibrado para score realista no topo da carta
     var conf = (candidates.first.score / maxScore) * 100;
 
     // Bônus por diferença clara entre primeiro e segundo
     if (candidates.length >= 2) {
       final diff = candidates[0].score - candidates[1].score;
-      if (diff > 25) conf += 8;
-      if (diff > 50) conf += 8;
+      if (diff > 20) conf += 5;
+      if (diff > 40) conf += 5;
+      if (diff > 60) conf += 5;
     }
 
     // Bônus por poucos candidatos (menos ambiguidade)
     if (candidates.length <= 3) conf += 5;
+    if (candidates.length == 1) conf += 5; // candidato único = alta certeza
 
     return conf.clamp(0, 100);
   }
 
   /// Aplica sharpening
   img.Image _sharpen(img.Image image) {
-    return img.convolution(image, filter: [
-      0, -1, 0,
-      -1, 5, -1,
-      0, -1, 0,
-    ], div: 1);
+    return img.convolution(
+      image,
+      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+      div: 1,
+    );
   }
 
   /// Threshold adaptativo
-  img.Image _adaptiveThreshold(img.Image image, {int blockSize = 15, int constant = 10}) {
+  img.Image _adaptiveThreshold(
+    img.Image image, {
+    int blockSize = 15,
+    int constant = 10,
+  }) {
     final result = img.Image.from(image);
     final half = blockSize ~/ 2;
 
@@ -619,13 +1058,112 @@ class CardRecognitionService {
         final threshold = (sum / count) - constant;
         final lum = img.getLuminance(image.getPixel(x, y));
 
-        result.setPixel(x, y, lum < threshold 
-            ? img.ColorRgb8(0, 0, 0) 
-            : img.ColorRgb8(255, 255, 255));
+        result.setPixel(
+          x,
+          y,
+          lum < threshold
+              ? img.ColorRgb8(0, 0, 0)
+              : img.ColorRgb8(255, 255, 255),
+        );
       }
     }
 
     return result;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // OCR LEVE PARA STREAM CONTÍNUO (sem pré-processamento pesado)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  bool _isProcessingStream = false;
+
+  /// Processa um frame da câmera em tempo real (leve, sem pré-processamento).
+  /// Retorna resultado ou null se nada detectado / frame ignorado.
+  ///
+  /// [cardGuideRect] define a região do guia (em coordenadas da imagem) onde
+  /// a carta deve estar. Blocos de texto fora dessa região são ignorados,
+  /// e as posições relativas (para scoring) são recalculadas em relação
+  /// à carta, não ao frame inteiro. Isso garante que:
+  /// - Se houver 2 cartas no frame, apenas a que está no guia é lida
+  /// - As posições relativas mapeiam a anatomia real da carta:
+  ///   0-10% = nome, 55-65% = tipo, 80-95% = colecionador/artista
+  Future<CardRecognitionResult?> recognizeFromCameraImage(
+    CameraImage cameraImage,
+    CameraDescription camera, {
+    Rect? cardGuideRect,
+  }) async {
+    if (_isProcessingStream) return null;
+    _isProcessingStream = true;
+
+    try {
+      final inputImage = _cameraImageToInputImage(cameraImage, camera);
+      if (inputImage == null) return null;
+
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      if (recognizedText.blocks.isEmpty) return null;
+
+      final result = _analyzeRecognizedText(
+        recognizedText,
+        cameraImage.width.toDouble(),
+        cameraImage.height.toDouble(),
+        'live_stream',
+        cardGuideRect: cardGuideRect,
+      );
+
+      // Só retorna se confiança mínima
+      if (result.success && result.confidence >= 50) {
+        return result;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[OCR Stream] Erro: $e');
+      return null;
+    } finally {
+      _isProcessingStream = false;
+    }
+  }
+
+  /// Converte CameraImage para InputImage (zero-copy, sem salvar arquivo)
+  InputImage? _cameraImageToInputImage(
+    CameraImage image,
+    CameraDescription camera,
+  ) {
+    final sensorOrientation = camera.sensorOrientation;
+
+    InputImageRotation? rotation;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    }
+    rotation ??= InputImageRotation.rotation0deg;
+
+    // iOS entrega bgra8888, Android entrega nv21 (ou yuv420)
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format == null) return null;
+
+    // Monta os planes
+    final planes = image.planes.map((plane) {
+      return InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation!,
+        format: format,
+        bytesPerRow: plane.bytesPerRow,
+      );
+    }).toList();
+
+    if (planes.isEmpty) return null;
+
+    // Concatena bytes de todos os planes
+    final allBytes = WriteBuffer();
+    for (final plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+
+    return InputImage.fromBytes(
+      bytes: allBytes.done().buffer.asUint8List(),
+      metadata: planes.first,
+    );
   }
 
   void dispose() {

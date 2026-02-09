@@ -97,6 +97,7 @@ class DeckProvider extends ChangeNotifier {
     required int quantity,
     String? cardName,
     bool consolidateSameName = false,
+    String condition = 'NM',
   }) async {
     if (quantity <= 0) {
       throw Exception('Quantidade deve ser > 0');
@@ -109,6 +110,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': newCardId,
         'quantity': quantity,
         'replace_same_name': true,
+        'condition': condition,
       });
 
       if (response.statusCode != 200) {
@@ -133,6 +135,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': newCardId,
         'quantity': quantity,
         'replace_same_name': false,
+        'condition': condition,
       });
 
       if (response.statusCode != 200) {
@@ -369,6 +372,7 @@ class DeckProvider extends ChangeNotifier {
     DeckCardItem card,
     int quantity, {
     bool isCommander = false,
+    String condition = 'NM',
   }) async {
     if (_selectedDeck == null || _selectedDeck!.id != deckId) {
       await fetchDeckDetails(deckId);
@@ -386,6 +390,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': card.id,
         'quantity': quantity,
         'is_commander': isCommander,
+        'condition': condition,
       });
 
       if (response.statusCode == 200) {
@@ -532,6 +537,30 @@ class DeckProvider extends ChangeNotifier {
     throw Exception('Falha ao adicionar em lote : ${response.statusCode}');
   }
 
+  /// Atualiza apenas a descrição do deck via PUT
+  Future<bool> updateDeckDescription({
+    required String deckId,
+    required String description,
+  }) async {
+    final response = await _apiClient.put('/decks/$deckId', {
+      'description': description,
+    });
+
+    if (response.statusCode == 200) {
+      invalidateDeckCache(deckId);
+      await fetchDeckDetails(deckId);
+      await fetchDecks();
+      return true;
+    }
+
+    final data = response.data;
+    final msg =
+        (data is Map && data['error'] != null)
+            ? data['error'].toString()
+            : 'Falha ao atualizar descrição: ${response.statusCode}';
+    throw Exception(msg);
+  }
+
   Future<void> updateDeckStrategy({
     required String deckId,
     required String archetype,
@@ -564,8 +593,11 @@ class DeckProvider extends ChangeNotifier {
       return (response.data as Map).cast<String, dynamic>();
     }
 
-    if (response.data is Map && (response.data as Map)['error'] != null) {
-      throw Exception((response.data as Map)['error'].toString());
+    // Retorna o body completo (com card_name) em vez de lançar exceção,
+    // para que a UI consiga identificar a carta problemática.
+    if (response.data is Map) {
+      final body = (response.data as Map).cast<String, dynamic>();
+      if (body['ok'] == false) return body;
     }
     throw Exception('Falha ao validar deck: ${response.statusCode}');
   }
@@ -1238,6 +1270,74 @@ class DeckProvider extends ChangeNotifier {
 
         return {'success': false, 'error': error, 'not_found_lines': notFound};
       }
+    } catch (e) {
+      return {'success': false, 'error': 'Erro de conexão: $e'};
+    }
+  }
+
+  // ───── Social / Sharing ─────
+
+  /// Alterna visibilidade pública/privada do deck via PUT /decks/:id
+  Future<bool> togglePublic(String deckId, {required bool isPublic}) async {
+    try {
+      final response = await _apiClient.put('/decks/$deckId', {
+        'is_public': isPublic,
+      });
+      if (response.statusCode == 200) {
+        // Atualiza cache local
+        if (_selectedDeck != null && _selectedDeck!.id == deckId) {
+          _selectedDeck = _selectedDeck!.copyWith(isPublic: isPublic);
+        }
+        final idx = _decks.indexWhere((d) => d.id == deckId);
+        if (idx >= 0) {
+          _decks[idx] = _decks[idx].copyWith(isPublic: isPublic);
+        }
+        invalidateDeckCache(deckId);
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      AppLogger.error('[DeckProvider] togglePublic error: $e');
+      return false;
+    }
+  }
+
+  /// Exporta deck como texto (lista de cartas)
+  Future<Map<String, dynamic>> exportDeckAsText(String deckId) async {
+    try {
+      final response = await _apiClient.get('/decks/$deckId/export');
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {
+        'error': 'Falha ao exportar deck: ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'error': 'Erro de conexão: $e'};
+    }
+  }
+
+  /// Copia um deck público para a conta do usuário autenticado
+  Future<Map<String, dynamic>> copyPublicDeck(String deckId) async {
+    try {
+      final response = await _apiClient.post(
+        '/community/decks/$deckId',
+        {},
+      );
+      if (response.statusCode == 201 && response.data is Map) {
+        // Recarrega lista de decks do usuário
+        await fetchDecks();
+        return {
+          'success': true,
+          'deck': response.data['deck'],
+        };
+      }
+      final data = response.data;
+      final error = (data is Map && data['error'] != null)
+          ? data['error'].toString()
+          : 'Falha ao copiar deck: ${response.statusCode}';
+      return {'success': false, 'error': error};
     } catch (e) {
       return {'success': false, 'error': 'Erro de conexão: $e'};
     }

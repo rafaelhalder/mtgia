@@ -14,20 +14,34 @@ class ApiResponse {
 class ApiClient {
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
-  // Retorna a URL correta dependendo do ambiente (Android Emulator vs Outros)
+  /// URL do servidor de produção (EasyPanel / Digital Ocean).
+  static const String _productionUrl = 'https://evolution-cartinhas.8ktevp.easypanel.host';
+
+  // Retorna a URL correta dependendo do ambiente
   static String get baseUrl {
     if (_envBaseUrl.trim().isNotEmpty) {
       return _envBaseUrl.trim().replaceAll(RegExp(r'/$'), '');
     }
+    // Em produção ou dispositivo físico, usar o servidor remoto.
+    // Em desktop/web local com servidor local, usar localhost.
     if (kIsWeb) {
       return 'http://localhost:8080';
     }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      // 10.0.2.2 é o endereço especial do emulador para acessar o localhost do PC
-      return 'http://10.0.2.2:8080';
+    if (defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux) {
+      // Desktop: usar localhost se estiver rodando servidor local,
+      // senão usar produção.
+      return 'http://localhost:8080';
     }
-    // Para iOS, Windows, Linux, macOS
-    return 'http://localhost:8080';
+    // Mobile (iOS / Android): sempre usar servidor remoto
+    return _productionUrl;
+  }
+
+  /// Log da URL base resolvida (chamado uma vez no boot)
+  static void debugLogBaseUrl() {
+    debugPrint('[🌐 ApiClient] baseUrl = $baseUrl');
+    debugPrint('[🌐 ApiClient] platform = $defaultTargetPlatform | kIsWeb=$kIsWeb | kDebugMode=$kDebugMode');
   }
 
   Future<Map<String, String>> _getHeaders() async {
@@ -41,21 +55,36 @@ class ApiClient {
 
   Future<ApiResponse> get(String endpoint) async {
     final headers = await _getHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: headers,
-    );
-    return _parseResponse(response);
+    debugPrint('[🌐 ApiClient] GET $baseUrl$endpoint');
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 15));
+      debugPrint('[🌐 ApiClient] GET $endpoint → ${response.statusCode}');
+      return _parseResponse(response);
+    } catch (e) {
+      debugPrint('[❌ ApiClient] GET $endpoint FALHOU: $e');
+      rethrow;
+    }
   }
 
   Future<ApiResponse> post(String endpoint, Map<String, dynamic> body) async {
+    final url = '$baseUrl$endpoint';
+    debugPrint('[🌐 ApiClient] POST $url');
     final headers = await _getHeaders();
-    final response = await http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: headers,
-      body: jsonEncode(body),
-    );
-    return _parseResponse(response);
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: headers,
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 15));
+      debugPrint('[🌐 ApiClient] POST $endpoint → ${response.statusCode}');
+      return _parseResponse(response);
+    } catch (e) {
+      debugPrint('[❌ ApiClient] POST $endpoint FALHOU: $e');
+      rethrow;
+    }
   }
 
   Future<ApiResponse> put(String endpoint, Map<String, dynamic> body) async {

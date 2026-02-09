@@ -16,6 +16,7 @@ class DeckAnalysisTab extends StatefulWidget {
 
 class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
   bool _isRefreshingAi = false;
+  bool _autoAnalysisTriggered = false;
 
   Future<void> _refreshAi({bool force = false}) async {
     if (_isRefreshingAi) return;
@@ -46,6 +47,18 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
     );
     final effectiveDeck =
         (deck != null && deck.id == widget.deck.id) ? deck : widget.deck;
+
+    // Auto-trigger AI analysis for decks with enough cards that were never analyzed
+    final hasAnalysis = (effectiveDeck.synergyScore ?? 0) > 0 ||
+        (effectiveDeck.strengths ?? '').trim().isNotEmpty ||
+        (effectiveDeck.weaknesses ?? '').trim().isNotEmpty;
+    final totalCardCount = effectiveDeck.cardCount;
+    if (!_autoAnalysisTriggered && !_isRefreshingAi && !hasAnalysis && totalCardCount >= 60) {
+      _autoAnalysisTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshAi();
+      });
+    }
 
     // Prepara dados
     final allCards = [
@@ -160,61 +173,76 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            height: 200,
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY:
-                    (manaCurve.reduce((a, b) => a > b ? a : b) + 1).toDouble(),
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (group) => Colors.grey[800]!,
-                  ),
+          if (manaCurve.every((v) => v == 0)) ...[
+            Container(
+              height: 100,
+              alignment: Alignment.center,
+              child: Text(
+                'Adicione mágicas ao deck para ver a curva de mana.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.outline,
+                  fontStyle: FontStyle.italic,
                 ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        final index = value.toInt();
-                        if (index == 7) return const Text('7+');
-                        return Text(index.toString());
-                      },
-                    ),
-                  ),
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                gridData: const FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                barGroups: List.generate(8, (index) {
-                  return BarChartGroupData(
-                    x: index,
-                    barRods: [
-                      BarChartRodData(
-                        toY: manaCurve[index].toDouble(),
-                        color: theme.colorScheme.primary,
-                        width: 16,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4),
-                        ),
-                      ),
-                    ],
-                  );
-                }),
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
+          ] else ...[
+            SizedBox(
+              height: 200,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY:
+                      (manaCurve.reduce((a, b) => a > b ? a : b) + 1).toDouble(),
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (group) => Colors.grey[800]!,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index == 7) return const Text('7+');
+                          return Text(index.toString());
+                        },
+                      ),
+                    ),
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  barGroups: List.generate(8, (index) {
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        BarChartRodData(
+                          toY: manaCurve[index].toDouble(),
+                          color: theme.colorScheme.primary,
+                          width: 16,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ],
 
           const SizedBox(height: 32),
 
@@ -225,28 +253,43 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            height: 200,
-            child: Row(
-              children: [
-                Expanded(
-                  child: PieChart(
-                    PieChartData(
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 40,
-                      sections: _buildPieSections(colorCounts),
+          if (colorCounts.values.every((v) => v == 0)) ...[
+            Container(
+              height: 100,
+              alignment: Alignment.center,
+              child: Text(
+                'Adicione mágicas coloridas para ver a distribuição de cores.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.outline,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ] else ...[
+            SizedBox(
+              height: 200,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 40,
+                        sections: _buildPieSections(colorCounts),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _buildLegend(colorCounts),
-                ),
-              ],
+                  const SizedBox(width: 16),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _buildLegend(colorCounts),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

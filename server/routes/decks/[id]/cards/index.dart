@@ -27,6 +27,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       ? quantityRaw
       : int.tryParse(quantityRaw?.toString() ?? '');
   final isCommander = body['is_commander'] == true;
+  final condition = _validateCondition(body['condition']?.toString());
 
   if (cardId == null || cardId.isEmpty) {
     return Response.json(
@@ -251,20 +252,22 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         }
       }
 
-      // Upsert (deck_id, card_id) com a quantidade final e flag de comandante
+      // Upsert (deck_id, card_id) com a quantidade final, flag de comandante e condição
       await session.execute(
         Sql.named('''
-          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander)
-          VALUES (@deckId, @cardId, @qty, @isCommander)
+          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition)
+          VALUES (@deckId, @cardId, @qty, @isCommander, @condition)
           ON CONFLICT (deck_id, card_id) DO UPDATE SET
             quantity = EXCLUDED.quantity,
-            is_commander = EXCLUDED.is_commander
+            is_commander = EXCLUDED.is_commander,
+            condition = EXCLUDED.condition
         '''),
         parameters: {
           'deckId': deckId,
           'cardId': cardId,
           'qty': nextQty,
           'isCommander': isCommander || existingIsCommander,
+          'condition': condition,
         },
       );
 
@@ -282,6 +285,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         'card_name': cardName,
         'quantity': nextQty,
         'is_commander': isCommander || existingIsCommander,
+        'condition': condition,
         'total_cards': updatedTotal,
       };
     });
@@ -295,4 +299,13 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         statusCode: HttpStatus.internalServerError,
         body: {'error': e.toString()});
   }
+}
+
+/// Valida e normaliza o valor de condição da carta.
+/// Valores válidos: NM, LP, MP, HP, DMG (padrão TCGPlayer).
+String _validateCondition(String? raw) {
+  if (raw == null) return 'NM';
+  final upper = raw.trim().toUpperCase();
+  const valid = {'NM', 'LP', 'MP', 'HP', 'DMG'};
+  return valid.contains(upper) ? upper : 'NM';
 }

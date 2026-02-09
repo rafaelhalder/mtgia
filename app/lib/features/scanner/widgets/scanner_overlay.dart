@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// Overlay visual para guiar posicionamento da carta
 class ScannerOverlay extends StatelessWidget {
@@ -31,56 +32,38 @@ class _ScannerOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.6)
-      ..style = PaintingStyle.fill;
-
     // Área da carta (proporção 63:88 - padrão MTG)
-    final cardWidth = size.width * 0.85;
+    // Tamanho moderado — ~65% da largura, centralizado levemente acima
+    final cardWidth = size.width * 0.65;
     final cardHeight = cardWidth * (88 / 63);
     final left = (size.width - cardWidth) / 2;
-    final top = (size.height - cardHeight) / 2;
+    final top = (size.height - cardHeight) / 2 - 30;
 
     final cardRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(left, top, cardWidth, cardHeight),
-      const Radius.circular(16),
+      const Radius.circular(12),
     );
 
-    // Desenha área escura fora do card
-    final path = Path()
+    // Escurecimento sutil fora da área do cartão
+    final dimPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.45)
+      ..style = PaintingStyle.fill;
+    final dimPath = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
       ..addRRect(cardRect);
-    path.fillType = PathFillType.evenOdd;
-    canvas.drawPath(path, paint);
+    dimPath.fillType = PathFillType.evenOdd;
+    canvas.drawPath(dimPath, dimPaint);
 
-    // Borda do guia
+    // Borda do guia — loomCyan (mythicGold se processando)
+    final borderColor = isProcessing ? AppTheme.mythicGold : AppTheme.loomCyan.withValues(alpha: 0.8);
     final borderPaint = Paint()
-      ..color = isProcessing ? Colors.amber : Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-    canvas.drawRRect(cardRect, borderPaint);
-
-    // Área do nome (topo da carta) - highlight verde
-    final namePaint = Paint()
-      ..color = Colors.green.withValues(alpha: 0.25)
-      ..style = PaintingStyle.fill;
-    
-    final nameRect = RRect.fromRectAndCorners(
-      Rect.fromLTWH(left, top, cardWidth, cardHeight * 0.12),
-      topLeft: const Radius.circular(16),
-      topRight: const Radius.circular(16),
-    );
-    canvas.drawRRect(nameRect, namePaint);
-
-    // Borda da área do nome
-    final nameBorderPaint = Paint()
-      ..color = Colors.greenAccent
+      ..color = borderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
-    canvas.drawRRect(nameRect, nameBorderPaint);
+    canvas.drawRRect(cardRect, borderPaint);
 
     // Corners decorativos
-    _drawCorners(canvas, left, top, cardWidth, cardHeight);
+    _drawCorners(canvas, left, top, cardWidth, cardHeight, borderColor);
   }
 
   void _drawCorners(
@@ -89,126 +72,32 @@ class _ScannerOverlayPainter extends CustomPainter {
     double top,
     double width,
     double height,
+    Color color,
   ) {
     final cornerPaint = Paint()
-      ..color = Colors.white
+      ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4
+      ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
 
-    const cornerSize = 30.0;
+    const cs = 22.0;
 
     // Top-left
-    canvas.drawLine(
-      Offset(left, top + cornerSize),
-      Offset(left, top),
-      cornerPaint,
-    );
-    canvas.drawLine(
-      Offset(left, top),
-      Offset(left + cornerSize, top),
-      cornerPaint,
-    );
-
+    canvas.drawLine(Offset(left - 1, top + cs), Offset(left - 1, top - 1), cornerPaint);
+    canvas.drawLine(Offset(left - 1, top - 1), Offset(left + cs, top - 1), cornerPaint);
     // Top-right
-    canvas.drawLine(
-      Offset(left + width - cornerSize, top),
-      Offset(left + width, top),
-      cornerPaint,
-    );
-    canvas.drawLine(
-      Offset(left + width, top),
-      Offset(left + width, top + cornerSize),
-      cornerPaint,
-    );
-
+    canvas.drawLine(Offset(left + width - cs, top - 1), Offset(left + width + 1, top - 1), cornerPaint);
+    canvas.drawLine(Offset(left + width + 1, top - 1), Offset(left + width + 1, top + cs), cornerPaint);
     // Bottom-left
-    canvas.drawLine(
-      Offset(left, top + height - cornerSize),
-      Offset(left, top + height),
-      cornerPaint,
-    );
-    canvas.drawLine(
-      Offset(left, top + height),
-      Offset(left + cornerSize, top + height),
-      cornerPaint,
-    );
-
+    canvas.drawLine(Offset(left - 1, top + height - cs), Offset(left - 1, top + height + 1), cornerPaint);
+    canvas.drawLine(Offset(left - 1, top + height + 1), Offset(left + cs, top + height + 1), cornerPaint);
     // Bottom-right
-    canvas.drawLine(
-      Offset(left + width - cornerSize, top + height),
-      Offset(left + width, top + height),
-      cornerPaint,
-    );
-    canvas.drawLine(
-      Offset(left + width, top + height - cornerSize),
-      Offset(left + width, top + height),
-      cornerPaint,
-    );
+    canvas.drawLine(Offset(left + width - cs, top + height + 1), Offset(left + width + 1, top + height + 1), cornerPaint);
+    canvas.drawLine(Offset(left + width + 1, top + height - cs), Offset(left + width + 1, top + height + 1), cornerPaint);
   }
 
   @override
   bool shouldRepaint(covariant _ScannerOverlayPainter oldDelegate) {
     return oldDelegate.isProcessing != isProcessing;
-  }
-}
-
-/// Widget para mostrar dicas de uso
-class ScannerTips extends StatelessWidget {
-  const ScannerTips({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.lightbulb_outline, color: Colors.amber, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Dicas',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildTip('Alinhe o NOME na área verde'),
-          _buildTip('Boa iluminação melhora a leitura'),
-          _buildTip('Evite reflexos em cartas foil'),
-          _buildTip('Mantenha a carta reta'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTip(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('• ', style: TextStyle(color: Colors.white70, fontSize: 12)),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

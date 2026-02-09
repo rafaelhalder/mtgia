@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart' show Share;
 import '../providers/deck_provider.dart';
 import '../models/deck_card_item.dart';
 import '../models/deck_details.dart';
@@ -28,6 +29,33 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
   Map<String, dynamic>? _pricing;
   bool _isPricingLoading = false;
   final Set<String> _hiddenCardIds = <String>{};
+  bool _pricingAutoLoaded = false;
+  bool _validationAutoLoaded = false;
+  bool _isValidating = false;
+  Map<String, dynamic>? _validationResult;
+  Set<String> _invalidCardNames = {};
+
+  /// Extrai o nome da carta problemática do resultado da validação.
+  /// Usa o campo estruturado 'card_name' quando disponível,
+  /// senão faz fallback via regex na mensagem de erro.
+  Set<String> _extractInvalidCardNames(Map<String, dynamic>? result) {
+    if (result == null || result['ok'] == true) return {};
+    final cardName = result['card_name'] as String?;
+    if (cardName != null && cardName.isNotEmpty) return {cardName};
+    // Fallback: extrair nome entre aspas da mensagem de erro
+    final error = result['error'] as String?;
+    if (error == null) return {};
+    final matches = RegExp(r'"([^"]+)"').allMatches(error);
+    return matches.map((m) => m.group(1)!).toSet();
+  }
+
+  /// Verifica se uma carta está na lista de cartas inválidas.
+  bool _isCardInvalid(DeckCardItem card) {
+    if (_invalidCardNames.isEmpty) return false;
+    return _invalidCardNames.any(
+      (name) => name.toLowerCase() == card.name.toLowerCase(),
+    );
+  }
 
   @override
   void initState() {
@@ -65,19 +93,87 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         title: const Text('Detalhes do Deck'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.content_paste_go),
-            tooltip: 'Colar lista de cartas',
-            onPressed: () => _showImportListDialog(context),
-          ),
-          IconButton(
             icon: const Icon(Icons.auto_fix_high),
             tooltip: 'Otimizar deck',
             onPressed: () => _showOptimizationOptions(context),
           ),
-          IconButton(
-            icon: const Icon(Icons.verified_outlined),
-            tooltip: 'Validar/Finalizar Deck',
-            onPressed: _validateDeck,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) {
+              switch (value) {
+                case 'paste':
+                  _showImportListDialog(context);
+                  break;
+                case 'validate':
+                  _validateDeck();
+                  break;
+                case 'toggle_public':
+                  _togglePublic();
+                  break;
+                case 'share':
+                  _shareDeck();
+                  break;
+                case 'export':
+                  _exportDeckAsText();
+                  break;
+              }
+            },
+            itemBuilder: (context) {
+              final deck = context.read<DeckProvider>().selectedDeck;
+              final isPublic = deck?.isPublic ?? false;
+              return [
+                const PopupMenuItem(
+                  value: 'paste',
+                  child: ListTile(
+                    leading: Icon(Icons.content_paste_go),
+                    title: Text('Colar lista de cartas'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'validate',
+                  child: ListTile(
+                    leading: Icon(Icons.verified_outlined),
+                    title: Text('Validar Deck'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'toggle_public',
+                  child: ListTile(
+                    leading: Icon(
+                      isPublic ? Icons.lock_outline : Icons.public,
+                    ),
+                    title: Text(
+                      isPublic ? 'Tornar Privado' : 'Tornar Público',
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'share',
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Compartilhar'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(
+                    leading: Icon(Icons.file_download_outlined),
+                    title: Text('Exportar como texto'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+              ];
+            },
           ),
         ],
         bottom: TabBar(
@@ -134,6 +230,23 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
             return const Center(child: Text('Deck não encontrado'));
           }
           _pricing ??= _pricingFromDeck(deck);
+
+          // Auto-load pricing when deck is ready
+          if (!_pricingAutoLoaded && !_isPricingLoading) {
+            _pricingAutoLoaded = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _loadPricing(force: false);
+            });
+          }
+
+          // Auto-validate deck when ready
+          if (!_validationAutoLoaded && !_isValidating) {
+            _validationAutoLoaded = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _autoValidateDeck();
+            });
+          }
+
           final format = deck.format.toLowerCase();
           final isCommanderFormat = format == 'commander' || format == 'brawl';
           final maxCards =
@@ -151,7 +264,136 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   children: [
                     Text(deck.name, style: theme.textTheme.headlineMedium),
                     const SizedBox(height: 8),
-                    Chip(label: Text(deck.format.toUpperCase())),
+                    Row(
+                      children: [
+                        Chip(label: Text(deck.format.toUpperCase())),
+                        const SizedBox(width: 8),
+                        if (_isValidating)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else if (_validationResult != null)
+                          InkWell(
+                            onTap: () {
+                              final ok = _validationResult!['ok'] == true;
+                              if (ok) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Deck válido para o formato!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } else {
+                                final msg = _validationResult!['error']?.toString()
+                                    ?? 'Deck não está completo ou válido para o formato';
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('⚠️ $msg'),
+                                    backgroundColor: theme.colorScheme.error,
+                                    duration: const Duration(seconds: 4),
+                                  ),
+                                );
+                                // Navega para a aba Cartas para destacar a carta problemática
+                                if (_invalidCardNames.isNotEmpty) {
+                                  _tabController.animateTo(1);
+                                }
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _validationResult!['ok'] == true
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                    : theme.colorScheme.error.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _validationResult!['ok'] == true
+                                      ? const Color(0xFF10B981)
+                                      : theme.colorScheme.error,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _validationResult!['ok'] == true
+                                        ? Icons.verified
+                                        : Icons.warning_amber_rounded,
+                                    size: 14,
+                                    color: _validationResult!['ok'] == true
+                                        ? const Color(0xFF10B981)
+                                        : theme.colorScheme.error,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _validationResult!['ok'] == true
+                                        ? 'Válido'
+                                        : 'Inválido',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: _validationResult!['ok'] == true
+                                          ? const Color(0xFF10B981)
+                                          : theme.colorScheme.error,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Visibility indicator
+                    InkWell(
+                      onTap: _togglePublic,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: deck.isPublic
+                              ? const Color(0xFF06B6D4).withValues(alpha: 0.15)
+                              : const Color(0xFF64748B).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: deck.isPublic
+                                ? const Color(0xFF06B6D4)
+                                : const Color(0xFF64748B),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              deck.isPublic ? Icons.public : Icons.lock_outline,
+                              size: 14,
+                              color: deck.isPublic
+                                  ? const Color(0xFF06B6D4)
+                                  : const Color(0xFF94A3B8),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              deck.isPublic ? 'Público' : 'Privado',
+                              style: TextStyle(
+                                color: deck.isPublic
+                                    ? const Color(0xFF06B6D4)
+                                    : const Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     DeckProgressIndicator(
                       deck: deck,
@@ -167,7 +409,6 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     _PricingRow(
                       pricing: _pricing,
                       isLoading: _isPricingLoading,
-                      onPressed: () => _loadPricing(force: true),
                       onForceRefresh: () => _loadPricing(force: true),
                       onShowDetails: _showPricingDetails,
                     ),
@@ -208,18 +449,116 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       ),
                     ],
                     const SizedBox(height: 16),
-                    if (deck.description != null) ...[
-                      Text('Descrição', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(deck.description!),
-                      const SizedBox(height: 24),
-                    ],
+                    // Descrição editável
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Descrição',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed:
+                              () => _showEditDescriptionDialog(
+                                context,
+                                deck.description,
+                              ),
+                          icon: Icon(
+                            (deck.description == null ||
+                                    deck.description!.trim().isEmpty)
+                                ? Icons.add
+                                : Icons.edit,
+                            size: 16,
+                          ),
+                          label: Text(
+                            (deck.description == null ||
+                                    deck.description!.trim().isEmpty)
+                                ? 'Adicionar'
+                                : 'Editar',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (deck.description != null &&
+                        deck.description!.trim().isNotEmpty)
+                      InkWell(
+                        onTap:
+                            () => _showEditDescriptionDialog(
+                              context,
+                              deck.description,
+                            ),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            deck.description!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      InkWell(
+                        onTap:
+                            () =>
+                                _showEditDescriptionDialog(context, null),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.2,
+                              ),
+                              style: BorderStyle.solid,
+                            ),
+                          ),
+                          child: Text(
+                            'Toque para adicionar uma descrição ao deck...',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.outline,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
                     if (deck.commander.isNotEmpty) ...[
                       Text('Comandante', style: theme.textTheme.titleMedium),
                       const SizedBox(height: 8),
                       ...deck.commander.map(
                         (c) => Card(
-                          child: ListTile(
+                          shape: _isCardInvalid(c)
+                              ? RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: theme.colorScheme.error,
+                                    width: 2,
+                                  ),
+                                )
+                              : null,
+                          color: _isCardInvalid(c)
+                              ? theme.colorScheme.error.withValues(alpha: 0.08)
+                              : null,
+                          child: Stack(
+                            children: [
+                              ListTile(
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
                               child: SizedBox(
@@ -251,6 +590,42 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             title: Text(c.name),
                             subtitle: Text(c.typeLine),
                             onTap: () => _showCardDetails(context, c),
+                          ),
+                              if (_isCardInvalid(c))
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.error,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.warning_amber_rounded,
+                                          size: 12,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'Inválida',
+                                          style: theme.textTheme.labelSmall?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 9,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -351,7 +726,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Bracket: ${deck.bracket ?? 2} • ${_bracketLabel(deck.bracket ?? 2)}',
+                                    deck.bracket != null
+                                        ? 'Bracket: ${deck.bracket} • ${_bracketLabel(deck.bracket!)}'
+                                        : 'Bracket não definido',
                                     style: theme.textTheme.bodySmall,
                                   ),
                                 ],
@@ -394,7 +771,49 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         hasCommander: deck.commander.isNotEmpty,
                       ),
                     ),
+                  if (_invalidCardNames.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.colorScheme.error.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: theme.colorScheme.error,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${_invalidCardNames.length} carta(s) com problema: ${_invalidCardNames.join(", ")}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ...deck.mainBoard.entries.map((entry) {
+                    // Ordena cartas inválidas para o topo do grupo
+                    final sortedCards = List<DeckCardItem>.from(entry.value);
+                    if (_invalidCardNames.isNotEmpty) {
+                      sortedCards.sort((a, b) {
+                        final aInvalid = _isCardInvalid(a) ? 0 : 1;
+                        final bInvalid = _isCardInvalid(b) ? 0 : 1;
+                        return aInvalid.compareTo(bInvalid);
+                      });
+                    }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -408,7 +827,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             ),
                           ),
                         ),
-                        ...entry.value
+                        ...sortedCards
                             .where((card) => !_hiddenCardIds.contains(card.id))
                             .map(
                               (card) => Dismissible(
@@ -532,7 +951,21 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 },
                                 child: Card(
                                   margin: const EdgeInsets.only(bottom: 8),
-                                  child: ListTile(
+                                  shape: _isCardInvalid(card)
+                                      ? RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          side: BorderSide(
+                                            color: theme.colorScheme.error,
+                                            width: 2,
+                                          ),
+                                        )
+                                      : null,
+                                  color: _isCardInvalid(card)
+                                      ? theme.colorScheme.error.withValues(alpha: 0.08)
+                                      : null,
+                                  child: Stack(
+                                    children: [
+                                      ListTile(
                                     contentPadding: const EdgeInsets.all(8),
                                     leading: ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
@@ -630,12 +1063,82 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                               .outline,
                                                     ),
                                               ),
+                                            if (card.condition != CardCondition.nm) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                  vertical: 1,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: _conditionColor(card.condition)
+                                                      .withOpacity(0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                    color: _conditionColor(
+                                                      card.condition,
+                                                    ),
+                                                    width: 0.5,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  card.condition.code,
+                                                  style: theme
+                                                      .textTheme.labelSmall
+                                                      ?.copyWith(
+                                                        fontSize: 9,
+                                                        color: _conditionColor(
+                                                          card.condition,
+                                                        ),
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ],
                                     ),
                                     onTap:
                                         () => _showCardDetails(context, card),
+                                  ),
+                                      if (_isCardInvalid(card))
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: theme.colorScheme.error,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(
+                                                  Icons.warning_amber_rounded,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  'Inválida',
+                                                  style: theme.textTheme.labelSmall?.copyWith(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 9,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -654,6 +1157,82 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         },
       ),
     );
+  }
+
+  Future<void> _showEditDescriptionDialog(
+    BuildContext context,
+    String? currentDescription,
+  ) async {
+    final controller = TextEditingController(
+      text: currentDescription?.trim() ?? '',
+    );
+    final theme = Theme.of(context);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Descrição do Deck'),
+            content: TextField(
+              controller: controller,
+              maxLines: 5,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText:
+                    'Descreva a estratégia, tema ou objetivo do deck...\n\nEx: Deck focado em tokens e sacrifício com sinergia Orzhov.',
+                hintMaxLines: 5,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('Salvar'),
+              ),
+            ],
+          ),
+    );
+
+    if (result == null || !mounted) return;
+
+    // Update via PUT
+    try {
+      final provider = context.read<DeckProvider>();
+      final response = await provider.updateDeckDescription(
+        deckId: widget.deckId,
+        description: result,
+      );
+      if (!mounted) return;
+
+      if (response) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.isEmpty
+                  ? 'Descrição removida'
+                  : 'Descrição atualizada',
+            ),
+            backgroundColor: theme.colorScheme.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao atualizar: $e'),
+          backgroundColor: theme.colorScheme.error,
+        ),
+      );
+    }
   }
 
   /// Menu expansível para adicionar cartas (busca ou scanner)
@@ -701,6 +1280,107 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     );
   }
 
+  /// Validação silenciosa auto-triggered (sem loading dialog, sem snackbar).
+  Future<void> _autoValidateDeck() async {
+    if (_isValidating) return;
+    setState(() => _isValidating = true);
+    try {
+      final res = await context.read<DeckProvider>().validateDeck(widget.deckId);
+      if (!mounted) return;
+      setState(() {
+        _validationResult = res;
+        _invalidCardNames = _extractInvalidCardNames(res);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final errorResult = {
+        'ok': false,
+        'error': e.toString().replaceFirst('Exception: ', ''),
+      };
+      setState(() {
+        _validationResult = errorResult;
+        _invalidCardNames = _extractInvalidCardNames(errorResult);
+      });
+    } finally {
+      if (mounted) setState(() => _isValidating = false);
+    }
+  }
+
+  // ───── Social / Sharing ─────
+
+  Future<void> _togglePublic() async {
+    final provider = context.read<DeckProvider>();
+    final deck = provider.selectedDeck;
+    if (deck == null) return;
+
+    final newState = !deck.isPublic;
+    final success =
+        await provider.togglePublic(deck.id, isPublic: newState);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? (newState
+                  ? 'Deck agora é público! 🌍'
+                  : 'Deck agora é privado 🔒')
+              : 'Erro ao alterar visibilidade',
+        ),
+        backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
+      ),
+    );
+  }
+
+  Future<void> _shareDeck() async {
+    final provider = context.read<DeckProvider>();
+    final result = await provider.exportDeckAsText(widget.deckId);
+
+    if (!mounted) return;
+
+    if (result.containsKey('error')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['error'].toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final text = result['text'] as String? ?? '';
+    await Share.share(text);
+  }
+
+  Future<void> _exportDeckAsText() async {
+    final provider = context.read<DeckProvider>();
+    final result = await provider.exportDeckAsText(widget.deckId);
+
+    if (!mounted) return;
+
+    if (result.containsKey('error')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['error'].toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final text = result['text'] as String? ?? '';
+    await Clipboard.setData(ClipboardData(text: text));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Lista de cartas copiada para a área de transferência! 📋'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   Future<void> _validateDeck() async {
     final provider = context.read<DeckProvider>();
     final deckId = widget.deckId;
@@ -715,6 +1395,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       final res = await provider.validateDeck(deckId);
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
+      setState(() {
+        _validationResult = res;
+        _invalidCardNames = _extractInvalidCardNames(res);
+      });
 
       final ok = res['ok'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1167,6 +1851,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     bool isSaving = false;
     String? error;
     String selectedCardId = card.id;
+    CardCondition selectedCondition = card.condition;
 
     await showDialog<void>(
       context: context,
@@ -1273,6 +1958,34 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                           );
                         },
                       ),
+                      const SizedBox(height: 12),
+                      // --- Condição (TCGPlayer standard) ---
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Condição',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<CardCondition>(
+                            isExpanded: true,
+                            value: selectedCondition,
+                            items: CardCondition.values.map((c) {
+                              return DropdownMenuItem<CardCondition>(
+                                value: c,
+                                child: Text('${c.code} — ${c.label}'),
+                              );
+                            }).toList(),
+                            onChanged: isSaving
+                                ? null
+                                : (v) {
+                                    if (v == null) return;
+                                    setDialogState(
+                                      () => selectedCondition = v,
+                                    );
+                                  },
+                          ),
+                        ),
+                      ),
                       if (error != null) ...[
                         const SizedBox(height: 12),
                         Text(
@@ -1316,6 +2029,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   quantity: qty,
                                   cardName: card.name,
                                   consolidateSameName: consolidateSameName,
+                                  condition: selectedCondition.code,
                                 );
                                 if (!ctx.mounted) return;
                                 Navigator.pop(ctx);
@@ -1795,30 +2509,52 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
 class _PricingRow extends StatelessWidget {
   final Map<String, dynamic>? pricing;
   final bool isLoading;
-  final VoidCallback onPressed;
   final VoidCallback onForceRefresh;
   final VoidCallback? onShowDetails;
 
   const _PricingRow({
     required this.pricing,
     required this.isLoading,
-    required this.onPressed,
     required this.onForceRefresh,
     this.onShowDetails,
   });
+
+  String _formatUpdatedAt(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final diff = now.difference(local);
+    if (diff.inMinutes < 1) return 'agora';
+    if (diff.inHours < 1) return 'há ${diff.inMinutes}min';
+    if (diff.inDays < 1) return 'há ${diff.inHours}h';
+    if (diff.inDays == 1) return 'ontem';
+    if (diff.inDays < 7) return 'há ${diff.inDays}d';
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final total = pricing?['estimated_total_usd'];
     final missing = pricing?['missing_price_cards'];
+    final updatedAt = pricing?['pricing_updated_at']?.toString();
 
-    String subtitle = 'Calcular custo estimado';
-    if (total is num) {
+    String subtitle;
+    if (isLoading && total == null) {
+      subtitle = 'Calculando...';
+    } else if (total is num) {
       subtitle = 'Estimado: \$${total.toStringAsFixed(2)}';
       if (missing is num && missing > 0) {
         subtitle += ' • ${missing.toInt()} sem preço';
       }
+      final ago = _formatUpdatedAt(updatedAt);
+      if (ago.isNotEmpty) {
+        subtitle += ' • $ago';
+      }
+    } else {
+      subtitle = 'Calculando custo...';
     }
 
     return Container(
@@ -1851,15 +2587,11 @@ class _PricingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (onShowDetails != null)
+          if (onShowDetails != null && total is num)
             TextButton(
               onPressed: isLoading ? null : onShowDetails,
               child: const Text('Detalhes'),
             ),
-          TextButton(
-            onPressed: isLoading ? null : onPressed,
-            child: const Text('Calcular'),
-          ),
           IconButton(
             tooltip: 'Atualizar preços',
             onPressed: isLoading ? null : onForceRefresh,
@@ -1868,6 +2600,22 @@ class _PricingRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Retorna cor indicativa da condição da carta (TCGPlayer standard).
+Color _conditionColor(CardCondition c) {
+  switch (c) {
+    case CardCondition.nm:
+      return const Color(0xFF22C55E); // green
+    case CardCondition.lp:
+      return const Color(0xFF06B6D4); // cyan
+    case CardCondition.mp:
+      return const Color(0xFFF59E0B); // amber
+    case CardCondition.hp:
+      return const Color(0xFFF97316); // orange
+    case CardCondition.dmg:
+      return const Color(0xFFEF4444); // red
   }
 }
 

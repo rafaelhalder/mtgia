@@ -2089,6 +2089,960 @@ return Response.json(body: {
 
 Este documento é um living document e será continuamente atualizado conforme o projeto ManaLoom evolui. Novas funcionalidades, melhorias e correções de bugs serão documentadas aqui para manter todos os colaboradores alinhados e informados.
 
+---
+
+## 7. Endpoint POST /cards/resolve — Fallback Scryfall (Self-Healing)
+
+### O Porquê
+O banco local tem ~33k cartas sincronizadas via MTGJSON, mas novas coleções saem com frequência e o OCR do scanner pode reconhecer cartas que ainda não estão no banco. Em vez de retornar "não encontrada" para uma carta que existe no MTG, o sistema agora faz **auto-importação on-demand**: se a carta não está no banco, busca na Scryfall API, insere e retorna.
+
+### Como Funciona (Pipeline de Resolução)
+
+```
+POST /cards/resolve   body: { "name": "Lightning Bolt" }
+         │
+         ▼
+  ┌─────────────────┐
+  │ 1. Busca local   │ → LOWER(name) = LOWER(@name)
+  │    (exato)        │
+  └───────┬─────────┘
+          │ não achou
+          ▼
+  ┌─────────────────┐
+  │ 2. Busca local   │ → name ILIKE %name%
+  │    (fuzzy)        │
+  └───────┬─────────┘
+          │ não achou
+          ▼
+  ┌─────────────────┐
+  │ 3. Scryfall API  │ → GET /cards/named?fuzzy=...
+  │    fuzzy search   │   (aceita erros de OCR!)
+  └───────┬─────────┘
+          │ não achou
+          ▼
+  ┌─────────────────┐
+  │ 4. Scryfall API  │ → GET /cards/search?q=...
+  │    text search    │   (fallback para nomes parciais)
+  └───────┬─────────┘
+          │ encontrou!
+          ▼
+  ┌─────────────────┐
+  │ 5. Importa todas │ → Busca prints_search_uri
+  │    as printings   │   Filtra: paper only, max 30
+  │    + legalities   │   INSERT ON CONFLICT DO UPDATE
+  │    + set info     │
+  └───────┬─────────┘
+          │
+          ▼
+  ┌─────────────────┐
+  │ 6. Retorna       │ → { source: "scryfall", data: [...] }
+  │    resultado      │
+  └─────────────────┘
+```
+
+### Response
+
+```json
+{
+  "source": "local" | "scryfall",
+  "name": "Lightning Bolt",
+  "total_returned": 42,
+  "data": [
+    {
+      "id": "uuid",
+      "scryfall_id": "oracle-uuid",
+      "name": "Lightning Bolt",
+      "mana_cost": "{R}",
+      "type_line": "Instant",
+      "oracle_text": "Lightning Bolt deals 3 damage to any target.",
+      "colors": ["R"],
+      "color_identity": ["R"],
+      "image_url": "https://api.scryfall.com/cards/named?exact=...",
+      "set_code": "clu",
+      "set_name": "Ravnica: Clue Edition",
+      "rarity": "uncommon"
+    }
+  ]
+}
+```
+
+### Integração no Scanner (App)
+
+O fluxo de resolução do scanner agora tem **3 camadas**:
+
+1. **Busca exata** → `GET /cards/printings?name=...`
+2. **Fuzzy local** → `FuzzyCardMatcher` gera variações de OCR e tenta `/cards?name=...`
+3. **Resolve Scryfall** → `POST /cards/resolve` (self-healing, importa carta se existir)
+
+```dart
+// ScannerProvider._resolveBestPrintings():
+//   1) fetchPrintingsByExactName(primary)
+//   2) fetchPrintingsByExactName(alternatives...)
+//   3) fuzzyMatcher.searchWithFuzzy(primary)
+//   4) searchService.resolveCard(primary)  ← NOVO: fallback Scryfall
+```
+
+### Arquivos Envolvidos
+
+| Arquivo | Papel |
+|---------|-------|
+| `server/routes/cards/resolve/index.dart` | Endpoint POST /cards/resolve |
+| `app/lib/features/scanner/services/scanner_card_search_service.dart` | Método `resolveCard()` |
+| `app/lib/features/scanner/providers/scanner_provider.dart` | Integração na pipeline `_resolveBestPrintings()` |
+
+### Rate Limiting
+- Scryfall pede máximo 10 req/s. Como o resolve só é chamado quando todas as buscas locais falharam, o volume é muito baixo.
+- User-Agent: `MTGDeckBuilder/1.0` (obrigatório pela Scryfall).
+
+### Dados Importados da Scryfall
+Para cada carta encontrada, o endpoint importa:
+- **Todas as printings** (paper, max 30) com `INSERT ON CONFLICT DO UPDATE`
+- **Legalities** de todos os formatos (legal, banned, restricted)
+- **Set info** (nome, data, tipo) na tabela `sets`
+- **CMC** (converted mana cost) para análises de curva
+
+---
+
+## 8. Análise MTGJSON vs Campos do Banco
+
+### Campos Disponíveis no MTGJSON (AtomicCards.json) — NÃO usados ainda
+
+| Campo MTGJSON | Tipo | Uso Potencial |
+|---------------|------|---------------|
+| `power` | string | Força da criatura (IA, filtros) |
+| `toughness` | string | Resistência da criatura (IA, filtros) |
+| `keywords` | list | Habilidades-chave (Flying, Trample...) — essencial para IA |
+| `edhrecRank` | int | Ranking EDHREC de popularidade |
+| `edhrecSaltiness` | float | Índice de "salt" (cartas irritantes) |
+| `loyalty` | string | Lealdade de planeswalkers |
+| `layout` | string | Normal, transform, flip, split... |
+| `subtypes` | list | Subtipos (Goblin, Wizard, Vampire...) |
+| `supertypes` | list | Supertipos (Legendary, Basic, Snow...) |
+| `types` | list | Tipos base (Creature, Instant, Sorcery...) |
+| `leadershipSkills` | dict | Se pode ser Commander/Oathbreaker |
+| `purchaseUrls` | dict | Links de compra (TCGPlayer, CardMarket) |
+| `rulings` | list | Rulings oficiais |
+| `firstPrinting` | string | Set da primeira impressão |
+
+### Recomendação de Migração Futura
+Para melhorar a IA e as buscas, adicionar à tabela `cards`:
+```sql
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS power TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS toughness TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS keywords TEXT[];
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS edhrec_rank INTEGER;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS loyalty TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS layout TEXT DEFAULT 'normal';
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS subtypes TEXT[];
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS supertypes TEXT[];
+```
+
 Para qualquer dúvida ou sugestão sobre o projeto, sinta-se à vontade para abrir uma issue no repositório ou entrar em contato diretamente com os mantenedores.
 
 Obrigado por fazer parte do ManaLoom! Juntos, estamos tecendo a estratégia perfeita.
+
+---
+
+## 🚀 Otimização de Performance dos Scripts de Sync (Atualização)
+
+**Data:** Junho 2025  
+**Motivação:** Auditoria completa de todos os scripts de sincronização. Identificamos que a maioria fazia operações de banco 1-a-1 (INSERT/UPDATE individual por carta), gerando dezenas de milhares de round-trips desnecessários ao PostgreSQL.
+
+### Princípio Aplicado
+**Batch SQL:** Em vez de N queries individuais (`for card in cards → await UPDATE`), agrupamos operações em uma única query multi-VALUES por lote. Redução típica: **500×** menos round-trips por batch.
+
+### Scripts Otimizados
+
+#### 1. `bin/sync_prices.dart` — Preços via Scryfall
+- **Antes:** Cada carta recebida da API Scryfall era atualizada individualmente → até 75 UPDATEs sequenciais por batch.
+- **Depois:** Todos os pares `(oracle_id, price)` do batch são coletados em memória, e um único `UPDATE ... FROM (VALUES ...)` atualiza tudo de uma vez.
+- **Ganho:** 75 queries → 1 query por batch Scryfall.
+
+#### 2. `bin/sync_rules.dart` — Comprehensive Rules
+- **Antes:** Cada regra era inserida individualmente dentro do loop de batch → 500 INSERTs por lote.
+- **Depois:** Um único `INSERT INTO rules ... VALUES (...), (...), (...)` com parâmetros nomeados por lote.
+- **Ganho:** 500 queries → 1 query por batch de 500 regras.
+
+#### 3. `bin/populate_cmc.dart` — Converted Mana Cost
+- **Antes:** Cada uma das ~33.000 cartas tinha seu CMC atualizado individualmente → 33.000 UPDATEs sequenciais.
+- **Depois:** Todos os CMCs são calculados em memória, depois enviados em lotes de 500 via `UPDATE ... FROM (VALUES ...)`.
+- **Ganho:** 33.000 queries → ~66 queries (500× menos).
+
+#### 4. `bin/sync_staples.dart` — Format Staples
+- **Antes:** Cada staple era inserido/atualizado individualmente via `INSERT ON CONFLICT`.
+- **Depois:** UPSERTs em lotes de 50 com multi-VALUES `INSERT ... ON CONFLICT DO UPDATE`, com fallback individual se o batch falhar. Banned cards atualizadas via `WHERE card_name IN (...)` em vez de loop.
+- **Ganho:** N queries → ~N/50 queries para UPSERTs + 1 query para banidos.
+
+### Scripts Removidos (Redundantes)
+- `bin/sync_prices_mtgjson.dart` — Substituído pelo `_fast` variant
+- `bin/update_prices.dart` — Era apenas alias para `sync_prices.dart`
+- `bin/remote_sync_prices.sh` — Duplicava `cron_sync_prices_mtgjson.sh`
+- `bin/sync_cards.dart.bak` — Backup antigo
+- `bin/cron_sync_prices_mtgjson.ps1` — Script Windows desnecessário
+
+### Scripts que Continuam Ativos (Sem Alteração Necessária)
+- `bin/sync_cards.dart` — Já otimizado previamente com `Future.wait()` batches de 500
+- `bin/sync_prices_mtgjson_fast.dart` — Já usa temp table + batch INSERT de 1000
+- `bin/sync_status.dart` — Read-only, sem operações pesadas
+- Cron wrappers (`cron_sync_cards.sh`, `cron_sync_prices.sh`, `cron_sync_prices_mtgjson.sh`) — Shell scripts simples, sem alteração necessária
+
+---
+
+## Detecção de Collector Number, Set Code e Foil via OCR
+
+### O Porquê
+Cartas modernas de MTG (2020+) possuem na parte inferior informações impressas no formato:
+```
+157/274 • BLB • EN       (non-foil)
+157/274 ★ BLB ★ EN       (foil)
+```
+Onde:
+- **157/274** = collector number / total de cartas na edição
+- **•** (ponto) = indicador non-foil
+- **★** (estrela) = indicador foil
+- **BLB** = set code (código da edição)
+- **EN** = idioma
+
+Antes desta alteração, o scanner **só** identificava o **nome** da carta. O collector number era ativamente **filtrado** (tratado como ruído). Set codes eram extraídos do texto geral com muitos falsos positivos. Foil/non-foil era completamente ignorado.
+
+### O Como
+
+#### 1. Modelo `CollectorInfo` (nova classe)
+**Arquivo:** `app/lib/features/scanner/models/card_recognition_result.dart`
+
+Classe imutável com campos:
+- `collectorNumber` (String?) — ex: "157"
+- `totalInSet` (String?) — ex: "274"
+- `setCode` (String?) — ex: "BLB" (extraído da parte inferior, mais confiável)
+- `isFoil` (bool?) — `true` = ★, `false` = •, `null` = não detectado
+- `language` (String?) — ex: "EN", "PT", "JP"
+- `rawBottomText` (String?) — texto bruto para debug
+
+Adicionado como campo `collectorInfo` no `CardRecognitionResult`.
+
+#### 2. Extração via OCR: `_extractCollectorInfo()`
+**Arquivo:** `app/lib/features/scanner/services/card_recognition_service.dart`
+
+Método que:
+1. Filtra blocos/linhas com `boundingBox.top / imageHeight > 0.80` (bottom 20% da carta)
+2. Detecta **foil** por presença de ★/✩/☆ vs •/·
+3. Extrai **collector number** com regex `(\d{1,4})\s*/\s*(\d{1,4})` (padrão 157/274)
+4. Fallback para número solto, filtrando anos (1993-2030)
+5. Extrai **set code** com regex `[A-Z][A-Z0-9]{1,4}`, filtrando stopwords e falsos positivos
+6. Detecta **idioma** (EN, PT, JP, etc.)
+
+Chamado dentro de `_analyzeRecognizedText()` após a análise de candidatos a nome.
+
+#### 3. Matching Inteligente na Seleção de Edição
+**Arquivo:** `app/lib/features/scanner/providers/scanner_provider.dart`
+
+`_tryAutoSelectEdition()` agora recebe `CollectorInfo?` e usa:
+- **Prioridade 1:** Set code do bottom da carta (mais confiável que OCR geral)
+- **Prioridade 1b:** Se múltiplas printings no mesmo set, usa `collectorNumber` para match exato
+- **Prioridade 2:** Set codes candidatos do OCR geral (fallback)
+- **Prioridade 3:** Primeiro printing (mais recente)
+
+#### 4. Alterações no Banco de Dados
+**Migration:** `server/bin/migrate_add_collector_number.dart`
+
+```sql
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS collector_number TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS foil BOOLEAN;
+CREATE INDEX IF NOT EXISTS idx_cards_collector_set
+  ON cards (collector_number, set_code)
+  WHERE collector_number IS NOT NULL;
+```
+
+**sync_cards.dart:** Agora salva `card['number']` como `collector_number` e calcula `foil` a partir de `hasFoil`/`hasNonFoil` do MTGJSON.
+
+**Printings endpoint:** `GET /cards/printings?name=X` agora retorna `collector_number` e `foil`.
+
+#### 5. Modelo Flutter
+**Arquivo:** `app/lib/features/decks/models/deck_card_item.dart`
+
+Adicionados campos:
+- `collectorNumber` (String?) — mapeado de `json['collector_number']`
+- `foil` (bool?) — mapeado de `json['foil']`
+
+### Diagrama de Fluxo
+
+```
+Câmera (frame) → ML Kit OCR → RecognizedText
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+            Blocos topo        Texto geral      Blocos bottom
+            (0-18%)            (inteiro)         (>80%)
+                │                   │               │
+                ▼                   ▼               ▼
+         _evaluateCandidate   _extractSetCode   _extractCollectorInfo
+         (nome da carta)      Candidates        (collector#, set, foil)
+                │                   │               │
+                └───────────────────┼───────────────┘
+                                    ▼
+                         CardRecognitionResult
+                         ├─ primaryName
+                         ├─ setCodeCandidates
+                         └─ collectorInfo
+                                    │
+                                    ▼
+                        _tryAutoSelectEdition
+                         1) collectorInfo.setCode match
+                         2) collectorInfo.collectorNumber match
+                         3) setCodeCandidates match
+                         4) fallback: primeiro printing
+```
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/scanner/models/card_recognition_result.dart` | Nova classe `CollectorInfo` + campo `collectorInfo` |
+| `app/lib/features/scanner/services/card_recognition_service.dart` | Método `_extractCollectorInfo()` + integração em `_analyzeRecognizedText()` |
+| `app/lib/features/scanner/providers/scanner_provider.dart` | `_tryAutoSelectEdition()` com prioridade collector info |
+| `app/lib/features/decks/models/deck_card_item.dart` | Campos `collectorNumber` e `foil` |
+| `server/database_setup.sql` | Colunas `collector_number` TEXT e `foil` BOOLEAN |
+| `server/bin/migrate_add_collector_number.dart` | Migration idempotente |
+| `server/bin/sync_cards.dart` | Salva `number` e `hasFoil`/`hasNonFoil` do MTGJSON |
+| `server/routes/cards/printings/index.dart` | Retorna `collector_number` e `foil` na response |
+
+---
+
+## Condição Física de Cartas (TCGPlayer Standard)
+
+**Data:** Junho 2025  
+**Motivação:** Permitir que o usuário registre a condição física de cada carta em seus decks, seguindo o padrão da indústria TCGPlayer. Isso é fundamental para controle de coleção, avaliação de preços (uma NM vale mais que uma HP) e futuramente integração com marketplaces.
+
+### Escala de Condições (TCGPlayer)
+
+| Código | Nome | Descrição |
+|--------|------|-----------|
+| **NM** | Near Mint | Perfeita ou quase perfeita, sem desgaste visível |
+| **LP** | Lightly Played | Desgaste mínimo, pequenos arranhões leves |
+| **MP** | Moderately Played | Desgaste moderado, vincos/marcas visíveis |
+| **HP** | Heavily Played | Desgaste significativo, danos estruturais visíveis |
+| **DMG** | Damaged | Carta danificada (rasgos, dobras, água, etc.) |
+
+> **Nota:** O TCGPlayer **não** usa "Mint" ou "Gem Mint". O mais alto é **Near Mint**.
+
+### Implementação
+
+#### 1. Banco de Dados
+- **Coluna:** `deck_cards.condition TEXT DEFAULT 'NM'`
+- **Constraint:** `CHECK (condition IN ('NM', 'LP', 'MP', 'HP', 'DMG'))`
+- **Migration:** `server/bin/migrate_add_card_condition.dart`
+- A condição está na tabela `deck_cards` (e não em `cards`), pois a mesma carta pode ter condições diferentes em decks diferentes.
+
+#### 2. Endpoints Atualizados
+
+**POST /decks/:id/cards** (adicionar carta)
+```json
+{ "card_id": "...", "quantity": 1, "is_commander": false, "condition": "LP" }
+```
+Se `condition` não for enviado, assume `NM`.
+
+**POST /decks/:id/cards/set** (definir qtd absoluta)
+```json
+{ "card_id": "...", "quantity": 2, "condition": "MP" }
+```
+
+**PUT /decks/:id** (atualização completa)
+```json
+{ "cards": [{ "card_id": "...", "quantity": 4, "is_commander": false, "condition": "NM" }] }
+```
+
+**GET /decks/:id** — retorna `condition` em cada carta.
+
+#### 3. Flutter — Model `CardCondition` enum
+
+```dart
+enum CardCondition {
+  nm('NM', 'Near Mint'),
+  lp('LP', 'Lightly Played'),
+  mp('MP', 'Moderately Played'),
+  hp('HP', 'Heavily Played'),
+  dmg('DMG', 'Damaged');
+
+  const CardCondition(this.code, this.label);
+  final String code;
+  final String label;
+
+  static CardCondition fromCode(String? code) { ... }
+}
+```
+
+Adicionado em `deck_card_item.dart` junto com campo `condition` no modelo `DeckCardItem`.
+
+#### 4. Flutter — UI
+
+- **Lista de cartas:** badge colorido ao lado do set code quando condição ≠ NM (verde=NM, cyan=LP, amber=MP, orange=HP, red=DMG).
+- **Dialog de edição:** dropdown com todas as 5 condições abaixo do seletor de edição.
+- **Provider:** `addCardToDeck()` e `updateDeckCardEntry()` aceitam parâmetro `condition`.
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `server/database_setup.sql` | Coluna `condition` + CHECK constraint em `deck_cards` |
+| `server/bin/migrate_add_card_condition.dart` | Migration idempotente (ADD COLUMN + UPDATE + CHECK) |
+| `server/routes/decks/[id]/cards/index.dart` | Parsing, validação, INSERT/UPSERT com condition |
+| `server/routes/decks/[id]/cards/set/index.dart` | Parsing, validação, INSERT ON CONFLICT com condition |
+| `server/routes/decks/[id]/index.dart` | GET retorna `dc.condition`; PUT inclui condition no batch INSERT |
+| `app/lib/features/decks/models/deck_card_item.dart` | Enum `CardCondition` + campo `condition` + `copyWith` + `fromJson` |
+| `app/lib/features/decks/providers/deck_provider.dart` | Parâmetro `condition` em `addCardToDeck` e `updateDeckCardEntry` |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Dropdown de condição no dialog de edição + badge na lista de cartas |
+
+---
+
+## Auditoria Visual Completa do App (UI/UX Polish)
+
+### O Porquê
+Uma revisão completa de todas as telas do app revelou problemas de poluição visual, redundância de ações e elementos que não agregavam valor. O objetivo foi tornar o app mais limpo, funcional e com identidade MTG consistente — sem excesso de botões, ícones duplicados ou telas decorativas sem propósito.
+
+### Problemas Identificados e Soluções
+
+#### 1. Home Screen — Tela Decorativa sem Ação
+**Antes:** Tela puramente de branding — ícone gradiente centralizado, texto "ManaLoom", subtítulo, descrição. Nenhum botão útil ou conteúdo interativo. Também tinha botão de logout duplicado (já existia no Profile).
+
+**Depois:** Dashboard funcional com:
+- Saudação personalizada ("Olá, [username]")
+- 3 Quick Actions (Novo Deck, Gerar com IA, Importar)
+- Decks Recentes (últimos 3 decks com tap para navegar)
+- Resumo de estatísticas (total de decks, formatos diferentes)
+- Empty state útil quando não há decks
+- Botão de logout removido (ficou apenas no Profile)
+
+#### 2. Deck List Screen — FABs Empilhados e Ações Redundantes
+**Antes:** 2 FloatingActionButtons empilhados (Import + Novo Deck) + ícone "Gerar Deck" no AppBar + botões de "Criar Deck" e "Gerar" no empty state = 4 pontos de entrada para criar/importar decks na mesma tela.
+
+**Depois:** 
+- FAB único com PopupMenu que oferece 3 opções: Novo Deck, Gerar com IA, Importar Lista
+- Removido ícone "Gerar Deck" do AppBar (acessível via FAB e Home)
+- Empty state simplificado (apenas texto, sem botões — o FAB já está visível)
+
+#### 3. DeckCard Widget — Botão Delete Agressivo
+**Antes:** Botão de lixeira vermelha proeminente em CADA card da lista. Visualmente agressivo e peso visual desnecessário.
+
+**Depois:** Substituído por ícone ⋮ (more_vert) sutil que abre um menu de opções com "Excluir" — mesma funcionalidade, zero poluição visual.
+
+#### 4. Profile Screen — Campo Avatar URL Inútil
+**Antes:** Campo de texto "Avatar URL" onde o usuário precisaria colar uma URL de imagem — funcionalidade obscura que a maioria nunca usaria.
+
+**Depois:** 
+- Campo "Avatar URL" removido
+- Adicionado header de seção "Configurações" 
+- Campo de nome exibido com ícone de badge
+- Avatar com cor de fundo temática (violeta do ManaLoom)
+
+#### 5. Deck Details AppBar — 3 Ícones Densos
+**Antes:** AppBar com 3 ícones de ação lado a lado (colar lista, otimizar, validar) — sem rótulo, difícil de distinguir.
+
+**Depois:** 
+- Ícone "Otimizar" mantido como ação principal (mais usado)
+- "Colar lista" e "Validar" movidos para menu overflow (⋮) com rótulos claros
+
+### Princípios Seguidos
+- **Hierarquia visual:** Ações primárias visíveis, secundárias em menus
+- **DRY de UI:** Eliminar pontos de entrada duplicados para a mesma funcionalidade
+- **MTG feel:** Palette Arcane Weaver mantida, tipografia CrimsonPro para display
+- **Clean sem ser vazio:** Toda tela tem propósito funcional, nenhuma é só "decoração"
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/home/home_screen.dart` | Redesign completo: dashboard com greeting, quick actions, decks recentes, stats |
+| `app/lib/features/decks/screens/deck_list_screen.dart` | FAB único com PopupMenu, removido ícone AppBar "Gerar", empty state simplificado |
+| `app/lib/features/decks/widgets/deck_card.dart` | Delete button → menu ⋮ com opção "Excluir" |
+| `app/lib/features/profile/profile_screen.dart` | Removido Avatar URL field, adicionado header seção, avatar com cor temática |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | AppBar: 3 ícones → 1 ícone + overflow menu |
+
+---
+
+## Auditoria de Campos Vazios/Null (Empty State Audit)
+
+### O Porquê
+Decks como "rolinha" retornam da API com `description=""`, `archetype=null`, `bracket=null`, `synergy_score=0`, `strengths=null`, `weaknesses=null`, `pricing_total=null`, `commander=[]`. Muitos widgets exibiam dados confusos ou vazios sem explicação ao usuário.
+
+### Problemas Encontrados e Correções
+
+#### 1. DeckCard — synergy_score=0 exibia "Sinergia 0%" (vermelho)
+**Problema:** A API retorna `synergy_score: 0` para decks não analisados. O widget checava `if (deck.synergyScore != null)` — 0 não é null, então mostrava "Sinergia 0%" com cor vermelha, parecendo um bug para o usuário.
+**Correção:** Alterado para `if (deck.synergyScore != null && deck.synergyScore! > 0)`. Score 0 = não analisado, oculta o chip.
+**Arquivo:** `app/lib/features/decks/widgets/deck_card.dart`
+
+#### 2. DeckDetails — Bracket "2 • Mid-power" quando null
+**Problema:** Linha `'Bracket: ${deck.bracket ?? 2} • ${_bracketLabel(deck.bracket ?? 2)}'` usava default `?? 2`, mostrando "Bracket: 2 • Mid-power" mesmo quando o bracket nunca foi definido.
+**Correção:** Ternário que mostra `'Bracket não definido'` quando `deck.bracket == null`, e o valor real quando definido.
+**Arquivo:** `app/lib/features/decks/screens/deck_details_screen.dart`
+
+#### 3. Análise — BarChart vazio (sem spells)
+**Problema:** Deck com 1 terreno (ou sem mágicas) gerava `manaCurve` todo-zeros, resultando em `maxY=1` e barras invisíveis sem mensagem.
+**Correção:** Adicionado check `if (manaCurve.every((v) => v == 0))` que exibe mensagem: "Adicione mágicas ao deck para ver a curva de mana."
+**Arquivo:** `app/lib/features/decks/widgets/deck_analysis_tab.dart`
+
+#### 4. Análise — PieChart vazio (sem cores)
+**Problema:** `_buildPieSections()` retornava `[]` quando todas as cores tinham count=0 (deck sem spells coloridos), resultando em gráfico de pizza completamente vazio.
+**Correção:** Adicionado check `if (colorCounts.values.every((v) => v == 0))` que exibe: "Adicione mágicas coloridas para ver a distribuição de cores."
+**Arquivo:** `app/lib/features/decks/widgets/deck_analysis_tab.dart`
+
+### Campos Auditados e Confirmados OK
+| Campo | Localização | Tratamento |
+|-------|-------------|------------|
+| `description` (Visão Geral) | deck_details_screen | ✅ Tap-to-edit com placeholder (fix anterior) |
+| `archetype` | deck_details_screen | ✅ "Não definida" + "Toque para definir" |
+| `commander` | deck_details_screen | ✅ Warning banner quando vazio |
+| `pricing_total` | _PricingRow | ✅ "Calcular custo estimado" quando null |
+| `description` (DeckCard lista) | deck_card.dart | ✅ `!= null && isNotEmpty` |
+| `commanderImageUrl` (DeckCard) | deck_card.dart | ✅ Oculto quando sem commander |
+| `oracleText` (Card details modal) | deck_details_screen | ✅ Seção oculta se null |
+| `setName`/`setReleaseDate` (Card details) | deck_details_screen | ✅ Oculto se vazio |
+| `strengths`/`weaknesses` | deck_analysis_tab | ✅ Ocultos se `trim().isEmpty` |
+| Avatar (Profile) | profile_screen | ✅ Primeira letra de fallback |
+| Greeting (Home) | home_screen | ✅ `displayName → username → 'Planeswalker'` |
+| Recent Decks (Home) | home_screen | ✅ Empty state quando sem decks |
+
+---
+
+## Pricing Automático (Auto-load)
+
+### O Porquê
+Antes, o cálculo de custo do deck era **100% manual** — o usuário precisava apertar "Calcular" para ver o preço total. Isso era confuso: a seção de pricing aparecia vazia com o texto "Calcular custo estimado" e nenhum valor, exigindo ação do usuário para ver informação básica.
+
+### O Como
+O pricing agora é carregado **automaticamente** quando o usuário abre os detalhes de um deck:
+
+1. **Auto-load:** Quando o `Consumer<DeckProvider>` reconstrói com o deck carregado, o `_pricingAutoLoaded` flag garante que `_loadPricing(force: false)` é chamado **uma única vez** via `addPostFrameCallback`.
+2. **Sem duplicatas:** A flag `_pricingAutoLoaded` + o guard `_isPricingLoading` evitam chamadas múltiplas.
+3. **Cache first:** `_pricing ??= _pricingFromDeck(deck)` mostra preço do cache do banco (se existir) imediatamente, enquanto o endpoint `/decks/:id/pricing` atualiza em background.
+4. **force: false** no auto-load: Não busca preços novos no Scryfall para cartas que já têm preço. Só preenche cartas sem preço. O `force: true` (refresh manual) re-busca tudo.
+
+### Mudanças na UI (_PricingRow)
+- **Removido** botão "Calcular" (redundante, pricing é automático agora)
+- **Mantido** botão "Detalhes" (só aparece quando já tem preço calculado)
+- **Mantido** ícone Refresh (🔄) para forçar re-busca de preços do Scryfall
+- **Adicionado** timestamp relativo: "há 2h", "ontem", "há 3d", etc.
+- **Loading state:** Mostra "Calculando..." com barra de progresso ao abrir
+
+### Fluxo completo
+```
+Abrir deck → fetchDeckDetails() → Consumer rebuild
+  ↓
+_pricing ??= _pricingFromDeck(deck)  // mostra cache salvo
+  ↓
+_pricingAutoLoaded == false?
+  ↓ sim
+_loadPricing(force: false)  // chama POST /decks/:id/pricing
+  ↓
+Servidor calcula: pega preços do DB (cards.price)
+  ↓ cartas sem preço? busca Scryfall (max 10)
+Retorna total + items → setState(_pricing = res)
+  ↓
+UI atualiza com preço real + timestamp
+```
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Auto-load pricing no build, _pricingAutoLoaded flag, _PricingRow simplificado, timestamp relativo |
+
+---
+
+## Auto-Validação e Auto-Análise de Sinergia
+
+### O Porquê
+Na auditoria de onPressed, duas ações que exigiam clique manual faziam mais sentido como automáticas:
+1. **Validação do deck** — chamada leve ao servidor, sem custo externo. O usuário não deveria precisar ir no overflow menu para saber se seu deck é válido.
+2. **Análise de sinergia** — para decks com ≥60 cartas que nunca foram analisados, o usuário tinha que clicar "Gerar análise" na aba Análise. Sem esse clique, a aba ficava quase vazia.
+
+### Mudança 1: Auto-Validação com Badge Visual
+**Fluxo:**
+1. Quando o deck carrega, `_autoValidateDeck()` é chamado (via `addPostFrameCallback`, uma única vez por tela).
+2. É uma versão silenciosa — sem loading dialog, sem snackbar. Apenas atualiza `_validationResult`.
+3. Na UI, um badge aparece ao lado do chip de formato:
+   - ✅ **Válido** (verde) — deck cumpre todas as regras do formato.
+   - ⚠️ **Inválido** (vermelho) — deck tem problemas (cartas insuficientes, sem comandante, etc.).
+4. Ao tocar no badge, exibe detalhes da validação via snackbar.
+5. O botão "Validar Deck" no overflow menu continua funcionando e atualiza o mesmo badge.
+
+**Arquivos:** `deck_details_screen.dart`
+- Novas variáveis: `_validationAutoLoaded`, `_isValidating`, `_validationResult`
+- Novo método: `_autoValidateDeck()` (silencioso, sem loading dialog)
+- `_validateDeck()` agora também atualiza `_validationResult` para manter o badge sincronizado
+
+### Mudança 2: Auto-Trigger Análise de Sinergia
+**Condições para disparo automático:**
+- `synergyScore == 0` E `strengths` vazio E `weaknesses` vazio (nunca analisado)
+- `cardCount >= 60` (deck suficientemente completo para análise útil)
+- Não está já rodando (`_isRefreshingAi == false`)
+- Nunca disparou nesta instância (`_autoAnalysisTriggered == false`)
+
+**Fluxo:**
+1. Ao abrir a aba "Análise", o `build()` verifica as condições.
+2. Se elegível, dispara `_refreshAi()` automaticamente (force: false).
+3. A UI mostra o `LinearProgressIndicator` + "Analisando o deck..." enquanto processa.
+4. Resultado popula `synergyScore`, `strengths`, `weaknesses` via provider.
+5. Se o deck tem <60 cartas, mantém o botão manual "Gerar análise" (análise em deck incompleto não é útil).
+
+**Arquivo:** `deck_analysis_tab.dart`
+- Nova variável: `_autoAnalysisTriggered`
+- Lógica de trigger no `build()` antes da preparação de dados
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `deck_details_screen.dart` | Auto-validação silenciosa + badge ✅/⚠️ ao lado do formato |
+| `deck_analysis_tab.dart` | Auto-trigger análise IA quando deck ≥60 cartas e nunca analisado |
+
+---
+
+## 📈 Feature: Market (Variações Diárias de Preço)
+
+### O Porquê
+Os jogadores precisam acompanhar valorizações e desvalorizações de cartas em tempo real para decisões de compra/venda/trade. A API do **MTGJson** fornece dados gratuitos de preço diário (TCGPlayer, Card Kingdom) sem necessidade de API key.
+
+### Arquitetura
+
+```
+[MTGJson AllPricesToday.json] 
+    → [sync_prices_mtgjson_fast.dart (cron diário)]
+        → [cards.price (atualizado)]
+        → [price_history (novo snapshot diário)]
+            → [GET /market/movers (compara hoje vs ontem)]
+                → [MarketProvider → MarketScreen (Flutter)]
+```
+
+### Backend
+
+#### 1. Tabela `price_history`
+- **Migration:** `bin/migrate_price_history.dart`
+- Colunas: `card_id`, `price_date`, `price_usd`, `price_usd_foil`
+- Constraint: `UNIQUE(card_id, price_date)` — um registro por carta por dia
+- Índices: `idx_price_history_date`, `idx_price_history_card_date`
+- Seed automático: copia preços existentes de `cards.price` como snapshot do dia
+
+#### 2. Sync automático (`sync_prices_mtgjson_fast.dart`)
+Após atualizar `cards.price`, agora também salva snapshot em `price_history`:
+```sql
+INSERT INTO price_history (card_id, price_date, price_usd)
+SELECT id, CURRENT_DATE, price FROM cards WHERE price > 0
+ON CONFLICT (card_id, price_date) DO UPDATE SET price_usd = EXCLUDED.price_usd
+```
+
+#### 3. Endpoints
+
+**GET `/market/movers`** (público, sem JWT)
+- Params: `limit` (default 20, max 50), `min_price` (default 1.00 — filtra penny stocks)
+- Compara as duas datas mais recentes no `price_history`
+- Retorna: `{ date, previous_date, gainers: [...], losers: [...], total_tracked }`
+- Cada mover: `{ card_id, name, set_code, image_url, rarity, type_line, price_today, price_yesterday, change_usd, change_pct }`
+
+**GET `/market/card/:cardId`** (público, sem JWT)
+- Retorna histórico de até 90 dias de preço de uma carta
+- Response: `{ card_id, name, current_price, history: [{ date, price_usd }] }`
+
+### Flutter
+
+#### Model: `features/market/models/card_mover.dart`
+- `CardMover`: uma carta com preço anterior, atual e variação
+- `MarketMoversData`: resposta completa (gainers, losers, datas, total)
+
+#### Provider: `features/market/providers/market_provider.dart`
+- `fetchMovers()`: chama `GET /market/movers`
+- `refresh()`: re-busca dados
+- Auto-fetch na primeira abertura da tela
+
+#### Tela: `features/market/screens/market_screen.dart`
+- **Tabs:** "Valorizando" (↑ verde) e "Desvalorizando" (↓ vermelho)
+- **Header:** datas comparadas + badge USD
+- **Cards:** rank, thumbnail, nome, set, raridade, preço atual, variação em % e USD
+- **Top 3** destacados com borda colorida
+- **Pull-to-refresh** em ambas as tabs
+- **Empty states** específicos: sem dados, dados insuficientes (1 dia só), erro de conexão
+
+#### Integração no BottomNav
+- Nova tab "Market" (ícone `trending_up`) entre Decks e Perfil
+- Rota `/market` adicionada ao `ShellRoute` e protegida por auth
+- `MarketProvider` registrado no `MultiProvider` do `main.dart`
+
+### Arquivos Criados/Modificados
+| Arquivo | Tipo |
+|---------|------|
+| `server/bin/migrate_price_history.dart` | ✨ Novo — migration |
+| `server/routes/market/movers/index.dart` | ✨ Novo — endpoint gainers/losers |
+| `server/routes/market/card/[cardId].dart` | ✨ Novo — endpoint histórico |
+| `server/bin/sync_prices_mtgjson_fast.dart` | 🔧 Modificado — salva price_history |
+| `app/lib/features/market/models/card_mover.dart` | ✨ Novo — model |
+| `app/lib/features/market/providers/market_provider.dart` | ✨ Novo — provider |
+| `app/lib/features/market/screens/market_screen.dart` | ✨ Novo — tela |
+| `app/lib/core/widgets/main_scaffold.dart` | 🔧 Modificado — 4ª tab |
+| `app/lib/main.dart` | 🔧 Modificado — rota + provider |
+
+### Como funciona o ciclo diário
+1. **Cron** roda `sync_prices_mtgjson_fast.dart` (recomendado: 1x/dia)
+2. Atualiza `cards.price` + insere/atualiza `price_history` do dia
+3. No dia seguinte, ao rodar novamente, teremos 2 datas → movers calculados
+4. App abre Market → `GET /market/movers` → gainers/losers aparecem
+
+---
+
+## Feedback Visual de Validação — Cartas Inválidas em Destaque
+
+### O Porquê
+Quando `POST /decks/:id/validate` retorna erro 400 (ex: carta com cópias acima do limite, carta banida, comandante com quantidade ≠ 1), o usuário precisa saber **exatamente qual carta** causou o problema, sem precisar ler mensagens de erro e procurar manualmente na lista.
+
+### O Como
+
+#### 1. Server: `DeckRulesException` com campo `cardName`
+- `DeckRulesException` agora aceita `cardName` opcional:
+  ```dart
+  class DeckRulesException implements Exception {
+    DeckRulesException(this.message, {this.cardName});
+    final String message;
+    final String? cardName;
+  }
+  ```
+- Todos os `throw DeckRulesException(...)` que identificam uma carta específica agora passam `cardName: info.name`.
+- O endpoint `POST /decks/:id/validate` retorna `card_name` no body de erro:
+  ```json
+  { "ok": false, "error": "Regra violada: ...", "card_name": "Jin-Gitaxias // The Great Synthesis" }
+  ```
+
+#### 2. Flutter Provider: retorno em vez de exceção
+- `DeckProvider.validateDeck()` agora retorna o body completo do 400 (com `card_name`) em vez de lançar exceção, para que a UI possa usar os dados estruturados.
+
+#### 3. Flutter UI: `deck_details_screen.dart`
+- **Estado:** `Set<String> _invalidCardNames` armazena nomes de cartas problemáticas.
+- **Extração:** `_extractInvalidCardNames()` usa o campo `card_name` do response (ou fallback regex na mensagem de erro).
+- **Verificação:** `_isCardInvalid(card)` compara `card.name` com o set (case-insensitive).
+- **Destaque visual:**
+  - Borda vermelha (`BorderSide(color: error, width: 2)`) no `Card`.
+  - Background tinto (`error.withValues(alpha: 0.08)`).
+  - Badge "⚠ Inválida" (`Positioned` no canto superior direito) com `Stack`.
+- **Ordenação:** Cartas inválidas são ordenadas para o **topo** de cada grupo de tipo no Tab "Cartas".
+- **Banner de alerta:** Container vermelho no topo do Tab "Cartas" listando as cartas problemáticas.
+- **Navegação:** Ao tocar no badge de validação "Inválido" no header, o app navega automaticamente para o Tab "Cartas".
+- Aplica-se tanto às cartas do mainBoard (Tab 2) quanto ao comandante (Tab 1).
+
+### Arquivos Modificados
+| Arquivo | Mudança |
+|---------|---------|
+| `server/lib/deck_rules_service.dart` | `DeckRulesException` com `cardName`; parâmetro em todos os throws relevantes |
+| `server/routes/decks/[id]/validate/index.dart` | Retorna `card_name` no body de erro |
+| `app/lib/features/decks/providers/deck_provider.dart` | `validateDeck()` retorna body em vez de throw para 400 |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Highlight vermelho, badge "Inválida", sort to top, banner de alerta |
+
+---
+
+## 🌍 Sistema Social / Compartilhamento de Decks
+
+### O Porquê
+O ManaLoom precisava evoluir de um app pessoal de deck building para uma plataforma social onde jogadores possam descobrir, compartilhar e copiar decks da comunidade. A coluna `is_public` já existia no banco de dados, mas nunca foi funcionalizada.
+
+### Arquitetura
+
+#### Backend: Endpoints Públicos vs Privados
+- **Decisão:** Criar um route tree separado `/community/` sem auth middleware obrigatório, em vez de modificar as rotas existentes de `/decks/` (que são protegidas por JWT).
+- **Justificativa:** Separação de responsabilidades — decks do usuário continuam 100% protegidos; decks públicos são acessíveis a qualquer um para visualização. Cópia requer auth (verificação manual no handler).
+
+#### Frontend: Provider Dedicado
+- **Decisão:** `CommunityProvider` separado do `DeckProvider`.
+- **Justificativa:** Estado independente — a lista de decks públicos tem paginação, busca e filtros próprios. Misturar com o provider de decks pessoais causaria conflitos de estado.
+
+### Endpoints Criados
+
+#### `GET /community/decks` — Listar decks públicos
+- **Query params:** `search` (nome/descrição), `format` (commander, standard...), `page`, `limit` (max 50)
+- **Resposta:** `{ data: [...], page, limit, total }` com `owner_username`, `commander_name`, `commander_image_url`, `card_count`
+- **Sem autenticação** — aberto para qualquer requisição
+
+#### `GET /community/decks/:id` — Detalhes de deck público
+- **Filtro:** `WHERE is_public = true` (sem verificação de user_id)
+- **Resposta:** Estrutura igual ao `GET /decks/:id` mas com `owner_username` e sem dados de pricing
+- **Inclui:** `stats` (mana_curve, color_distribution), `commander`, `main_board` agrupado, `all_cards_flat`
+
+#### `POST /community/decks/:id` — Copiar deck público
+- **Requer JWT** (verificação manual via `AuthService`)
+- Cria uma cópia do deck com nome `"Cópia de <nome original>"`
+- Copia todas as cartas do `deck_cards` em uma transação atômica
+- **Resposta:** `201 { success: true, deck: { id, name, ... } }`
+
+#### `GET /decks/:id/export` — Exportar deck como texto
+- **Requer JWT** (rota dentro de `/decks/`, protegida por middleware)
+- **Resposta:** `{ deck_name, format, text, card_count }`
+- Formato do texto:
+  ```
+  // Nome do Deck (formato)
+  // Exported from ManaLoom
+  
+  // Commander
+  1x Commander Name (set)
+  
+  // Main Board
+  4x Card Name (set)
+  ```
+
+### Endpoints Modificados
+
+#### `GET /decks` — Agora retorna `is_public`
+- Adicionado `d.is_public` ao SELECT nas 4 variantes de SQL (hasMeta × hasPricing)
+
+#### `PUT /decks/:id` — Agora aceita `is_public`
+- Body pode incluir `"is_public": true/false`
+- UPDATE SQL inclui `is_public = @isPublic`
+
+#### `GET /decks/:id` — Agora retorna `is_public`
+- Adicionado `is_public,` ao SELECT dinâmico
+
+### Flutter: Arquivos Criados
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `app/lib/features/community/providers/community_provider.dart` | Provider com `CommunityDeck` model, `fetchPublicDecks()` com paginação/busca/filtros, `fetchPublicDeckDetails()` |
+| `app/lib/features/community/screens/community_screen.dart` | Tela de exploração: barra de busca, chips de formato, listagem com scroll infinito, card com imagem do commander |
+| `app/lib/features/community/screens/community_deck_detail_screen.dart` | Detalhes do deck público: header com owner/formato/sinergia, botão "Copiar para minha coleção", lista de cartas agrupadas |
+
+### Flutter: Arquivos Modificados
+
+| Arquivo | Mudança |
+|---------|---------|
+| `app/lib/main.dart` | Import e registro do `CommunityProvider`, rota `/community` no GoRouter, redirect protegido |
+| `app/lib/core/widgets/main_scaffold.dart` | 5ª tab "Comunidade" (ícone `Icons.public`), reindexação dos tabs |
+| `app/lib/features/decks/providers/deck_provider.dart` | Métodos `togglePublic()`, `exportDeckAsText()`, `copyPublicDeck()` |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Badge público/privado clicável no Overview, menu "Tornar Público/Privado", "Compartilhar", "Exportar como texto" |
+| `app/pubspec.yaml` | Dependência `share_plus: ^10.1.4` |
+
+### Server: Arquivos Criados
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `server/routes/community/_middleware.dart` | Middleware sem auth (pass-through) |
+| `server/routes/community/decks/index.dart` | `GET /community/decks` — listagem pública com busca/paginação |
+| `server/routes/community/decks/[id].dart` | `GET /community/decks/:id` (detalhes) + `POST /community/decks/:id` (copiar) |
+| `server/routes/decks/[id]/export/index.dart` | `GET /decks/:id/export` — exportar como texto |
+
+### Paleta Visual
+- Badge "Público": `loomCyan (#06B6D4)` com fundo alpha 15%
+- Badge "Privado": `#64748B` (cinza neutro)
+- Chips de formato: `manaViolet` com fundo alpha 20%
+- Botão copiar: `loomCyan` sólido com texto branco
+
+---
+
+## 17. Sistema Social: Follow, Busca de Usuários e Perfis Públicos
+
+### Porquê
+Completar o ciclo social do app: além de navegar decks públicos, o usuário pode **buscar outros jogadores**, **ver perfis** com seus decks, e **seguir/deixar de seguir** — criando um feed personalizado de decks dos seguidos.
+
+### Arquitetura
+
+```
+┌─ Banco ──────────────────────────┐
+│ user_follows                     │
+│  follower_id → users(id)         │
+│  following_id → users(id)        │
+│  UNIQUE(follower_id, following_id)│
+│  CHECK(follower_id ≠ following_id)│
+└──────────────────────────────────┘
+
+┌─ Server (sem auth) ─────────────────────────┐
+│ GET  /community/users?q=<query>             │ → busca usuários
+│ GET  /community/users/:id                   │ → perfil público
+│ GET  /community/decks/following             │ → feed (JWT manual)
+└─────────────────────────────────────────────┘
+
+┌─ Server (com auth via middleware) ──────────┐
+│ POST   /users/:id/follow                    │ → seguir
+│ DELETE /users/:id/follow                    │ → deixar de seguir
+│ GET    /users/:id/follow                    │ → checar se segue
+│ GET    /users/:id/followers                 │ → listar seguidores
+│ GET    /users/:id/following                 │ → listar seguidos
+└─────────────────────────────────────────────┘
+```
+
+### DB: Tabela `user_follows`
+
+```sql
+CREATE TABLE IF NOT EXISTS user_follows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_follow UNIQUE (follower_id, following_id),
+    CONSTRAINT chk_no_self_follow CHECK (follower_id != following_id)
+);
+```
+
+Auto-migrada em `_ensureRuntimeSchema()`. `ON CONFLICT DO NOTHING` no insert.
+
+### Endpoints
+
+| Método | Rota | Auth | Descrição |
+|--------|------|------|-----------|
+| GET | `/community/users?q=` | Não | Busca usuários por username/display_name |
+| GET | `/community/users/:id` | Opcional | Perfil público + decks + is_following |
+| GET | `/community/decks/following` | JWT manual | Feed de decks dos seguidos |
+| POST | `/users/:id/follow` | Sim | Seguir usuário |
+| DELETE | `/users/:id/follow` | Sim | Deixar de seguir |
+| GET | `/users/:id/follow` | Sim | Checar se segue |
+| GET | `/users/:id/followers` | Sim | Listar seguidores |
+| GET | `/users/:id/following` | Sim | Listar seguidos |
+
+### Flutter: Componentes
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `social/providers/social_provider.dart` | Provider com `PublicUser`, `PublicDeckSummary`, follow/search/feed |
+| `social/screens/user_profile_screen.dart` | Perfil com avatar, stats, 3 tabs, botão Seguir |
+| `social/screens/user_search_screen.dart` | Busca com debounce 400ms |
+
+### Integração
+
+- `SocialProvider` no `MultiProvider` em `main.dart`
+- Rotas: `/community/search-users`, `/community/user/:userId`
+- Usernames clicáveis em `loomCyan` sublinhado (community screen + detail)
+- Server retorna `owner_id` nos endpoints de community decks
+
+### Paleta Visual (Social)
+- Avatar fallback: iniciais em `manaViolet` sobre fundo alpha 30%
+- Botão "Seguir": `manaViolet` sólido
+- Botão "Deixar de seguir": `surfaceSlate` com borda `outlineMuted`
+- Stats: ícones em `loomCyan`
+- Usernames clicáveis: `loomCyan` sublinhado
+
+---
+
+## 🔀 CommunityScreen com Abas (UX Social Integrada)
+
+**Data:** 23 de Novembro de 2025
+
+### Problema
+A busca de usuários ficava escondida atrás de um ícone 🔍 no AppBar, difícil de descobrir. Não existia um feed dos jogadores seguidos. O conceito de "nick" (display_name) não ficava claro para o usuário.
+
+### Solução: 3 Abas na CommunityScreen
+
+A `CommunityScreen` foi reescrita com `TabController` de 3 abas:
+
+| Aba | Ícone | Conteúdo |
+|-----|-------|----------|
+| **Explorar** | `Icons.public` | Decks públicos com busca textual + filtros de formato (comportamento original) |
+| **Seguindo** | `Icons.people` | Feed de decks públicos dos usuários que o jogador segue (via `SocialProvider.fetchFollowingFeed()`) |
+| **Usuários** | `Icons.person_search` | Busca inline de jogadores por nick ou username (debounce 400ms) |
+
+### Arquitetura
+
+- `_ExploreTab`: mantém o código original de decks públicos com `AutomaticKeepAliveClientMixin`
+- `_FollowingFeedTab`: consome `SocialProvider.followingFeed`, com `RefreshIndicator` para pull-to-refresh
+- `_UserSearchTab`: busca inline embutida (antes era tela separada `UserSearchScreen`)
+- Cada aba usa `AutomaticKeepAliveClientMixin` para preservar estado ao trocar de tab
+- O feed "Seguindo" carrega automaticamente ao selecionar a aba (via `_onTabChanged`)
+
+### Sistema de Nick / Display Name
+
+**Fluxo completo:**
+1. **Cadastro** (`register_screen.dart`): só pede `username` (único, permanente, min 3 chars). Helper text explica que é o "@" e que o nick pode ser definido depois.
+2. **Perfil** (`profile_screen.dart`): campo "Nick / Apelido" com texto explicativo: "Seu nick público — é como os outros jogadores vão te encontrar na busca e ver nos seus decks."
+3. **Busca** (`GET /community/users?q=`): pesquisa tanto em `username` quanto em `display_name` (LIKE case-insensitive)
+4. **Exibição**: se o user tem `display_name`, mostra o nick como nome principal + `@username` abaixo. Se não tem, mostra o `username`.
+
+### Arquivos Alterados
+- `app/lib/features/community/screens/community_screen.dart` — reescrito com 3 abas
+- `app/lib/features/profile/profile_screen.dart` — label "Nick / Apelido", hint "Ex: Planeswalker42", texto explicativo
+- `app/lib/features/auth/screens/register_screen.dart` — helperText no campo username, ícone `alternate_email`

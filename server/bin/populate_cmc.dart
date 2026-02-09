@@ -1,5 +1,7 @@
 // ignore_for_file: avoid_print
 
+import 'dart:math' show min;
+
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
@@ -41,7 +43,8 @@ void main() async {
 
     print('📊 Total de cartas com mana_cost: ${cards.length}');
     
-    var updated = 0;
+    // Calcula todos os CMCs em memória
+    final cmcData = <(Object id, double cmc)>[];
     var errors = 0;
 
     for (final row in cards) {
@@ -49,26 +52,46 @@ void main() async {
       final name = row[1] as String?;
       final manaCost = row[2] as String?;
       
-      if (manaCost == null || manaCost.isEmpty) continue;
+      if (id == null || manaCost == null || manaCost.isEmpty) continue;
       
       try {
-        final cmc = calculateCmc(manaCost);
-        
-        await connection.execute(
-          Sql.named('UPDATE cards SET cmc = @cmc WHERE id = @id'),
-          parameters: {'cmc': cmc, 'id': id},
-        );
-        
-        updated++;
-        
-        if (updated % 1000 == 0) {
-          print('   ✅ $updated cartas atualizadas...');
-        }
+        cmcData.add((id, calculateCmc(manaCost)));
       } catch (e) {
         errors++;
         if (errors <= 10) {
           print('   ⚠️ Erro em "$name" ($manaCost): $e');
         }
+      }
+    }
+
+    // Batch UPDATE: 1 query por lote de 500 (antes: 33k queries 1-a-1)
+    const batchSize = 500;
+    var updated = 0;
+
+    for (var i = 0; i < cmcData.length; i += batchSize) {
+      final batch = cmcData.sublist(i, min(i + batchSize, cmcData.length));
+
+      final values = <String>[];
+      final params = <String, dynamic>{};
+      for (var j = 0; j < batch.length; j++) {
+        final (id, cmc) = batch[j];
+        values.add('(@id$j::uuid, @cmc$j::decimal)');
+        params['id$j'] = id;
+        params['cmc$j'] = cmc;
+      }
+
+      await connection.execute(
+        Sql.named('''
+          UPDATE cards c SET cmc = v.cmc
+          FROM (VALUES ${values.join(', ')}) AS v(id, cmc)
+          WHERE c.id = v.id
+        '''),
+        parameters: params,
+      );
+
+      updated += batch.length;
+      if (updated % 2000 == 0 || updated == cmcData.length) {
+        print('   ✅ $updated/${cmcData.length} cartas atualizadas...');
       }
     }
     

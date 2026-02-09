@@ -66,7 +66,9 @@ Future<Response> onRequest(RequestContext context) async {
           s.release_date AS set_release_date,
           c.rarity,
           c.price,
-          c.price_updated_at
+          c.price_updated_at,
+          c.collector_number,
+          c.foil
         FROM cards c
         LEFT JOIN sets s ON s.code = c.set_code
         WHERE LOWER(c.name) = LOWER(@name)
@@ -87,7 +89,9 @@ Future<Response> onRequest(RequestContext context) async {
           c.set_code,
           c.rarity,
           c.price,
-          c.price_updated_at
+          c.price_updated_at,
+          c.collector_number,
+          c.foil
         FROM cards c
         WHERE LOWER(c.name) = LOWER(@name)
         ORDER BY c.set_code ASC
@@ -123,6 +127,8 @@ Future<Response> onRequest(RequestContext context) async {
       'price': m['price'],
       'price_updated_at':
           (m['price_updated_at'] as DateTime?)?.toIso8601String(),
+      'collector_number': m['collector_number'],
+      'foil': m['foil'],
     };
   }).toList();
 

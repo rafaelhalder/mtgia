@@ -43,6 +43,7 @@ dependencies:
   cached_network_image: ^3.4.1
   flutter_svg: ^2.0.10
   fl_chart: ^1.1.1
+  share_plus: ^10.1.4
 
   # Scanner de cartas MTG
   google_mlkit_text_recognition: ^0.13.1

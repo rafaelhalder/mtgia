@@ -145,7 +145,6 @@ Future<_BatchStats?> _updateBatch({
     Uri.parse('https://api.scryfall.com/cards/collection'),
     headers: {
       'Content-Type': 'application/json',
-      // Scryfall pede um User-Agent identificável.
       'User-Agent': 'ManaLoom/1.0 (https://github.com)',
     },
     body: jsonEncode({'identifiers': identifiers}),
@@ -160,67 +159,58 @@ Future<_BatchStats?> _updateBatch({
   final data =
       jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
   final found = (data['data'] as List?)?.whereType<Map>().toList() ?? const [];
-
-  // cards/collection retorna "not_found" quando não achou alguns.
   final notFound =
       (data['not_found'] as List?)?.whereType<Map>().toList() ?? const [];
 
-  var updated = 0;
+  // Coleta todos os pares (oracleId, price) de uma vez
+  final priceRows = <(String oracleId, double price)>[];
   var missing = 0;
 
-  if (!dryRun) {
-    for (final card in found) {
-      final oracleId = (card['oracle_id'] ?? '').toString().trim();
-      if (oracleId.isEmpty) continue;
+  for (final card in found) {
+    final oracleId = (card['oracle_id'] ?? '').toString().trim();
+    if (oracleId.isEmpty) continue;
 
-      final prices = (card['prices'] as Map?)?.cast<String, dynamic>();
-      final usd = prices?['usd'] as String?;
-      final usdFoil = prices?['usd_foil'] as String?;
-      final usdEtched = prices?['usd_etched'] as String?;
+    final prices = (card['prices'] as Map?)?.cast<String, dynamic>();
+    final usd = prices?['usd'] as String?;
+    final usdFoil = prices?['usd_foil'] as String?;
+    final usdEtched = prices?['usd_etched'] as String?;
 
-      final price = double.tryParse(usd ?? '') ??
-          double.tryParse(usdFoil ?? '') ??
-          double.tryParse(usdEtched ?? '');
+    final price = double.tryParse(usd ?? '') ??
+        double.tryParse(usdFoil ?? '') ??
+        double.tryParse(usdEtched ?? '');
 
-      if (price == null) {
-        missing++;
-        continue;
-      }
-
-      await connection.execute(
-        Sql.named('''
-          UPDATE cards
-          SET price = @price,
-              price_updated_at = NOW()
-          WHERE scryfall_id::text = @oracleId
-        '''),
-        parameters: {
-          'price': price,
-          'oracleId': oracleId,
-        },
-      );
-      updated++;
+    if (price == null) {
+      missing++;
+      continue;
     }
-  } else {
-    // No dry-run, só conta o que teria sido atualizado.
-    for (final card in found) {
-      final prices = (card['prices'] as Map?)?.cast<String, dynamic>();
-      final usd = prices?['usd'] as String?;
-      final usdFoil = prices?['usd_foil'] as String?;
-      final usdEtched = prices?['usd_etched'] as String?;
-      final price = double.tryParse(usd ?? '') ??
-          double.tryParse(usdFoil ?? '') ??
-          double.tryParse(usdEtched ?? '');
-      if (price == null) {
-        missing++;
-      } else {
-        updated++;
-      }
-    }
+    priceRows.add((oracleId, price));
   }
 
-  // Considera not_found como missing.
   missing += notFound.length;
 
-  return _BatchStats(updated: updated, missing: missing);
+  if (dryRun || priceRows.isEmpty) {
+    return _BatchStats(updated: priceRows.length, missing: missing);
+  }
+
+  // Batch UPDATE: 1 query atualiza todo o lote (antes: N queries sequenciais)
+  final values = <String>[];
+  final params = <String, dynamic>{};
+  for (var i = 0; i < priceRows.length; i++) {
+    final (oid, price) = priceRows[i];
+    values.add('(@oid$i, @price$i::decimal)');
+    params['oid$i'] = oid;
+    params['price$i'] = price;
+  }
+
+  await connection.execute(
+    Sql.named('''
+      UPDATE cards c
+      SET price = v.price, price_updated_at = NOW()
+      FROM (VALUES ${values.join(', ')}) AS v(oracle_id, price)
+      WHERE c.scryfall_id::text = v.oracle_id
+    '''),
+    parameters: params,
+  );
+
+  return _BatchStats(updated: priceRows.length, missing: missing);
 }
