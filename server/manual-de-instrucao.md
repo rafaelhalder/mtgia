@@ -2489,3 +2489,156 @@ Adicionado em `deck_card_item.dart` junto com campo `condition` no modelo `DeckC
 | `app/lib/features/decks/models/deck_card_item.dart` | Enum `CardCondition` + campo `condition` + `copyWith` + `fromJson` |
 | `app/lib/features/decks/providers/deck_provider.dart` | Parâmetro `condition` em `addCardToDeck` e `updateDeckCardEntry` |
 | `app/lib/features/decks/screens/deck_details_screen.dart` | Dropdown de condição no dialog de edição + badge na lista de cartas |
+
+---
+
+## Auditoria Visual Completa do App (UI/UX Polish)
+
+### O Porquê
+Uma revisão completa de todas as telas do app revelou problemas de poluição visual, redundância de ações e elementos que não agregavam valor. O objetivo foi tornar o app mais limpo, funcional e com identidade MTG consistente — sem excesso de botões, ícones duplicados ou telas decorativas sem propósito.
+
+### Problemas Identificados e Soluções
+
+#### 1. Home Screen — Tela Decorativa sem Ação
+**Antes:** Tela puramente de branding — ícone gradiente centralizado, texto "ManaLoom", subtítulo, descrição. Nenhum botão útil ou conteúdo interativo. Também tinha botão de logout duplicado (já existia no Profile).
+
+**Depois:** Dashboard funcional com:
+- Saudação personalizada ("Olá, [username]")
+- 3 Quick Actions (Novo Deck, Gerar com IA, Importar)
+- Decks Recentes (últimos 3 decks com tap para navegar)
+- Resumo de estatísticas (total de decks, formatos diferentes)
+- Empty state útil quando não há decks
+- Botão de logout removido (ficou apenas no Profile)
+
+#### 2. Deck List Screen — FABs Empilhados e Ações Redundantes
+**Antes:** 2 FloatingActionButtons empilhados (Import + Novo Deck) + ícone "Gerar Deck" no AppBar + botões de "Criar Deck" e "Gerar" no empty state = 4 pontos de entrada para criar/importar decks na mesma tela.
+
+**Depois:** 
+- FAB único com PopupMenu que oferece 3 opções: Novo Deck, Gerar com IA, Importar Lista
+- Removido ícone "Gerar Deck" do AppBar (acessível via FAB e Home)
+- Empty state simplificado (apenas texto, sem botões — o FAB já está visível)
+
+#### 3. DeckCard Widget — Botão Delete Agressivo
+**Antes:** Botão de lixeira vermelha proeminente em CADA card da lista. Visualmente agressivo e peso visual desnecessário.
+
+**Depois:** Substituído por ícone ⋮ (more_vert) sutil que abre um menu de opções com "Excluir" — mesma funcionalidade, zero poluição visual.
+
+#### 4. Profile Screen — Campo Avatar URL Inútil
+**Antes:** Campo de texto "Avatar URL" onde o usuário precisaria colar uma URL de imagem — funcionalidade obscura que a maioria nunca usaria.
+
+**Depois:** 
+- Campo "Avatar URL" removido
+- Adicionado header de seção "Configurações" 
+- Campo de nome exibido com ícone de badge
+- Avatar com cor de fundo temática (violeta do ManaLoom)
+
+#### 5. Deck Details AppBar — 3 Ícones Densos
+**Antes:** AppBar com 3 ícones de ação lado a lado (colar lista, otimizar, validar) — sem rótulo, difícil de distinguir.
+
+**Depois:** 
+- Ícone "Otimizar" mantido como ação principal (mais usado)
+- "Colar lista" e "Validar" movidos para menu overflow (⋮) com rótulos claros
+
+### Princípios Seguidos
+- **Hierarquia visual:** Ações primárias visíveis, secundárias em menus
+- **DRY de UI:** Eliminar pontos de entrada duplicados para a mesma funcionalidade
+- **MTG feel:** Palette Arcane Weaver mantida, tipografia CrimsonPro para display
+- **Clean sem ser vazio:** Toda tela tem propósito funcional, nenhuma é só "decoração"
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/home/home_screen.dart` | Redesign completo: dashboard com greeting, quick actions, decks recentes, stats |
+| `app/lib/features/decks/screens/deck_list_screen.dart` | FAB único com PopupMenu, removido ícone AppBar "Gerar", empty state simplificado |
+| `app/lib/features/decks/widgets/deck_card.dart` | Delete button → menu ⋮ com opção "Excluir" |
+| `app/lib/features/profile/profile_screen.dart` | Removido Avatar URL field, adicionado header seção, avatar com cor temática |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | AppBar: 3 ícones → 1 ícone + overflow menu |
+
+---
+
+## Auditoria de Campos Vazios/Null (Empty State Audit)
+
+### O Porquê
+Decks como "rolinha" retornam da API com `description=""`, `archetype=null`, `bracket=null`, `synergy_score=0`, `strengths=null`, `weaknesses=null`, `pricing_total=null`, `commander=[]`. Muitos widgets exibiam dados confusos ou vazios sem explicação ao usuário.
+
+### Problemas Encontrados e Correções
+
+#### 1. DeckCard — synergy_score=0 exibia "Sinergia 0%" (vermelho)
+**Problema:** A API retorna `synergy_score: 0` para decks não analisados. O widget checava `if (deck.synergyScore != null)` — 0 não é null, então mostrava "Sinergia 0%" com cor vermelha, parecendo um bug para o usuário.
+**Correção:** Alterado para `if (deck.synergyScore != null && deck.synergyScore! > 0)`. Score 0 = não analisado, oculta o chip.
+**Arquivo:** `app/lib/features/decks/widgets/deck_card.dart`
+
+#### 2. DeckDetails — Bracket "2 • Mid-power" quando null
+**Problema:** Linha `'Bracket: ${deck.bracket ?? 2} • ${_bracketLabel(deck.bracket ?? 2)}'` usava default `?? 2`, mostrando "Bracket: 2 • Mid-power" mesmo quando o bracket nunca foi definido.
+**Correção:** Ternário que mostra `'Bracket não definido'` quando `deck.bracket == null`, e o valor real quando definido.
+**Arquivo:** `app/lib/features/decks/screens/deck_details_screen.dart`
+
+#### 3. Análise — BarChart vazio (sem spells)
+**Problema:** Deck com 1 terreno (ou sem mágicas) gerava `manaCurve` todo-zeros, resultando em `maxY=1` e barras invisíveis sem mensagem.
+**Correção:** Adicionado check `if (manaCurve.every((v) => v == 0))` que exibe mensagem: "Adicione mágicas ao deck para ver a curva de mana."
+**Arquivo:** `app/lib/features/decks/widgets/deck_analysis_tab.dart`
+
+#### 4. Análise — PieChart vazio (sem cores)
+**Problema:** `_buildPieSections()` retornava `[]` quando todas as cores tinham count=0 (deck sem spells coloridos), resultando em gráfico de pizza completamente vazio.
+**Correção:** Adicionado check `if (colorCounts.values.every((v) => v == 0))` que exibe: "Adicione mágicas coloridas para ver a distribuição de cores."
+**Arquivo:** `app/lib/features/decks/widgets/deck_analysis_tab.dart`
+
+### Campos Auditados e Confirmados OK
+| Campo | Localização | Tratamento |
+|-------|-------------|------------|
+| `description` (Visão Geral) | deck_details_screen | ✅ Tap-to-edit com placeholder (fix anterior) |
+| `archetype` | deck_details_screen | ✅ "Não definida" + "Toque para definir" |
+| `commander` | deck_details_screen | ✅ Warning banner quando vazio |
+| `pricing_total` | _PricingRow | ✅ "Calcular custo estimado" quando null |
+| `description` (DeckCard lista) | deck_card.dart | ✅ `!= null && isNotEmpty` |
+| `commanderImageUrl` (DeckCard) | deck_card.dart | ✅ Oculto quando sem commander |
+| `oracleText` (Card details modal) | deck_details_screen | ✅ Seção oculta se null |
+| `setName`/`setReleaseDate` (Card details) | deck_details_screen | ✅ Oculto se vazio |
+| `strengths`/`weaknesses` | deck_analysis_tab | ✅ Ocultos se `trim().isEmpty` |
+| Avatar (Profile) | profile_screen | ✅ Primeira letra de fallback |
+| Greeting (Home) | home_screen | ✅ `displayName → username → 'Planeswalker'` |
+| Recent Decks (Home) | home_screen | ✅ Empty state quando sem decks |
+
+---
+
+## Pricing Automático (Auto-load)
+
+### O Porquê
+Antes, o cálculo de custo do deck era **100% manual** — o usuário precisava apertar "Calcular" para ver o preço total. Isso era confuso: a seção de pricing aparecia vazia com o texto "Calcular custo estimado" e nenhum valor, exigindo ação do usuário para ver informação básica.
+
+### O Como
+O pricing agora é carregado **automaticamente** quando o usuário abre os detalhes de um deck:
+
+1. **Auto-load:** Quando o `Consumer<DeckProvider>` reconstrói com o deck carregado, o `_pricingAutoLoaded` flag garante que `_loadPricing(force: false)` é chamado **uma única vez** via `addPostFrameCallback`.
+2. **Sem duplicatas:** A flag `_pricingAutoLoaded` + o guard `_isPricingLoading` evitam chamadas múltiplas.
+3. **Cache first:** `_pricing ??= _pricingFromDeck(deck)` mostra preço do cache do banco (se existir) imediatamente, enquanto o endpoint `/decks/:id/pricing` atualiza em background.
+4. **force: false** no auto-load: Não busca preços novos no Scryfall para cartas que já têm preço. Só preenche cartas sem preço. O `force: true` (refresh manual) re-busca tudo.
+
+### Mudanças na UI (_PricingRow)
+- **Removido** botão "Calcular" (redundante, pricing é automático agora)
+- **Mantido** botão "Detalhes" (só aparece quando já tem preço calculado)
+- **Mantido** ícone Refresh (🔄) para forçar re-busca de preços do Scryfall
+- **Adicionado** timestamp relativo: "há 2h", "ontem", "há 3d", etc.
+- **Loading state:** Mostra "Calculando..." com barra de progresso ao abrir
+
+### Fluxo completo
+```
+Abrir deck → fetchDeckDetails() → Consumer rebuild
+  ↓
+_pricing ??= _pricingFromDeck(deck)  // mostra cache salvo
+  ↓
+_pricingAutoLoaded == false?
+  ↓ sim
+_loadPricing(force: false)  // chama POST /decks/:id/pricing
+  ↓
+Servidor calcula: pega preços do DB (cards.price)
+  ↓ cartas sem preço? busca Scryfall (max 10)
+Retorna total + items → setState(_pricing = res)
+  ↓
+UI atualiza com preço real + timestamp
+```
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Auto-load pricing no build, _pricingAutoLoaded flag, _PricingRow simplificado, timestamp relativo |

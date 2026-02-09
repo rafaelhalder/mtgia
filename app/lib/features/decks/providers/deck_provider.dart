@@ -537,6 +537,30 @@ class DeckProvider extends ChangeNotifier {
     throw Exception('Falha ao adicionar em lote : ${response.statusCode}');
   }
 
+  /// Atualiza apenas a descrição do deck via PUT
+  Future<bool> updateDeckDescription({
+    required String deckId,
+    required String description,
+  }) async {
+    final response = await _apiClient.put('/decks/$deckId', {
+      'description': description,
+    });
+
+    if (response.statusCode == 200) {
+      invalidateDeckCache(deckId);
+      await fetchDeckDetails(deckId);
+      await fetchDecks();
+      return true;
+    }
+
+    final data = response.data;
+    final msg =
+        (data is Map && data['error'] != null)
+            ? data['error'].toString()
+            : 'Falha ao atualizar descrição: ${response.statusCode}';
+    throw Exception(msg);
+  }
+
   Future<void> updateDeckStrategy({
     required String deckId,
     required String archetype,

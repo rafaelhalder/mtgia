@@ -143,11 +143,6 @@ class _DeckListScreenState extends State<DeckListScreen> {
         title: const Text('Meus Decks'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: () => context.go('/decks/generate'),
-            tooltip: 'Gerar Deck',
-          ),
-          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => context.read<DeckProvider>().fetchDecks(),
             tooltip: 'Recarregar',
@@ -216,42 +211,11 @@ class _DeckListScreenState extends State<DeckListScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Comece criando seu primeiro deck',
+                    'Toque no botão abaixo para começar',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: const Color(0xFF94A3B8),
                     ),
                     textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _showCreateDeckDialog(context),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Criar Deck'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        onPressed: () => context.go('/decks/generate'),
-                        icon: const Icon(Icons.auto_awesome),
-                        label: const Text('Gerar'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.secondary,
-                          foregroundColor: theme.colorScheme.onSecondary,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -280,28 +244,59 @@ class _DeckListScreenState extends State<DeckListScreen> {
           );
         },
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Botão de Importar Lista
-          FloatingActionButton.extended(
-            heroTag: 'import',
-            onPressed: () => context.go('/decks/import'),
-            backgroundColor: theme.colorScheme.secondary,
-            tooltip: 'Importar lista de outro site',
-            icon: const Icon(Icons.content_paste),
-            label: const Text('Importar'),
+      floatingActionButton: PopupMenuButton<String>(
+        onSelected: (value) {
+          switch (value) {
+            case 'create':
+              _showCreateDeckDialog(context);
+              break;
+            case 'generate':
+              context.go('/decks/generate');
+              break;
+            case 'import':
+              context.go('/decks/import');
+              break;
+          }
+        },
+        offset: const Offset(0, -160),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'create',
+            child: ListTile(
+              leading: Icon(Icons.add, color: theme.colorScheme.primary),
+              title: const Text('Novo Deck'),
+              subtitle: const Text('Criar do zero'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
           ),
-          const SizedBox(height: 12),
-          // Botão principal (Novo Deck)
-          FloatingActionButton.extended(
-            heroTag: 'create',
-            onPressed: () => _showCreateDeckDialog(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Novo Deck'),
-            backgroundColor: theme.colorScheme.primary,
+          PopupMenuItem(
+            value: 'generate',
+            child: ListTile(
+              leading: Icon(Icons.auto_awesome, color: theme.colorScheme.secondary),
+              title: const Text('Gerar com IA'),
+              subtitle: const Text('Descreva e a IA monta'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+          ),
+          PopupMenuItem(
+            value: 'import',
+            child: ListTile(
+              leading: Icon(Icons.content_paste, color: const Color(0xFFF59E0B)),
+              title: const Text('Importar Lista'),
+              subtitle: const Text('Colar de outro site'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
           ),
         ],
+        child: FloatingActionButton.extended(
+          onPressed: null,
+          icon: const Icon(Icons.add),
+          label: const Text('Novo Deck'),
+        ),
       ),
     );
   }

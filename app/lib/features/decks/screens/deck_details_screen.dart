@@ -28,6 +28,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
   Map<String, dynamic>? _pricing;
   bool _isPricingLoading = false;
   final Set<String> _hiddenCardIds = <String>{};
+  bool _pricingAutoLoaded = false;
 
   @override
   void initState() {
@@ -65,19 +66,43 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         title: const Text('Detalhes do Deck'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.content_paste_go),
-            tooltip: 'Colar lista de cartas',
-            onPressed: () => _showImportListDialog(context),
-          ),
-          IconButton(
             icon: const Icon(Icons.auto_fix_high),
             tooltip: 'Otimizar deck',
             onPressed: () => _showOptimizationOptions(context),
           ),
-          IconButton(
-            icon: const Icon(Icons.verified_outlined),
-            tooltip: 'Validar/Finalizar Deck',
-            onPressed: _validateDeck,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) {
+              switch (value) {
+                case 'paste':
+                  _showImportListDialog(context);
+                  break;
+                case 'validate':
+                  _validateDeck();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'paste',
+                child: ListTile(
+                  leading: Icon(Icons.content_paste_go),
+                  title: Text('Colar lista de cartas'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'validate',
+                child: ListTile(
+                  leading: Icon(Icons.verified_outlined),
+                  title: Text('Validar Deck'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+            ],
           ),
         ],
         bottom: TabBar(
@@ -134,6 +159,15 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
             return const Center(child: Text('Deck não encontrado'));
           }
           _pricing ??= _pricingFromDeck(deck);
+
+          // Auto-load pricing when deck is ready
+          if (!_pricingAutoLoaded && !_isPricingLoading) {
+            _pricingAutoLoaded = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _loadPricing(force: false);
+            });
+          }
+
           final format = deck.format.toLowerCase();
           final isCommanderFormat = format == 'commander' || format == 'brawl';
           final maxCards =
@@ -167,7 +201,6 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     _PricingRow(
                       pricing: _pricing,
                       isLoading: _isPricingLoading,
-                      onPressed: () => _loadPricing(force: true),
                       onForceRefresh: () => _loadPricing(force: true),
                       onShowDetails: _showPricingDetails,
                     ),
@@ -208,12 +241,96 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                       ),
                     ],
                     const SizedBox(height: 16),
-                    if (deck.description != null) ...[
-                      Text('Descrição', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(deck.description!),
-                      const SizedBox(height: 24),
-                    ],
+                    // Descrição editável
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Descrição',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed:
+                              () => _showEditDescriptionDialog(
+                                context,
+                                deck.description,
+                              ),
+                          icon: Icon(
+                            (deck.description == null ||
+                                    deck.description!.trim().isEmpty)
+                                ? Icons.add
+                                : Icons.edit,
+                            size: 16,
+                          ),
+                          label: Text(
+                            (deck.description == null ||
+                                    deck.description!.trim().isEmpty)
+                                ? 'Adicionar'
+                                : 'Editar',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (deck.description != null &&
+                        deck.description!.trim().isNotEmpty)
+                      InkWell(
+                        onTap:
+                            () => _showEditDescriptionDialog(
+                              context,
+                              deck.description,
+                            ),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            deck.description!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      InkWell(
+                        onTap:
+                            () =>
+                                _showEditDescriptionDialog(context, null),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.2,
+                              ),
+                              style: BorderStyle.solid,
+                            ),
+                          ),
+                          child: Text(
+                            'Toque para adicionar uma descrição ao deck...',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.outline,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
                     if (deck.commander.isNotEmpty) ...[
                       Text('Comandante', style: theme.textTheme.titleMedium),
                       const SizedBox(height: 8),
@@ -351,7 +468,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Bracket: ${deck.bracket ?? 2} • ${_bracketLabel(deck.bracket ?? 2)}',
+                                    deck.bracket != null
+                                        ? 'Bracket: ${deck.bracket} • ${_bracketLabel(deck.bracket!)}'
+                                        : 'Bracket não definido',
                                     style: theme.textTheme.bodySmall,
                                   ),
                                 ],
@@ -688,6 +807,82 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         },
       ),
     );
+  }
+
+  Future<void> _showEditDescriptionDialog(
+    BuildContext context,
+    String? currentDescription,
+  ) async {
+    final controller = TextEditingController(
+      text: currentDescription?.trim() ?? '',
+    );
+    final theme = Theme.of(context);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Descrição do Deck'),
+            content: TextField(
+              controller: controller,
+              maxLines: 5,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText:
+                    'Descreva a estratégia, tema ou objetivo do deck...\n\nEx: Deck focado em tokens e sacrifício com sinergia Orzhov.',
+                hintMaxLines: 5,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('Salvar'),
+              ),
+            ],
+          ),
+    );
+
+    if (result == null || !mounted) return;
+
+    // Update via PUT
+    try {
+      final provider = context.read<DeckProvider>();
+      final response = await provider.updateDeckDescription(
+        deckId: widget.deckId,
+        description: result,
+      );
+      if (!mounted) return;
+
+      if (response) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.isEmpty
+                  ? 'Descrição removida'
+                  : 'Descrição atualizada',
+            ),
+            backgroundColor: theme.colorScheme.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao atualizar: $e'),
+          backgroundColor: theme.colorScheme.error,
+        ),
+      );
+    }
   }
 
   /// Menu expansível para adicionar cartas (busca ou scanner)
@@ -1859,30 +2054,52 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
 class _PricingRow extends StatelessWidget {
   final Map<String, dynamic>? pricing;
   final bool isLoading;
-  final VoidCallback onPressed;
   final VoidCallback onForceRefresh;
   final VoidCallback? onShowDetails;
 
   const _PricingRow({
     required this.pricing,
     required this.isLoading,
-    required this.onPressed,
     required this.onForceRefresh,
     this.onShowDetails,
   });
+
+  String _formatUpdatedAt(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final diff = now.difference(local);
+    if (diff.inMinutes < 1) return 'agora';
+    if (diff.inHours < 1) return 'há ${diff.inMinutes}min';
+    if (diff.inDays < 1) return 'há ${diff.inHours}h';
+    if (diff.inDays == 1) return 'ontem';
+    if (diff.inDays < 7) return 'há ${diff.inDays}d';
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final total = pricing?['estimated_total_usd'];
     final missing = pricing?['missing_price_cards'];
+    final updatedAt = pricing?['pricing_updated_at']?.toString();
 
-    String subtitle = 'Calcular custo estimado';
-    if (total is num) {
+    String subtitle;
+    if (isLoading && total == null) {
+      subtitle = 'Calculando...';
+    } else if (total is num) {
       subtitle = 'Estimado: \$${total.toStringAsFixed(2)}';
       if (missing is num && missing > 0) {
         subtitle += ' • ${missing.toInt()} sem preço';
       }
+      final ago = _formatUpdatedAt(updatedAt);
+      if (ago.isNotEmpty) {
+        subtitle += ' • $ago';
+      }
+    } else {
+      subtitle = 'Calculando custo...';
     }
 
     return Container(
@@ -1915,15 +2132,11 @@ class _PricingRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (onShowDetails != null)
+          if (onShowDetails != null && total is num)
             TextButton(
               onPressed: isLoading ? null : onShowDetails,
               child: const Text('Detalhes'),
             ),
-          TextButton(
-            onPressed: isLoading ? null : onPressed,
-            child: const Text('Calcular'),
-          ),
           IconButton(
             tooltip: 'Atualizar preços',
             onPressed: isLoading ? null : onForceRefresh,

@@ -106,9 +106,9 @@ class DeckCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: onDelete,
-                    color: theme.colorScheme.error,
+                    icon: const Icon(Icons.more_vert, size: 20),
+                    onPressed: () => _showDeckMenu(context),
+                    color: theme.colorScheme.outline,
                   ),
                 ],
               ),
@@ -138,7 +138,7 @@ class DeckCard extends StatelessWidget {
                     format: deck.format,
                   ),
                   const SizedBox(width: 12),
-                  if (deck.synergyScore != null)
+                  if (deck.synergyScore != null && deck.synergyScore! > 0)
                     _StatChip(
                       icon: Icons.auto_awesome,
                       label: 'Sinergia ${deck.synergyScore}%',
@@ -151,6 +151,37 @@ class DeckCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showDeckMenu(BuildContext context) {
+    final theme = Theme.of(context);
+    final renderBox = context.findRenderObject() as RenderBox;
+    final offset = renderBox.localToGlobal(Offset.zero);
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx + renderBox.size.width - 48,
+        offset.dy,
+        offset.dx + renderBox.size.width,
+        offset.dy + renderBox.size.height,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, size: 20, color: theme.colorScheme.error),
+              const SizedBox(width: 8),
+              Text('Excluir', style: TextStyle(color: theme.colorScheme.error)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') onDelete();
+    });
   }
 
   Color _getSynergyColor(int score) {

@@ -13,7 +13,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _displayNameController = TextEditingController();
-  final _avatarUrlController = TextEditingController();
   bool _isSaving = false;
 
   @override
@@ -25,14 +24,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final user = auth.user;
       if (!mounted || user == null) return;
       _displayNameController.text = user.displayName ?? '';
-      _avatarUrlController.text = user.avatarUrl ?? '';
     });
   }
 
   @override
   void dispose() {
     _displayNameController.dispose();
-    _avatarUrlController.dispose();
     super.dispose();
   }
 
@@ -41,7 +38,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final auth = context.read<AuthProvider>();
     final ok = await auth.updateProfile(
       displayName: _displayNameController.text.trim(),
-      avatarUrl: _avatarUrlController.text.trim(),
     );
     if (!mounted) return;
     setState(() => _isSaving = false);
@@ -90,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Center(
                     child: CircleAvatar(
                       radius: 44,
-                      backgroundColor: theme.colorScheme.surface,
+                      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
                       backgroundImage: (user.avatarUrl != null && user.avatarUrl!.trim().isNotEmpty)
                           ? NetworkImage(user.avatarUrl!)
                           : null,
@@ -99,7 +95,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               (user.displayName ?? user.username).trim().isNotEmpty
                                   ? (user.displayName ?? user.username).trim().characters.first.toUpperCase()
                                   : '?',
-                              style: theme.textTheme.headlineMedium,
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
                             )
                           : null,
                     ),
@@ -114,25 +112,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Center(
                     child: Text(
                       user.email,
-                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.secondary),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF94A3B8)),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Configurações',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _displayNameController,
                     decoration: const InputDecoration(
                       labelText: 'Nome exibido',
                       hintText: 'Como você quer aparecer',
+                      prefixIcon: Icon(Icons.badge_outlined),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _avatarUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Avatar URL',
-                      hintText: 'https://...',
-                    ),
-                    keyboardType: TextInputType.url,
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
