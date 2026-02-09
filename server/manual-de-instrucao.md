@@ -2642,3 +2642,141 @@ UI atualiza com preço real + timestamp
 | Arquivo | Alteração |
 |---------|-----------|
 | `app/lib/features/decks/screens/deck_details_screen.dart` | Auto-load pricing no build, _pricingAutoLoaded flag, _PricingRow simplificado, timestamp relativo |
+
+---
+
+## Auto-Validação e Auto-Análise de Sinergia
+
+### O Porquê
+Na auditoria de onPressed, duas ações que exigiam clique manual faziam mais sentido como automáticas:
+1. **Validação do deck** — chamada leve ao servidor, sem custo externo. O usuário não deveria precisar ir no overflow menu para saber se seu deck é válido.
+2. **Análise de sinergia** — para decks com ≥60 cartas que nunca foram analisados, o usuário tinha que clicar "Gerar análise" na aba Análise. Sem esse clique, a aba ficava quase vazia.
+
+### Mudança 1: Auto-Validação com Badge Visual
+**Fluxo:**
+1. Quando o deck carrega, `_autoValidateDeck()` é chamado (via `addPostFrameCallback`, uma única vez por tela).
+2. É uma versão silenciosa — sem loading dialog, sem snackbar. Apenas atualiza `_validationResult`.
+3. Na UI, um badge aparece ao lado do chip de formato:
+   - ✅ **Válido** (verde) — deck cumpre todas as regras do formato.
+   - ⚠️ **Inválido** (vermelho) — deck tem problemas (cartas insuficientes, sem comandante, etc.).
+4. Ao tocar no badge, exibe detalhes da validação via snackbar.
+5. O botão "Validar Deck" no overflow menu continua funcionando e atualiza o mesmo badge.
+
+**Arquivos:** `deck_details_screen.dart`
+- Novas variáveis: `_validationAutoLoaded`, `_isValidating`, `_validationResult`
+- Novo método: `_autoValidateDeck()` (silencioso, sem loading dialog)
+- `_validateDeck()` agora também atualiza `_validationResult` para manter o badge sincronizado
+
+### Mudança 2: Auto-Trigger Análise de Sinergia
+**Condições para disparo automático:**
+- `synergyScore == 0` E `strengths` vazio E `weaknesses` vazio (nunca analisado)
+- `cardCount >= 60` (deck suficientemente completo para análise útil)
+- Não está já rodando (`_isRefreshingAi == false`)
+- Nunca disparou nesta instância (`_autoAnalysisTriggered == false`)
+
+**Fluxo:**
+1. Ao abrir a aba "Análise", o `build()` verifica as condições.
+2. Se elegível, dispara `_refreshAi()` automaticamente (force: false).
+3. A UI mostra o `LinearProgressIndicator` + "Analisando o deck..." enquanto processa.
+4. Resultado popula `synergyScore`, `strengths`, `weaknesses` via provider.
+5. Se o deck tem <60 cartas, mantém o botão manual "Gerar análise" (análise em deck incompleto não é útil).
+
+**Arquivo:** `deck_analysis_tab.dart`
+- Nova variável: `_autoAnalysisTriggered`
+- Lógica de trigger no `build()` antes da preparação de dados
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `deck_details_screen.dart` | Auto-validação silenciosa + badge ✅/⚠️ ao lado do formato |
+| `deck_analysis_tab.dart` | Auto-trigger análise IA quando deck ≥60 cartas e nunca analisado |
+
+---
+
+## 📈 Feature: Market (Variações Diárias de Preço)
+
+### O Porquê
+Os jogadores precisam acompanhar valorizações e desvalorizações de cartas em tempo real para decisões de compra/venda/trade. A API do **MTGJson** fornece dados gratuitos de preço diário (TCGPlayer, Card Kingdom) sem necessidade de API key.
+
+### Arquitetura
+
+```
+[MTGJson AllPricesToday.json] 
+    → [sync_prices_mtgjson_fast.dart (cron diário)]
+        → [cards.price (atualizado)]
+        → [price_history (novo snapshot diário)]
+            → [GET /market/movers (compara hoje vs ontem)]
+                → [MarketProvider → MarketScreen (Flutter)]
+```
+
+### Backend
+
+#### 1. Tabela `price_history`
+- **Migration:** `bin/migrate_price_history.dart`
+- Colunas: `card_id`, `price_date`, `price_usd`, `price_usd_foil`
+- Constraint: `UNIQUE(card_id, price_date)` — um registro por carta por dia
+- Índices: `idx_price_history_date`, `idx_price_history_card_date`
+- Seed automático: copia preços existentes de `cards.price` como snapshot do dia
+
+#### 2. Sync automático (`sync_prices_mtgjson_fast.dart`)
+Após atualizar `cards.price`, agora também salva snapshot em `price_history`:
+```sql
+INSERT INTO price_history (card_id, price_date, price_usd)
+SELECT id, CURRENT_DATE, price FROM cards WHERE price > 0
+ON CONFLICT (card_id, price_date) DO UPDATE SET price_usd = EXCLUDED.price_usd
+```
+
+#### 3. Endpoints
+
+**GET `/market/movers`** (público, sem JWT)
+- Params: `limit` (default 20, max 50), `min_price` (default 1.00 — filtra penny stocks)
+- Compara as duas datas mais recentes no `price_history`
+- Retorna: `{ date, previous_date, gainers: [...], losers: [...], total_tracked }`
+- Cada mover: `{ card_id, name, set_code, image_url, rarity, type_line, price_today, price_yesterday, change_usd, change_pct }`
+
+**GET `/market/card/:cardId`** (público, sem JWT)
+- Retorna histórico de até 90 dias de preço de uma carta
+- Response: `{ card_id, name, current_price, history: [{ date, price_usd }] }`
+
+### Flutter
+
+#### Model: `features/market/models/card_mover.dart`
+- `CardMover`: uma carta com preço anterior, atual e variação
+- `MarketMoversData`: resposta completa (gainers, losers, datas, total)
+
+#### Provider: `features/market/providers/market_provider.dart`
+- `fetchMovers()`: chama `GET /market/movers`
+- `refresh()`: re-busca dados
+- Auto-fetch na primeira abertura da tela
+
+#### Tela: `features/market/screens/market_screen.dart`
+- **Tabs:** "Valorizando" (↑ verde) e "Desvalorizando" (↓ vermelho)
+- **Header:** datas comparadas + badge USD
+- **Cards:** rank, thumbnail, nome, set, raridade, preço atual, variação em % e USD
+- **Top 3** destacados com borda colorida
+- **Pull-to-refresh** em ambas as tabs
+- **Empty states** específicos: sem dados, dados insuficientes (1 dia só), erro de conexão
+
+#### Integração no BottomNav
+- Nova tab "Market" (ícone `trending_up`) entre Decks e Perfil
+- Rota `/market` adicionada ao `ShellRoute` e protegida por auth
+- `MarketProvider` registrado no `MultiProvider` do `main.dart`
+
+### Arquivos Criados/Modificados
+| Arquivo | Tipo |
+|---------|------|
+| `server/bin/migrate_price_history.dart` | ✨ Novo — migration |
+| `server/routes/market/movers/index.dart` | ✨ Novo — endpoint gainers/losers |
+| `server/routes/market/card/[cardId].dart` | ✨ Novo — endpoint histórico |
+| `server/bin/sync_prices_mtgjson_fast.dart` | 🔧 Modificado — salva price_history |
+| `app/lib/features/market/models/card_mover.dart` | ✨ Novo — model |
+| `app/lib/features/market/providers/market_provider.dart` | ✨ Novo — provider |
+| `app/lib/features/market/screens/market_screen.dart` | ✨ Novo — tela |
+| `app/lib/core/widgets/main_scaffold.dart` | 🔧 Modificado — 4ª tab |
+| `app/lib/main.dart` | 🔧 Modificado — rota + provider |
+
+### Como funciona o ciclo diário
+1. **Cron** roda `sync_prices_mtgjson_fast.dart` (recomendado: 1x/dia)
+2. Atualiza `cards.price` + insere/atualiza `price_history` do dia
+3. No dia seguinte, ao rodar novamente, teremos 2 datas → movers calculados
+4. App abre Market → `GET /market/movers` → gainers/losers aparecem

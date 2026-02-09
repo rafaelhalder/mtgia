@@ -19,6 +19,8 @@ import 'features/decks/screens/deck_import_screen.dart';
 
 import 'features/cards/providers/card_provider.dart';
 import 'features/cards/screens/card_search_screen.dart';
+import 'features/market/providers/market_provider.dart';
+import 'features/market/screens/market_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/scanner/screens/card_scanner_screen.dart';
 
@@ -37,6 +39,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   late final AuthProvider _authProvider;
   late final DeckProvider _deckProvider;
   late final CardProvider _cardProvider;
+  late final MarketProvider _marketProvider;
   late final GoRouter _router;
 
   @override
@@ -45,6 +48,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _authProvider = AuthProvider();
     _deckProvider = DeckProvider();
     _cardProvider = CardProvider();
+    _marketProvider = MarketProvider();
 
     // Log da URL da API no boot
     ApiClient.debugLogBaseUrl();
@@ -72,6 +76,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         final isProtectedRoute =
             location.startsWith('/home') ||
             location.startsWith('/decks') ||
+            location.startsWith('/market') ||
             location.startsWith('/profile');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
@@ -147,6 +152,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
               ],
             ),
             GoRoute(
+              path: '/market',
+              builder: (context, state) => const MarketScreen(),
+            ),
+            GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
             ),
@@ -163,6 +172,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         ChangeNotifierProvider.value(value: _authProvider),
         ChangeNotifierProvider.value(value: _deckProvider),
         ChangeNotifierProvider.value(value: _cardProvider),
+        ChangeNotifierProvider.value(value: _marketProvider),
       ],
       child: MaterialApp.router(
         title: 'ManaLoom - Deck Builder',

@@ -16,6 +16,7 @@ class DeckAnalysisTab extends StatefulWidget {
 
 class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
   bool _isRefreshingAi = false;
+  bool _autoAnalysisTriggered = false;
 
   Future<void> _refreshAi({bool force = false}) async {
     if (_isRefreshingAi) return;
@@ -46,6 +47,18 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
     );
     final effectiveDeck =
         (deck != null && deck.id == widget.deck.id) ? deck : widget.deck;
+
+    // Auto-trigger AI analysis for decks with enough cards that were never analyzed
+    final hasAnalysis = (effectiveDeck.synergyScore ?? 0) > 0 ||
+        (effectiveDeck.strengths ?? '').trim().isNotEmpty ||
+        (effectiveDeck.weaknesses ?? '').trim().isNotEmpty;
+    final totalCardCount = effectiveDeck.cardCount;
+    if (!_autoAnalysisTriggered && !_isRefreshingAi && !hasAnalysis && totalCardCount >= 60) {
+      _autoAnalysisTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshAi();
+      });
+    }
 
     // Prepara dados
     final allCards = [

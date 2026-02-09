@@ -214,6 +214,25 @@ Exemplos:
     ''');
 
     stdout.writeln('✅ Cards atualizados: ${updateResult.affectedRows}');
+    stdout.writeln('⏱️  Update: ${sw.elapsed.inSeconds}s');
+
+    // 9) Salvar snapshot no price_history (para Market movers)
+    stdout.writeln('📊 Salvando snapshot diário em price_history...');
+    try {
+      final historyResult = await connection.execute('''
+        INSERT INTO price_history (card_id, price_date, price_usd)
+        SELECT id, CURRENT_DATE, price
+        FROM cards
+        WHERE price IS NOT NULL AND price > 0
+        ON CONFLICT (card_id, price_date) 
+        DO UPDATE SET price_usd = EXCLUDED.price_usd
+      ''');
+      stdout.writeln('   ✅ price_history: ${historyResult.affectedRows} registros salvos para hoje');
+    } catch (e) {
+      // Tabela pode não existir ainda — não bloqueia o sync
+      stderr.writeln('   ⚠️ price_history não atualizado (rode migrate_price_history.dart): $e');
+    }
+
     stdout.writeln('⏱️  Total: ${sw.elapsed.inSeconds}s');
 
     // Cleanup

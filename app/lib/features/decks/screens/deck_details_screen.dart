@@ -29,6 +29,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
   bool _isPricingLoading = false;
   final Set<String> _hiddenCardIds = <String>{};
   bool _pricingAutoLoaded = false;
+  bool _validationAutoLoaded = false;
+  bool _isValidating = false;
+  Map<String, dynamic>? _validationResult;
 
   @override
   void initState() {
@@ -168,6 +171,14 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
             });
           }
 
+          // Auto-validate deck when ready
+          if (!_validationAutoLoaded && !_isValidating) {
+            _validationAutoLoaded = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _autoValidateDeck();
+            });
+          }
+
           final format = deck.format.toLowerCase();
           final isCommanderFormat = format == 'commander' || format == 'brawl';
           final maxCards =
@@ -185,7 +196,87 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   children: [
                     Text(deck.name, style: theme.textTheme.headlineMedium),
                     const SizedBox(height: 8),
-                    Chip(label: Text(deck.format.toUpperCase())),
+                    Row(
+                      children: [
+                        Chip(label: Text(deck.format.toUpperCase())),
+                        const SizedBox(width: 8),
+                        if (_isValidating)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else if (_validationResult != null)
+                          InkWell(
+                            onTap: () {
+                              final ok = _validationResult!['ok'] == true;
+                              if (ok) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Deck válido para o formato!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } else {
+                                final msg = _validationResult!['error']?.toString()
+                                    ?? 'Deck não está completo ou válido para o formato';
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('⚠️ $msg'),
+                                    backgroundColor: theme.colorScheme.error,
+                                    duration: const Duration(seconds: 4),
+                                  ),
+                                );
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _validationResult!['ok'] == true
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                    : theme.colorScheme.error.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _validationResult!['ok'] == true
+                                      ? const Color(0xFF10B981)
+                                      : theme.colorScheme.error,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _validationResult!['ok'] == true
+                                        ? Icons.verified
+                                        : Icons.warning_amber_rounded,
+                                    size: 14,
+                                    color: _validationResult!['ok'] == true
+                                        ? const Color(0xFF10B981)
+                                        : theme.colorScheme.error,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _validationResult!['ok'] == true
+                                        ? 'Válido'
+                                        : 'Inválido',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: _validationResult!['ok'] == true
+                                          ? const Color(0xFF10B981)
+                                          : theme.colorScheme.error,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     DeckProgressIndicator(
                       deck: deck,
@@ -930,6 +1021,25 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     );
   }
 
+  /// Validação silenciosa auto-triggered (sem loading dialog, sem snackbar).
+  Future<void> _autoValidateDeck() async {
+    if (_isValidating) return;
+    setState(() => _isValidating = true);
+    try {
+      final res = await context.read<DeckProvider>().validateDeck(widget.deckId);
+      if (!mounted) return;
+      setState(() => _validationResult = res);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _validationResult = {
+        'ok': false,
+        'error': e.toString().replaceFirst('Exception: ', ''),
+      });
+    } finally {
+      if (mounted) setState(() => _isValidating = false);
+    }
+  }
+
   Future<void> _validateDeck() async {
     final provider = context.read<DeckProvider>();
     final deckId = widget.deckId;
@@ -944,6 +1054,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       final res = await provider.validateDeck(deckId);
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _validationResult = res);
 
       final ok = res['ok'] == true;
       ScaffoldMessenger.of(context).showSnackBar(

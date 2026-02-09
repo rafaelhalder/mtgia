@@ -10,6 +10,8 @@ import '../routes/index.dart' as index;
 import '../routes/users/me/index.dart' as users_me_index;
 import '../routes/sets/index.dart' as sets_index;
 import '../routes/rules/index.dart' as rules_index;
+import '../routes/market/movers/index.dart' as market_movers_index;
+import '../routes/market/card/[cardId].dart' as market_card_$card_id;
 import '../routes/import/index.dart' as import_index;
 import '../routes/import/validate/index.dart' as import_validate_index;
 import '../routes/import/to-deck/index.dart' as import_to_deck_index;
@@ -92,6 +94,8 @@ Handler buildRootHandler() {
     ..mount('/import/to-deck', (context) => buildImportToDeckHandler()(context))
     ..mount('/import/validate', (context) => buildImportValidateHandler()(context))
     ..mount('/import', (context) => buildImportHandler()(context))
+    ..mount('/market/card', (context) => buildMarketCardHandler()(context))
+    ..mount('/market/movers', (context) => buildMarketMoversHandler()(context))
     ..mount('/rules', (context) => buildRulesHandler()(context))
     ..mount('/sets', (context) => buildSetsHandler()(context))
     ..mount('/users/me', (context) => buildUsersMeHandler()(context))
@@ -299,6 +303,20 @@ Handler buildImportHandler() {
   final pipeline = const Pipeline().addMiddleware(import_middleware.middleware);
   final router = Router()
     ..all('/', (context) => import_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildMarketCardHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/<cardId>', (context,cardId,) => market_card_$card_id.onRequest(context,cardId,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildMarketMoversHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => market_movers_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
