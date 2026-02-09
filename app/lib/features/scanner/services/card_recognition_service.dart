@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Rect, Size;
+import 'dart:ui' show Offset, Rect, Size;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -63,7 +63,29 @@ class CardRecognitionService {
     'illustrated', 'artist', 'illus', 'wotc', 'wizards', 'reserved',
     'collector', 'number', 'rarity', 'mythic', 'rare', 'uncommon', 'common',
     'foil', 'promo', 'set', 'edition',
+    // Texto de rodapé / créditos
+    'copyright', 'licensed', 'trademark', 'rights',
+    'hasbro', 'coast', 'print', 'printed',
   };
+
+  /// Padrões que indicam linha de crédito do artista.
+  /// Cartas MTG mostram "Ill. by <Artista>" ou "Illus. <Artista>" perto
+  /// do texto de tipo/poder. Estes aparecem geralmente em 55-85% da altura.
+  static final _artistLinePatterns = <RegExp>[
+    // "Ill." "Illus." "Illus" no início
+    RegExp(r'^ill(us)?\.?\s', caseSensitive: false),
+    // "Illustrated by" / "Art by"
+    RegExp(r'(illustrated|art)\s+by\b', caseSensitive: false),
+    // Padrão OCR corrompido: ex "Tla En" (Ill. by), "IIl" (Ill), "Tla" é
+    // OCR common misread de "Ill."
+    RegExp(r'^(tla|iia|lla|ila|tia)\s+(en|by)\s', caseSensitive: false),
+    // "© <year>" copyright
+    RegExp(r'[©®™]', caseSensitive: false),
+    // "Wizards of the Coast" / "WOTC"
+    RegExp(r'wizards\s+of\s+the', caseSensitive: false),
+    // Year pattern in footer: "2024 Wizards" / "TM & © 2025"
+    RegExp(r'(19|20)\d{2}\s+(wizards|hasbro|wotc)', caseSensitive: false),
+  ];
 
   /// Padrões de nomes MTG válidos (validação positiva)
   static final _validNamePatterns = <RegExp>[
@@ -328,34 +350,65 @@ class CardRecognitionService {
   // ANÁLISE DE TEXTO RECONHECIDO
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Analisa texto e extrai candidatos a nome de carta
+  /// Analisa texto e extrai candidatos a nome de carta.
+  ///
+  /// Se [cardGuideRect] é fornecido, apenas blocos de texto que estão
+  /// significativamente dentro da região do guia são considerados, e as
+  /// posições relativas são calculadas em relação ao guia (= carta),
+  /// não ao frame inteiro. Isso é crítico para:
+  /// 1. Ignorar texto de outras cartas que estejam parcialmente no frame
+  /// 2. Mapear posições corretamente (topo do guia = nome, bottom = collector)
   CardRecognitionResult _analyzeRecognizedText(
     RecognizedText recognizedText,
     double imageWidth,
     double imageHeight,
-    String strategy,
-  ) {
+    String strategy, {
+    Rect? cardGuideRect,
+  }) {
     final candidates = <CardNameCandidate>[];
+
+    // Se temos guia, usamos as dimensões do guia para posicionamento relativo
+    // Caso contrário, usamos o frame inteiro (fallback)
+    final refWidth = cardGuideRect?.width ?? imageWidth;
+    final refHeight = cardGuideRect?.height ?? imageHeight;
 
     // Processa blocos e linhas
     for (final block in recognizedText.blocks) {
+      // Se temos guia, verifica se o bloco está dentro da região do guia
+      if (cardGuideRect != null) {
+        if (!_isInsideGuide(block.boundingBox, cardGuideRect)) continue;
+      }
+
       // Avalia cada linha individualmente
       for (final line in block.lines) {
+        if (cardGuideRect != null) {
+          if (!_isInsideGuide(line.boundingBox, cardGuideRect)) continue;
+        }
+
+        // Recalcula bounding box relativa ao guia (ou usa original)
+        final relBox = cardGuideRect != null
+            ? _relativizeToGuide(line.boundingBox, cardGuideRect)
+            : line.boundingBox;
+
         final candidate = _evaluateCandidate(
           line.text,
-          line.boundingBox,
-          imageWidth,
-          imageHeight,
+          relBox,
+          refWidth,
+          refHeight,
         );
         if (candidate != null) candidates.add(candidate);
       }
 
       // Avalia bloco completo (pode pegar nome com quebra de linha)
+      final blockBox = cardGuideRect != null
+          ? _relativizeToGuide(block.boundingBox, cardGuideRect)
+          : block.boundingBox;
+
       final blockCandidate = _evaluateCandidate(
         block.text,
-        block.boundingBox,
-        imageWidth,
-        imageHeight,
+        blockBox,
+        refWidth,
+        refHeight,
       );
       if (blockCandidate != null) candidates.add(blockCandidate);
     }
@@ -368,15 +421,28 @@ class CardRecognitionService {
     final unique = _deduplicate(candidates);
     unique.sort((a, b) => b.score.compareTo(a.score));
 
+    // Debug: mostra top candidatos para diagnóstico
+    if (unique.isNotEmpty) {
+      final top = unique.take(3).map(
+        (c) {
+          final relY = (c.boundingBox.top / refHeight * 100).round();
+          return '"${c.text}" (score=${c.score.toStringAsFixed(0)}, y=$relY%)';
+        },
+      ).join(', ');
+      debugPrint('[🏷️ Candidatos] $strategy: $top');
+    }
+
     // Calcula confiança
     final confidence = _calculateConfidence(unique);
     final setCodeCandidates = _extractSetCodeCandidates(recognizedText.text);
 
     // Extrai informações do colecionador da parte inferior da carta
+    // Usa as dimensões do guia se disponível para que >80% = bottom real da carta
     final collectorInfo = _extractCollectorInfo(
       recognizedText,
       imageWidth,
       imageHeight,
+      cardGuideRect: cardGuideRect,
     );
 
     return CardRecognitionResult.success(
@@ -431,6 +497,41 @@ class CardRecognitionService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // FILTRAGEM POR REGIÃO DO GUIA (card guide rect)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Verifica se um bloco de texto está significativamente dentro do guia.
+  /// Usa overlap de 50% — o centro do bloco deve estar dentro do guia.
+  bool _isInsideGuide(Rect textBox, Rect guideRect) {
+    // Centro do bloco de texto
+    final centerX = textBox.left + textBox.width / 2;
+    final centerY = textBox.top + textBox.height / 2;
+
+    // Margem de 10% para tolerar blocos que estão um pouco fora mas são
+    // parte da carta (ex: nome levemente fora do guia)
+    final margin = guideRect.width * 0.10;
+    final expandedGuide = Rect.fromLTRB(
+      guideRect.left - margin,
+      guideRect.top - margin,
+      guideRect.right + margin,
+      guideRect.bottom + margin,
+    );
+
+    return expandedGuide.contains(Offset(centerX, centerY));
+  }
+
+  /// Recalcula o bounding box de um bloco de texto para ser relativo ao guia.
+  /// Assim, um bloco no topo do guia tem relTop ≈ 0, e no bottom ≈ 1.
+  Rect _relativizeToGuide(Rect textBox, Rect guideRect) {
+    return Rect.fromLTWH(
+      textBox.left - guideRect.left,
+      textBox.top - guideRect.top,
+      textBox.width,
+      textBox.height,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // EXTRAÇÃO DE INFORMAÇÕES DO COLECIONADOR (parte inferior da carta)
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -447,13 +548,27 @@ class CardRecognitionService {
   CollectorInfo? _extractCollectorInfo(
     RecognizedText recognizedText,
     double imageWidth,
-    double imageHeight,
-  ) {
+    double imageHeight, {
+    Rect? cardGuideRect,
+  }) {
+    // Se temos guia, usamos as coordenadas do guia como referência
+    // para encontrar "bottom da carta" (>80% da altura do guia)
+    final refTop = cardGuideRect?.top ?? 0.0;
+    final refHeight = cardGuideRect?.height ?? imageHeight;
+    final refLeft = cardGuideRect?.left ?? 0.0;
+    final refRight = cardGuideRect?.right ?? imageWidth;
+
     // Coleta texto RAW de blocos/linhas na parte inferior da carta (>80%)
     final bottomTexts = <String>[];
 
     for (final block in recognizedText.blocks) {
-      final relTop = block.boundingBox.top / imageHeight;
+      // Se temos guia, verifica se o bloco está horizontalmente dentro
+      final blockCenterX = block.boundingBox.left + block.boundingBox.width / 2;
+      if (cardGuideRect != null) {
+        if (blockCenterX < refLeft - 20 || blockCenterX > refRight + 20) continue;
+      }
+
+      final relTop = (block.boundingBox.top - refTop) / refHeight;
 
       // Blocos na região inferior da carta (>80% da altura)
       if (relTop > 0.80) {
@@ -464,7 +579,7 @@ class CardRecognitionService {
       } else {
         // Mesmo em blocos mais altos, linhas individuais podem estar embaixo
         for (final line in block.lines) {
-          final lineRelTop = line.boundingBox.top / imageHeight;
+          final lineRelTop = (line.boundingBox.top - refTop) / refHeight;
           if (lineRelTop > 0.80) {
             bottomTexts.add(line.text);
           }
@@ -638,8 +753,39 @@ class CardRecognitionService {
     // Texto de regras longo
     if (cleaned.contains(':') && cleaned.length > 25) return 0;
 
-    // Linha de tipo
-    if (_isTypeLine(lower)) return 0;
+    // Texto que parece frase longa (flavor text ou rules text)
+    // Nomes de cartas MTG raramente têm mais de 5 palavras
+    final wordCount = cleaned.split(RegExp(r'\s+')).length;
+    if (wordCount > 6) return 0; // frases longas nunca são nomes
+
+    // Frase que começa com artigo/preposição minúscula ou tem padrão de frase
+    // Ex: "A turtle-duckling's greatest defense..."
+    // Ex: "Until end of turn, this creature..."
+    if (RegExp(
+      r'^(a|an|the|this|that|if|when|whenever|until|at|for|each|all|you|it|its)\s',
+      caseSensitive: false,
+    ).hasMatch(cleaned) && wordCount > 3) {
+      return 0; // provavelmente rules text ou flavor text
+    }
+
+    // Texto que contém palavras-chave de regras em quantidade (>= 2 keywords)
+    // Só conta keywords isoladas (word boundaries) para evitar falsos positivos
+    // Ex: "creature has base power" contém "creature" keyword = hit
+    if (wordCount >= 4) {
+      var keywordHits = 0;
+      for (final word in cleaned.toLowerCase().split(RegExp(r'\s+'))) {
+        if (_nonNameKeywords.contains(word) && word.length >= 4) {
+          keywordHits++;
+          if (keywordHits >= 2) return 0; // forte indicação de rules text
+        }
+      }
+    }
+
+    // Linha de tipo (usa original para preservar em-dash —)
+    if (_isTypeLine(original.toLowerCase())) return 0;
+
+    // Linha de crédito de artista ("Ill. by Sylvain Sarrailh" etc)
+    if (_isArtistLine(original)) return 0;
 
     // ═══════════════════════════════════════════════════════════════════════
     // SCORES POR POSIÇÃO
@@ -649,21 +795,28 @@ class CardRecognitionService {
     final relLeft = box.left / imgWidth;
     final relWidth = box.width / imgWidth;
 
-    // Topo (0-18%): nome padrão
+    // Topo (0-18%): nome padrão — posição mais provável do nome da carta
     if (relTop < 0.18) {
       score += 55;
       if (relTop < 0.10) score += 15;
       if (relLeft < 0.15) score += 12;
       if (relWidth > 0.30 && relWidth < 0.80) score += 8;
     }
-    // Inferior (75-95%): showcase/borderless
-    else if (relTop > 0.75 && relTop < 0.95) {
-      score += 40;
+    // Inferior (80-95%): showcase/borderless nomes
+    // NOTA: reduzido de 75% para 80% para evitar pegar texto de artista
+    // que fica entre 55-80%
+    else if (relTop > 0.80 && relTop < 0.95) {
+      score += 35; // reduzido de 40 para não competir com topo
       if (relLeft > 0.10 && relLeft < 0.45) score += 10;
     }
     // Meio-topo (18-35%): alguns layouts
     else if (relTop > 0.18 && relTop < 0.35) {
       score += 20;
+    }
+    // Zona do artista/tipo (55-80%): penalidade
+    // Crédito de artista, tipo de carta, P/T ficam nessa faixa
+    else if (relTop > 0.55 && relTop <= 0.80) {
+      score -= 30;
     }
 
     // Penalidade: muito à direita no topo (provavelmente mana)
@@ -742,14 +895,25 @@ class CardRecognitionService {
   /// Verifica se é linha de tipo
   bool _isTypeLine(String text) {
     final patterns = [
+      // "Legendary Creature — Human Wizard", "Artifact Creature — Golem"
       RegExp(
         r'^(legendary\s+)?(artifact\s+)?(creature|artifact|enchantment|instant|sorcery|land|planeswalker|battle)',
         caseSensitive: false,
       ),
-      RegExp(r'^\w+\s*[—–-]\s*\w+'),
+      // "Creature — Turtle" mas NÃO "Turtle-Duck" (nomes hyphenados)
+      // Type lines usam EM DASH (—) ou EN DASH (–), não hífen simples (-)
+      // Ex: "Creature — Turtle", "Artifact — Equipment"
+      RegExp(r'^\w+\s*[—–]\s*\w+'),
       RegExp(r'^basic\s+(land|snow)', caseSensitive: false),
     ];
     return patterns.any((p) => p.hasMatch(text));
+  }
+
+  /// Verifica se é linha de crédito do artista
+  /// Exemplos reais: "Ill. by Sylvain Sarrailh", "Illustrated by Magali"
+  /// OCR corrompido: "Tla En Sylvain Sarrailh", "IIl by John Avon"
+  bool _isArtistLine(String text) {
+    return _artistLinePatterns.any((p) => p.hasMatch(text));
   }
 
   /// Limpa e normaliza texto
@@ -915,10 +1079,19 @@ class CardRecognitionService {
 
   /// Processa um frame da câmera em tempo real (leve, sem pré-processamento).
   /// Retorna resultado ou null se nada detectado / frame ignorado.
+  ///
+  /// [cardGuideRect] define a região do guia (em coordenadas da imagem) onde
+  /// a carta deve estar. Blocos de texto fora dessa região são ignorados,
+  /// e as posições relativas (para scoring) são recalculadas em relação
+  /// à carta, não ao frame inteiro. Isso garante que:
+  /// - Se houver 2 cartas no frame, apenas a que está no guia é lida
+  /// - As posições relativas mapeiam a anatomia real da carta:
+  ///   0-10% = nome, 55-65% = tipo, 80-95% = colecionador/artista
   Future<CardRecognitionResult?> recognizeFromCameraImage(
     CameraImage cameraImage,
-    CameraDescription camera,
-  ) async {
+    CameraDescription camera, {
+    Rect? cardGuideRect,
+  }) async {
     if (_isProcessingStream) return null;
     _isProcessingStream = true;
 
@@ -934,6 +1107,7 @@ class CardRecognitionService {
         cameraImage.width.toDouble(),
         cameraImage.height.toDouble(),
         'live_stream',
+        cardGuideRect: cardGuideRect,
       );
 
       // Só retorna se confiança mínima

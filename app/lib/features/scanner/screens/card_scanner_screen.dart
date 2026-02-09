@@ -196,9 +196,29 @@ class _CardScannerScreenState extends State<CardScannerScreen>
     if (_cameraDescription == null) return;
     if (_scannerProvider.state != ScannerState.idle) return;
 
+    // Calcula a região do guia em coordenadas da câmera.
+    // O overlay visual usa:
+    //   cardWidth = screenWidth * 0.65
+    //   cardHeight = cardWidth * (88/63)  — proporção carta MTG
+    //   centralizado com offset de -30 pixels para cima
+    //
+    // O CameraImage tem dimensões invertidas (width/height) em relação à
+    // orientação do celular (portrait). No Android/iOS, a câmera retorna
+    // landscape internamente, mas o ML Kit aplica a rotação do sensor.
+    // O textBlock.boundingBox retornado pelo ML Kit já está em coordenadas
+    // rotacionadas (portrait), ou seja: X = largura real, Y = altura real.
+    //
+    // Para mapear o guia da tela para as coordenadas do ML Kit, usamos
+    // a proporção relativa (%) da tela → da imagem da câmera.
+    final guideRect = _calculateCameraGuideRect(image);
+
     // Processar em background (não bloqueia UI)
     _scannerProvider
-        .processLiveFrame(image, _cameraDescription!)
+        .processLiveFrame(
+          image,
+          _cameraDescription!,
+          cardGuideRect: guideRect,
+        )
         .then((detected) {
       if (detected && mounted) {
         // Vibração de feedback ao detectar
@@ -207,6 +227,75 @@ class _CardScannerScreenState extends State<CardScannerScreen>
         _stopLiveStream();
       }
     });
+  }
+
+  /// Calcula o retângulo do guia de carta em coordenadas da câmera/ML Kit.
+  ///
+  /// O ML Kit no iOS retorna bounding boxes em coordenadas da imagem
+  /// com a rotação aplicada (portrait). No Android, similar após rotação.
+  /// Precisamos mapear a proporção do guia visual na tela para proporção
+  /// equivalente nas coordenadas de imagem.
+  Rect? _calculateCameraGuideRect(CameraImage image) {
+    if (!mounted) return null;
+
+    final screenSize = MediaQuery.of(context).size;
+    if (screenSize.isEmpty) return null;
+
+    // O guia na tela (mesma math do ScannerOverlay)
+    final screenGuideWidth = screenSize.width * 0.65;
+    final screenGuideHeight = screenGuideWidth * (88.0 / 63.0);
+    final screenGuideLeft = (screenSize.width - screenGuideWidth) / 2;
+    final screenGuideTop = (screenSize.height - screenGuideHeight) / 2 - 30;
+
+    // Proporções relativas na tela (0.0 a 1.0)
+    final relLeft = screenGuideLeft / screenSize.width;
+    final relTop = screenGuideTop / screenSize.height;
+    final relWidth = screenGuideWidth / screenSize.width;
+    final relHeight = screenGuideHeight / screenSize.height;
+
+    // O camera preview usa FittedBox(fit: BoxFit.cover) que escala e croppa.
+    // Precisamos considerar o aspect ratio da câmera vs tela.
+    final previewSize = _cameraController?.value.previewSize;
+    if (previewSize == null) return null;
+
+    // CameraController.previewSize retorna em landscape (width > height)
+    // mas o ML Kit bounding boxes são em portrait (após rotação)
+    final camW = previewSize.height; // largura em portrait
+    final camH = previewSize.width;  // altura em portrait
+
+    final screenAspect = screenSize.width / screenSize.height;
+    final cameraAspect = camW / camH;
+
+    double scaleX, scaleY, offsetX, offsetY;
+
+    if (cameraAspect > screenAspect) {
+      // Câmera é mais larga → croppa horizontalmente
+      scaleY = camH / screenSize.height;
+      scaleX = scaleY; // uniform scale
+      final visibleCamWidth = screenSize.width * scaleX;
+      offsetX = (camW - visibleCamWidth) / 2; // crop horizontal
+      offsetY = 0;
+    } else {
+      // Câmera é mais alta → croppa verticalmente
+      scaleX = camW / screenSize.width;
+      scaleY = scaleX; // uniform scale
+      final visibleCamHeight = screenSize.height * scaleY;
+      offsetX = 0;
+      offsetY = (camH - visibleCamHeight) / 2; // crop vertical
+    }
+
+    // Converte coordenadas de tela para câmera
+    final camGuideLeft = relLeft * screenSize.width * scaleX + offsetX;
+    final camGuideTop = relTop * screenSize.height * scaleY + offsetY;
+    final camGuideWidth = relWidth * screenSize.width * scaleX;
+    final camGuideHeight = relHeight * screenSize.height * scaleY;
+
+    return Rect.fromLTWH(
+      camGuideLeft,
+      camGuideTop,
+      camGuideWidth,
+      camGuideHeight,
+    );
   }
 
   /// Captura manual como fallback (processamento completo com múltiplas estratégias)

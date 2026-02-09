@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Rect;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import '../models/card_recognition_result.dart';
@@ -55,15 +56,20 @@ class ScannerProvider extends ChangeNotifier {
 
   /// Processa um frame da câmera em tempo real (leve)
   /// Retorna true se detectou e já está buscando.
+  ///
+  /// [cardGuideRect] é a região do guia de carta em coordenadas da câmera.
+  /// Blocos de texto fora dessa região serão ignorados.
   Future<bool> processLiveFrame(
     CameraImage image,
-    CameraDescription camera,
-  ) async {
+    CameraDescription camera, {
+    Rect? cardGuideRect,
+  }) async {
     if (_state != ScannerState.idle) return false;
 
     final result = await _recognitionService.recognizeFromCameraImage(
       image,
       camera,
+      cardGuideRect: cardGuideRect,
     );
 
     if (result == null || !result.success || result.primaryName == null) {
