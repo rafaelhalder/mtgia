@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart' show Share;
 import '../providers/deck_provider.dart';
 import '../models/deck_card_item.dart';
 import '../models/deck_details.dart';
@@ -107,28 +108,72 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                 case 'validate':
                   _validateDeck();
                   break;
+                case 'toggle_public':
+                  _togglePublic();
+                  break;
+                case 'share':
+                  _shareDeck();
+                  break;
+                case 'export':
+                  _exportDeckAsText();
+                  break;
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'paste',
-                child: ListTile(
-                  leading: Icon(Icons.content_paste_go),
-                  title: Text('Colar lista de cartas'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
+            itemBuilder: (context) {
+              final deck = context.read<DeckProvider>().selectedDeck;
+              final isPublic = deck?.isPublic ?? false;
+              return [
+                const PopupMenuItem(
+                  value: 'paste',
+                  child: ListTile(
+                    leading: Icon(Icons.content_paste_go),
+                    title: Text('Colar lista de cartas'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'validate',
-                child: ListTile(
-                  leading: Icon(Icons.verified_outlined),
-                  title: Text('Validar Deck'),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
+                const PopupMenuItem(
+                  value: 'validate',
+                  child: ListTile(
+                    leading: Icon(Icons.verified_outlined),
+                    title: Text('Validar Deck'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
                 ),
-              ),
-            ],
+                PopupMenuItem(
+                  value: 'toggle_public',
+                  child: ListTile(
+                    leading: Icon(
+                      isPublic ? Icons.lock_outline : Icons.public,
+                    ),
+                    title: Text(
+                      isPublic ? 'Tornar Privado' : 'Tornar Público',
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'share',
+                  child: ListTile(
+                    leading: Icon(Icons.share_outlined),
+                    title: Text('Compartilhar'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(
+                    leading: Icon(Icons.file_download_outlined),
+                    title: Text('Exportar como texto'),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ),
+              ];
+            },
           ),
         ],
         bottom: TabBar(
@@ -303,6 +348,51 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             ),
                           ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Visibility indicator
+                    InkWell(
+                      onTap: _togglePublic,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: deck.isPublic
+                              ? const Color(0xFF06B6D4).withValues(alpha: 0.15)
+                              : const Color(0xFF64748B).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: deck.isPublic
+                                ? const Color(0xFF06B6D4)
+                                : const Color(0xFF64748B),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              deck.isPublic ? Icons.public : Icons.lock_outline,
+                              size: 14,
+                              color: deck.isPublic
+                                  ? const Color(0xFF06B6D4)
+                                  : const Color(0xFF94A3B8),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              deck.isPublic ? 'Público' : 'Privado',
+                              style: TextStyle(
+                                color: deck.isPublic
+                                    ? const Color(0xFF06B6D4)
+                                    : const Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     DeckProgressIndicator(
@@ -1214,6 +1304,81 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     } finally {
       if (mounted) setState(() => _isValidating = false);
     }
+  }
+
+  // ───── Social / Sharing ─────
+
+  Future<void> _togglePublic() async {
+    final provider = context.read<DeckProvider>();
+    final deck = provider.selectedDeck;
+    if (deck == null) return;
+
+    final newState = !deck.isPublic;
+    final success =
+        await provider.togglePublic(deck.id, isPublic: newState);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? (newState
+                  ? 'Deck agora é público! 🌍'
+                  : 'Deck agora é privado 🔒')
+              : 'Erro ao alterar visibilidade',
+        ),
+        backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
+      ),
+    );
+  }
+
+  Future<void> _shareDeck() async {
+    final provider = context.read<DeckProvider>();
+    final result = await provider.exportDeckAsText(widget.deckId);
+
+    if (!mounted) return;
+
+    if (result.containsKey('error')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['error'].toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final text = result['text'] as String? ?? '';
+    await Share.share(text);
+  }
+
+  Future<void> _exportDeckAsText() async {
+    final provider = context.read<DeckProvider>();
+    final result = await provider.exportDeckAsText(widget.deckId);
+
+    if (!mounted) return;
+
+    if (result.containsKey('error')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['error'].toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final text = result['text'] as String? ?? '';
+    await Clipboard.setData(ClipboardData(text: text));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Lista de cartas copiada para a área de transferência! 📋'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   Future<void> _validateDeck() async {

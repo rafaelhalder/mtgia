@@ -2828,3 +2828,98 @@ Quando `POST /decks/:id/validate` retorna erro 400 (ex: carta com cópias acima 
 | `server/routes/decks/[id]/validate/index.dart` | Retorna `card_name` no body de erro |
 | `app/lib/features/decks/providers/deck_provider.dart` | `validateDeck()` retorna body em vez de throw para 400 |
 | `app/lib/features/decks/screens/deck_details_screen.dart` | Highlight vermelho, badge "Inválida", sort to top, banner de alerta |
+
+---
+
+## 🌍 Sistema Social / Compartilhamento de Decks
+
+### O Porquê
+O ManaLoom precisava evoluir de um app pessoal de deck building para uma plataforma social onde jogadores possam descobrir, compartilhar e copiar decks da comunidade. A coluna `is_public` já existia no banco de dados, mas nunca foi funcionalizada.
+
+### Arquitetura
+
+#### Backend: Endpoints Públicos vs Privados
+- **Decisão:** Criar um route tree separado `/community/` sem auth middleware obrigatório, em vez de modificar as rotas existentes de `/decks/` (que são protegidas por JWT).
+- **Justificativa:** Separação de responsabilidades — decks do usuário continuam 100% protegidos; decks públicos são acessíveis a qualquer um para visualização. Cópia requer auth (verificação manual no handler).
+
+#### Frontend: Provider Dedicado
+- **Decisão:** `CommunityProvider` separado do `DeckProvider`.
+- **Justificativa:** Estado independente — a lista de decks públicos tem paginação, busca e filtros próprios. Misturar com o provider de decks pessoais causaria conflitos de estado.
+
+### Endpoints Criados
+
+#### `GET /community/decks` — Listar decks públicos
+- **Query params:** `search` (nome/descrição), `format` (commander, standard...), `page`, `limit` (max 50)
+- **Resposta:** `{ data: [...], page, limit, total }` com `owner_username`, `commander_name`, `commander_image_url`, `card_count`
+- **Sem autenticação** — aberto para qualquer requisição
+
+#### `GET /community/decks/:id` — Detalhes de deck público
+- **Filtro:** `WHERE is_public = true` (sem verificação de user_id)
+- **Resposta:** Estrutura igual ao `GET /decks/:id` mas com `owner_username` e sem dados de pricing
+- **Inclui:** `stats` (mana_curve, color_distribution), `commander`, `main_board` agrupado, `all_cards_flat`
+
+#### `POST /community/decks/:id` — Copiar deck público
+- **Requer JWT** (verificação manual via `AuthService`)
+- Cria uma cópia do deck com nome `"Cópia de <nome original>"`
+- Copia todas as cartas do `deck_cards` em uma transação atômica
+- **Resposta:** `201 { success: true, deck: { id, name, ... } }`
+
+#### `GET /decks/:id/export` — Exportar deck como texto
+- **Requer JWT** (rota dentro de `/decks/`, protegida por middleware)
+- **Resposta:** `{ deck_name, format, text, card_count }`
+- Formato do texto:
+  ```
+  // Nome do Deck (formato)
+  // Exported from ManaLoom
+  
+  // Commander
+  1x Commander Name (set)
+  
+  // Main Board
+  4x Card Name (set)
+  ```
+
+### Endpoints Modificados
+
+#### `GET /decks` — Agora retorna `is_public`
+- Adicionado `d.is_public` ao SELECT nas 4 variantes de SQL (hasMeta × hasPricing)
+
+#### `PUT /decks/:id` — Agora aceita `is_public`
+- Body pode incluir `"is_public": true/false`
+- UPDATE SQL inclui `is_public = @isPublic`
+
+#### `GET /decks/:id` — Agora retorna `is_public`
+- Adicionado `is_public,` ao SELECT dinâmico
+
+### Flutter: Arquivos Criados
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `app/lib/features/community/providers/community_provider.dart` | Provider com `CommunityDeck` model, `fetchPublicDecks()` com paginação/busca/filtros, `fetchPublicDeckDetails()` |
+| `app/lib/features/community/screens/community_screen.dart` | Tela de exploração: barra de busca, chips de formato, listagem com scroll infinito, card com imagem do commander |
+| `app/lib/features/community/screens/community_deck_detail_screen.dart` | Detalhes do deck público: header com owner/formato/sinergia, botão "Copiar para minha coleção", lista de cartas agrupadas |
+
+### Flutter: Arquivos Modificados
+
+| Arquivo | Mudança |
+|---------|---------|
+| `app/lib/main.dart` | Import e registro do `CommunityProvider`, rota `/community` no GoRouter, redirect protegido |
+| `app/lib/core/widgets/main_scaffold.dart` | 5ª tab "Comunidade" (ícone `Icons.public`), reindexação dos tabs |
+| `app/lib/features/decks/providers/deck_provider.dart` | Métodos `togglePublic()`, `exportDeckAsText()`, `copyPublicDeck()` |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Badge público/privado clicável no Overview, menu "Tornar Público/Privado", "Compartilhar", "Exportar como texto" |
+| `app/pubspec.yaml` | Dependência `share_plus: ^10.1.4` |
+
+### Server: Arquivos Criados
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `server/routes/community/_middleware.dart` | Middleware sem auth (pass-through) |
+| `server/routes/community/decks/index.dart` | `GET /community/decks` — listagem pública com busca/paginação |
+| `server/routes/community/decks/[id].dart` | `GET /community/decks/:id` (detalhes) + `POST /community/decks/:id` (copiar) |
+| `server/routes/decks/[id]/export/index.dart` | `GET /decks/:id/export` — exportar como texto |
+
+### Paleta Visual
+- Badge "Público": `loomCyan (#06B6D4)` com fundo alpha 15%
+- Badge "Privado": `#64748B` (cinza neutro)
+- Chips de formato: `manaViolet` com fundo alpha 20%
+- Botão copiar: `loomCyan` sólido com texto branco

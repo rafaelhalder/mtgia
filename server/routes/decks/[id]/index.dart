@@ -146,6 +146,7 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
   final bracketRaw = body['bracket'];
   final bracket =
       bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
+  final isPublic = body['is_public'] as bool?;
   final cards = body['cards'] as List?; // Lista completa e nova de cartas
 
   try {
@@ -153,8 +154,8 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
       // 1. Verifica se o deck existe e pertence ao usuário
       final deckCheck = await session.execute(
         Sql.named(hasMeta
-            ? 'SELECT id, name, format, description, archetype, bracket FROM decks WHERE id = @deckId AND user_id = @userId'
-            : 'SELECT id, name, format, description, NULL::text as archetype, NULL::int as bracket FROM decks WHERE id = @deckId AND user_id = @userId'),
+            ? 'SELECT id, name, format, description, archetype, bracket, is_public FROM decks WHERE id = @deckId AND user_id = @userId'
+            : 'SELECT id, name, format, description, NULL::text as archetype, NULL::int as bracket, is_public FROM decks WHERE id = @deckId AND user_id = @userId'),
         parameters: {'deckId': deckId, 'userId': userId},
       );
 
@@ -167,12 +168,14 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
       final existingDescription = deckCheck.first[3] as String?;
       final existingArchetype = deckCheck.first[4] as String?;
       final existingBracket = deckCheck.first[5] as int?;
+      final existingIsPublic = deckCheck.first[6] as bool? ?? false;
 
       final nextName = name ?? existingName;
       final nextFormat = format ?? existingFormat;
       final nextDescription = description ?? existingDescription;
       final nextArchetype = archetype ?? existingArchetype;
       final nextBracket = bracket ?? existingBracket;
+      final nextIsPublic = isPublic ?? existingIsPublic;
 
       final currentFormat = nextFormat.toLowerCase();
 
@@ -181,12 +184,13 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
           format != null ||
           description != null ||
           archetype != null ||
-          bracket != null) {
+          bracket != null ||
+          isPublic != null) {
         await session.execute(
           Sql.named(
             hasMeta
-                ? 'UPDATE decks SET name = @name, format = @format, description = @desc, archetype = @archetype, bracket = @bracket WHERE id = @deckId'
-                : 'UPDATE decks SET name = @name, format = @format, description = @desc WHERE id = @deckId',
+                ? 'UPDATE decks SET name = @name, format = @format, description = @desc, archetype = @archetype, bracket = @bracket, is_public = @isPublic WHERE id = @deckId'
+                : 'UPDATE decks SET name = @name, format = @format, description = @desc, is_public = @isPublic WHERE id = @deckId',
           ),
           parameters: {
             'name': nextName,
@@ -194,6 +198,7 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             'desc': nextDescription,
             if (hasMeta) 'archetype': nextArchetype,
             if (hasMeta) 'bracket': nextBracket,
+            'isPublic': nextIsPublic,
             'deckId': deckId,
           },
         );
@@ -293,6 +298,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
               ? 'archetype, bracket,'
               : 'NULL::text as archetype, NULL::int as bracket,',
           'synergy_score, strengths, weaknesses,',
+          'is_public,',
           hasPricing
               ? 'pricing_currency, pricing_total, pricing_missing_cards, pricing_updated_at,'
               : "NULL::text as pricing_currency, NULL::numeric as pricing_total, 0::int as pricing_missing_cards, NULL::timestamptz as pricing_updated_at,",

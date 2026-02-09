@@ -23,6 +23,8 @@ import 'features/market/providers/market_provider.dart';
 import 'features/market/screens/market_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/scanner/screens/card_scanner_screen.dart';
+import 'features/community/providers/community_provider.dart';
+import 'features/community/screens/community_screen.dart';
 
 void main() {
   runApp(const ManaLoomApp());
@@ -40,6 +42,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   late final DeckProvider _deckProvider;
   late final CardProvider _cardProvider;
   late final MarketProvider _marketProvider;
+  late final CommunityProvider _communityProvider;
   late final GoRouter _router;
 
   @override
@@ -49,6 +52,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _deckProvider = DeckProvider();
     _cardProvider = CardProvider();
     _marketProvider = MarketProvider();
+    _communityProvider = CommunityProvider();
 
     // Log da URL da API no boot
     ApiClient.debugLogBaseUrl();
@@ -77,7 +81,8 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             location.startsWith('/home') ||
             location.startsWith('/decks') ||
             location.startsWith('/market') ||
-            location.startsWith('/profile');
+            location.startsWith('/profile') ||
+            location.startsWith('/community');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
           debugPrint('[🧭 Router] → /login (rota protegida sem auth)');
@@ -156,6 +161,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
               builder: (context, state) => const MarketScreen(),
             ),
             GoRoute(
+              path: '/community',
+              builder: (context, state) => const CommunityScreen(),
+            ),
+            GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
             ),
@@ -173,6 +182,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         ChangeNotifierProvider.value(value: _deckProvider),
         ChangeNotifierProvider.value(value: _cardProvider),
         ChangeNotifierProvider.value(value: _marketProvider),
+        ChangeNotifierProvider.value(value: _communityProvider),
       ],
       child: MaterialApp.router(
         title: 'ManaLoom - Deck Builder',

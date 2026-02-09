@@ -13,10 +13,12 @@ class MainScaffold extends StatelessWidget {
     int currentIndex = 0;
     if (location.startsWith('/decks')) {
       currentIndex = 1;
-    } else if (location.startsWith('/market')) {
+    } else if (location.startsWith('/community')) {
       currentIndex = 2;
-    } else if (location.startsWith('/profile')) {
+    } else if (location.startsWith('/market')) {
       currentIndex = 3;
+    } else if (location.startsWith('/profile')) {
+      currentIndex = 4;
     }
 
     return Scaffold(
@@ -32,9 +34,12 @@ class MainScaffold extends StatelessWidget {
               context.go('/decks');
               break;
             case 2:
-              context.go('/market');
+              context.go('/community');
               break;
             case 3:
+              context.go('/market');
+              break;
+            case 4:
               context.go('/profile');
               break;
           }
@@ -49,6 +54,11 @@ class MainScaffold extends StatelessWidget {
             icon: Icon(Icons.style_outlined),
             selectedIcon: Icon(Icons.style),
             label: 'Decks',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.public_outlined),
+            selectedIcon: Icon(Icons.public),
+            label: 'Comunidade',
           ),
           NavigationDestination(
             icon: Icon(Icons.trending_up_outlined),

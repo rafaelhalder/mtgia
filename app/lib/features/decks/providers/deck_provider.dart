@@ -1274,4 +1274,72 @@ class DeckProvider extends ChangeNotifier {
       return {'success': false, 'error': 'Erro de conexão: $e'};
     }
   }
+
+  // ───── Social / Sharing ─────
+
+  /// Alterna visibilidade pública/privada do deck via PUT /decks/:id
+  Future<bool> togglePublic(String deckId, {required bool isPublic}) async {
+    try {
+      final response = await _apiClient.put('/decks/$deckId', {
+        'is_public': isPublic,
+      });
+      if (response.statusCode == 200) {
+        // Atualiza cache local
+        if (_selectedDeck != null && _selectedDeck!.id == deckId) {
+          _selectedDeck = _selectedDeck!.copyWith(isPublic: isPublic);
+        }
+        final idx = _decks.indexWhere((d) => d.id == deckId);
+        if (idx >= 0) {
+          _decks[idx] = _decks[idx].copyWith(isPublic: isPublic);
+        }
+        invalidateDeckCache(deckId);
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      AppLogger.error('[DeckProvider] togglePublic error: $e');
+      return false;
+    }
+  }
+
+  /// Exporta deck como texto (lista de cartas)
+  Future<Map<String, dynamic>> exportDeckAsText(String deckId) async {
+    try {
+      final response = await _apiClient.get('/decks/$deckId/export');
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {
+        'error': 'Falha ao exportar deck: ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'error': 'Erro de conexão: $e'};
+    }
+  }
+
+  /// Copia um deck público para a conta do usuário autenticado
+  Future<Map<String, dynamic>> copyPublicDeck(String deckId) async {
+    try {
+      final response = await _apiClient.post(
+        '/community/decks/$deckId',
+        {},
+      );
+      if (response.statusCode == 201 && response.data is Map) {
+        // Recarrega lista de decks do usuário
+        await fetchDecks();
+        return {
+          'success': true,
+          'deck': response.data['deck'],
+        };
+      }
+      final data = response.data;
+      final error = (data is Map && data['error'] != null)
+          ? data['error'].toString()
+          : 'Falha ao copiar deck: ${response.statusCode}';
+      return {'success': false, 'error': error};
+    } catch (e) {
+      return {'success': false, 'error': 'Erro de conexão: $e'};
+    }
+  }
 }
