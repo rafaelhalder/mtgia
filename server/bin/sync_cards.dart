@@ -486,8 +486,9 @@ Future<int> _upsertCardsFromSet(
   final stmt = await session.prepare('''
     INSERT INTO cards (
       scryfall_id, name, mana_cost, type_line, oracle_text,
-      colors, color_identity, image_url, set_code, rarity
-    ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10)
+      colors, color_identity, image_url, set_code, rarity,
+      collector_number, foil
+    ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12)
     ON CONFLICT (scryfall_id) DO UPDATE SET
       name = EXCLUDED.name,
       mana_cost = EXCLUDED.mana_cost,
@@ -497,7 +498,9 @@ Future<int> _upsertCardsFromSet(
       color_identity = EXCLUDED.color_identity,
       image_url = EXCLUDED.image_url,
       set_code = EXCLUDED.set_code,
-      rarity = EXCLUDED.rarity
+      rarity = EXCLUDED.rarity,
+      collector_number = COALESCE(EXCLUDED.collector_number, cards.collector_number),
+      foil = COALESCE(EXCLUDED.foil, cards.foil)
   ''');
 
   var processed = 0;
@@ -523,11 +526,26 @@ Future<int> _upsertCardsFromSet(
       final imageUrl =
           'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
 
+      // MTGJSON: "number" = collector number, "hasFoil"/"hasNonFoil" para foil status
+      final collectorNumber = card['number']?.toString();
+      final hasFoil = card['hasFoil'] as bool?;
+      final hasNonFoil = card['hasNonFoil'] as bool?;
+      // Se só tem foil (e não tem non-foil) → foil=true
+      // Se só tem non-foil (e não tem foil) → foil=false
+      // Se tem ambos → null (pode ser qualquer um)
+      bool? foil;
+      if (hasFoil == true && hasNonFoil != true) {
+        foil = true;
+      } else if (hasNonFoil == true && hasFoil != true) {
+        foil = false;
+      }
+
       rows.add([
         oracleId, name, card['manaCost']?.toString(),
         card['type']?.toString(), card['text']?.toString(),
         colors, colorIdentity, imageUrl, setCode,
         card['rarity']?.toString(),
+        collectorNumber, foil,
       ]);
     }
 

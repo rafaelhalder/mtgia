@@ -78,21 +78,27 @@ Opções:
     await pool.runTx((session) async {
       await session.execute(Sql.named('TRUNCATE TABLE rules'));
 
+      // Batch INSERT: 1 query multi-VALUES por lote (antes: N queries 1-a-1)
       const batchSize = 500;
       for (var i = 0; i < parsed.length; i += batchSize) {
         final batch =
             parsed.sublist(i, (i + batchSize).clamp(0, parsed.length));
-        for (final rule in batch) {
-          await session.execute(
-            Sql.named(
-                'INSERT INTO rules (title, description, category) VALUES (@t, @d, @c)'),
-            parameters: {
-              't': rule.title,
-              'd': rule.description,
-              'c': rule.category,
-            },
-          );
+
+        final values = <String>[];
+        final params = <String, dynamic>{};
+        for (var j = 0; j < batch.length; j++) {
+          values.add('(@t$j, @d$j, @c$j)');
+          params['t$j'] = batch[j].title;
+          params['d$j'] = batch[j].description;
+          params['c$j'] = batch[j].category;
         }
+
+        await session.execute(
+          Sql.named(
+              'INSERT INTO rules (title, description, category) VALUES ${values.join(', ')}'),
+          parameters: params,
+        );
+
         stdout.write(
             '\r⬆️  Importando... ${(i + batch.length)}/${parsed.length}');
       }

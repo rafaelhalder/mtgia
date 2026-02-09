@@ -2240,3 +2240,252 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS supertypes TEXT[];
 Para qualquer dúvida ou sugestão sobre o projeto, sinta-se à vontade para abrir uma issue no repositório ou entrar em contato diretamente com os mantenedores.
 
 Obrigado por fazer parte do ManaLoom! Juntos, estamos tecendo a estratégia perfeita.
+
+---
+
+## 🚀 Otimização de Performance dos Scripts de Sync (Atualização)
+
+**Data:** Junho 2025  
+**Motivação:** Auditoria completa de todos os scripts de sincronização. Identificamos que a maioria fazia operações de banco 1-a-1 (INSERT/UPDATE individual por carta), gerando dezenas de milhares de round-trips desnecessários ao PostgreSQL.
+
+### Princípio Aplicado
+**Batch SQL:** Em vez de N queries individuais (`for card in cards → await UPDATE`), agrupamos operações em uma única query multi-VALUES por lote. Redução típica: **500×** menos round-trips por batch.
+
+### Scripts Otimizados
+
+#### 1. `bin/sync_prices.dart` — Preços via Scryfall
+- **Antes:** Cada carta recebida da API Scryfall era atualizada individualmente → até 75 UPDATEs sequenciais por batch.
+- **Depois:** Todos os pares `(oracle_id, price)` do batch são coletados em memória, e um único `UPDATE ... FROM (VALUES ...)` atualiza tudo de uma vez.
+- **Ganho:** 75 queries → 1 query por batch Scryfall.
+
+#### 2. `bin/sync_rules.dart` — Comprehensive Rules
+- **Antes:** Cada regra era inserida individualmente dentro do loop de batch → 500 INSERTs por lote.
+- **Depois:** Um único `INSERT INTO rules ... VALUES (...), (...), (...)` com parâmetros nomeados por lote.
+- **Ganho:** 500 queries → 1 query por batch de 500 regras.
+
+#### 3. `bin/populate_cmc.dart` — Converted Mana Cost
+- **Antes:** Cada uma das ~33.000 cartas tinha seu CMC atualizado individualmente → 33.000 UPDATEs sequenciais.
+- **Depois:** Todos os CMCs são calculados em memória, depois enviados em lotes de 500 via `UPDATE ... FROM (VALUES ...)`.
+- **Ganho:** 33.000 queries → ~66 queries (500× menos).
+
+#### 4. `bin/sync_staples.dart` — Format Staples
+- **Antes:** Cada staple era inserido/atualizado individualmente via `INSERT ON CONFLICT`.
+- **Depois:** UPSERTs em lotes de 50 com multi-VALUES `INSERT ... ON CONFLICT DO UPDATE`, com fallback individual se o batch falhar. Banned cards atualizadas via `WHERE card_name IN (...)` em vez de loop.
+- **Ganho:** N queries → ~N/50 queries para UPSERTs + 1 query para banidos.
+
+### Scripts Removidos (Redundantes)
+- `bin/sync_prices_mtgjson.dart` — Substituído pelo `_fast` variant
+- `bin/update_prices.dart` — Era apenas alias para `sync_prices.dart`
+- `bin/remote_sync_prices.sh` — Duplicava `cron_sync_prices_mtgjson.sh`
+- `bin/sync_cards.dart.bak` — Backup antigo
+- `bin/cron_sync_prices_mtgjson.ps1` — Script Windows desnecessário
+
+### Scripts que Continuam Ativos (Sem Alteração Necessária)
+- `bin/sync_cards.dart` — Já otimizado previamente com `Future.wait()` batches de 500
+- `bin/sync_prices_mtgjson_fast.dart` — Já usa temp table + batch INSERT de 1000
+- `bin/sync_status.dart` — Read-only, sem operações pesadas
+- Cron wrappers (`cron_sync_cards.sh`, `cron_sync_prices.sh`, `cron_sync_prices_mtgjson.sh`) — Shell scripts simples, sem alteração necessária
+
+---
+
+## Detecção de Collector Number, Set Code e Foil via OCR
+
+### O Porquê
+Cartas modernas de MTG (2020+) possuem na parte inferior informações impressas no formato:
+```
+157/274 • BLB • EN       (non-foil)
+157/274 ★ BLB ★ EN       (foil)
+```
+Onde:
+- **157/274** = collector number / total de cartas na edição
+- **•** (ponto) = indicador non-foil
+- **★** (estrela) = indicador foil
+- **BLB** = set code (código da edição)
+- **EN** = idioma
+
+Antes desta alteração, o scanner **só** identificava o **nome** da carta. O collector number era ativamente **filtrado** (tratado como ruído). Set codes eram extraídos do texto geral com muitos falsos positivos. Foil/non-foil era completamente ignorado.
+
+### O Como
+
+#### 1. Modelo `CollectorInfo` (nova classe)
+**Arquivo:** `app/lib/features/scanner/models/card_recognition_result.dart`
+
+Classe imutável com campos:
+- `collectorNumber` (String?) — ex: "157"
+- `totalInSet` (String?) — ex: "274"
+- `setCode` (String?) — ex: "BLB" (extraído da parte inferior, mais confiável)
+- `isFoil` (bool?) — `true` = ★, `false` = •, `null` = não detectado
+- `language` (String?) — ex: "EN", "PT", "JP"
+- `rawBottomText` (String?) — texto bruto para debug
+
+Adicionado como campo `collectorInfo` no `CardRecognitionResult`.
+
+#### 2. Extração via OCR: `_extractCollectorInfo()`
+**Arquivo:** `app/lib/features/scanner/services/card_recognition_service.dart`
+
+Método que:
+1. Filtra blocos/linhas com `boundingBox.top / imageHeight > 0.80` (bottom 20% da carta)
+2. Detecta **foil** por presença de ★/✩/☆ vs •/·
+3. Extrai **collector number** com regex `(\d{1,4})\s*/\s*(\d{1,4})` (padrão 157/274)
+4. Fallback para número solto, filtrando anos (1993-2030)
+5. Extrai **set code** com regex `[A-Z][A-Z0-9]{1,4}`, filtrando stopwords e falsos positivos
+6. Detecta **idioma** (EN, PT, JP, etc.)
+
+Chamado dentro de `_analyzeRecognizedText()` após a análise de candidatos a nome.
+
+#### 3. Matching Inteligente na Seleção de Edição
+**Arquivo:** `app/lib/features/scanner/providers/scanner_provider.dart`
+
+`_tryAutoSelectEdition()` agora recebe `CollectorInfo?` e usa:
+- **Prioridade 1:** Set code do bottom da carta (mais confiável que OCR geral)
+- **Prioridade 1b:** Se múltiplas printings no mesmo set, usa `collectorNumber` para match exato
+- **Prioridade 2:** Set codes candidatos do OCR geral (fallback)
+- **Prioridade 3:** Primeiro printing (mais recente)
+
+#### 4. Alterações no Banco de Dados
+**Migration:** `server/bin/migrate_add_collector_number.dart`
+
+```sql
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS collector_number TEXT;
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS foil BOOLEAN;
+CREATE INDEX IF NOT EXISTS idx_cards_collector_set
+  ON cards (collector_number, set_code)
+  WHERE collector_number IS NOT NULL;
+```
+
+**sync_cards.dart:** Agora salva `card['number']` como `collector_number` e calcula `foil` a partir de `hasFoil`/`hasNonFoil` do MTGJSON.
+
+**Printings endpoint:** `GET /cards/printings?name=X` agora retorna `collector_number` e `foil`.
+
+#### 5. Modelo Flutter
+**Arquivo:** `app/lib/features/decks/models/deck_card_item.dart`
+
+Adicionados campos:
+- `collectorNumber` (String?) — mapeado de `json['collector_number']`
+- `foil` (bool?) — mapeado de `json['foil']`
+
+### Diagrama de Fluxo
+
+```
+Câmera (frame) → ML Kit OCR → RecognizedText
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+            Blocos topo        Texto geral      Blocos bottom
+            (0-18%)            (inteiro)         (>80%)
+                │                   │               │
+                ▼                   ▼               ▼
+         _evaluateCandidate   _extractSetCode   _extractCollectorInfo
+         (nome da carta)      Candidates        (collector#, set, foil)
+                │                   │               │
+                └───────────────────┼───────────────┘
+                                    ▼
+                         CardRecognitionResult
+                         ├─ primaryName
+                         ├─ setCodeCandidates
+                         └─ collectorInfo
+                                    │
+                                    ▼
+                        _tryAutoSelectEdition
+                         1) collectorInfo.setCode match
+                         2) collectorInfo.collectorNumber match
+                         3) setCodeCandidates match
+                         4) fallback: primeiro printing
+```
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `app/lib/features/scanner/models/card_recognition_result.dart` | Nova classe `CollectorInfo` + campo `collectorInfo` |
+| `app/lib/features/scanner/services/card_recognition_service.dart` | Método `_extractCollectorInfo()` + integração em `_analyzeRecognizedText()` |
+| `app/lib/features/scanner/providers/scanner_provider.dart` | `_tryAutoSelectEdition()` com prioridade collector info |
+| `app/lib/features/decks/models/deck_card_item.dart` | Campos `collectorNumber` e `foil` |
+| `server/database_setup.sql` | Colunas `collector_number` TEXT e `foil` BOOLEAN |
+| `server/bin/migrate_add_collector_number.dart` | Migration idempotente |
+| `server/bin/sync_cards.dart` | Salva `number` e `hasFoil`/`hasNonFoil` do MTGJSON |
+| `server/routes/cards/printings/index.dart` | Retorna `collector_number` e `foil` na response |
+
+---
+
+## Condição Física de Cartas (TCGPlayer Standard)
+
+**Data:** Junho 2025  
+**Motivação:** Permitir que o usuário registre a condição física de cada carta em seus decks, seguindo o padrão da indústria TCGPlayer. Isso é fundamental para controle de coleção, avaliação de preços (uma NM vale mais que uma HP) e futuramente integração com marketplaces.
+
+### Escala de Condições (TCGPlayer)
+
+| Código | Nome | Descrição |
+|--------|------|-----------|
+| **NM** | Near Mint | Perfeita ou quase perfeita, sem desgaste visível |
+| **LP** | Lightly Played | Desgaste mínimo, pequenos arranhões leves |
+| **MP** | Moderately Played | Desgaste moderado, vincos/marcas visíveis |
+| **HP** | Heavily Played | Desgaste significativo, danos estruturais visíveis |
+| **DMG** | Damaged | Carta danificada (rasgos, dobras, água, etc.) |
+
+> **Nota:** O TCGPlayer **não** usa "Mint" ou "Gem Mint". O mais alto é **Near Mint**.
+
+### Implementação
+
+#### 1. Banco de Dados
+- **Coluna:** `deck_cards.condition TEXT DEFAULT 'NM'`
+- **Constraint:** `CHECK (condition IN ('NM', 'LP', 'MP', 'HP', 'DMG'))`
+- **Migration:** `server/bin/migrate_add_card_condition.dart`
+- A condição está na tabela `deck_cards` (e não em `cards`), pois a mesma carta pode ter condições diferentes em decks diferentes.
+
+#### 2. Endpoints Atualizados
+
+**POST /decks/:id/cards** (adicionar carta)
+```json
+{ "card_id": "...", "quantity": 1, "is_commander": false, "condition": "LP" }
+```
+Se `condition` não for enviado, assume `NM`.
+
+**POST /decks/:id/cards/set** (definir qtd absoluta)
+```json
+{ "card_id": "...", "quantity": 2, "condition": "MP" }
+```
+
+**PUT /decks/:id** (atualização completa)
+```json
+{ "cards": [{ "card_id": "...", "quantity": 4, "is_commander": false, "condition": "NM" }] }
+```
+
+**GET /decks/:id** — retorna `condition` em cada carta.
+
+#### 3. Flutter — Model `CardCondition` enum
+
+```dart
+enum CardCondition {
+  nm('NM', 'Near Mint'),
+  lp('LP', 'Lightly Played'),
+  mp('MP', 'Moderately Played'),
+  hp('HP', 'Heavily Played'),
+  dmg('DMG', 'Damaged');
+
+  const CardCondition(this.code, this.label);
+  final String code;
+  final String label;
+
+  static CardCondition fromCode(String? code) { ... }
+}
+```
+
+Adicionado em `deck_card_item.dart` junto com campo `condition` no modelo `DeckCardItem`.
+
+#### 4. Flutter — UI
+
+- **Lista de cartas:** badge colorido ao lado do set code quando condição ≠ NM (verde=NM, cyan=LP, amber=MP, orange=HP, red=DMG).
+- **Dialog de edição:** dropdown com todas as 5 condições abaixo do seletor de edição.
+- **Provider:** `addCardToDeck()` e `updateDeckCardEntry()` aceitam parâmetro `condition`.
+
+### Arquivos Alterados
+| Arquivo | Alteração |
+|---------|-----------|
+| `server/database_setup.sql` | Coluna `condition` + CHECK constraint em `deck_cards` |
+| `server/bin/migrate_add_card_condition.dart` | Migration idempotente (ADD COLUMN + UPDATE + CHECK) |
+| `server/routes/decks/[id]/cards/index.dart` | Parsing, validação, INSERT/UPSERT com condition |
+| `server/routes/decks/[id]/cards/set/index.dart` | Parsing, validação, INSERT ON CONFLICT com condition |
+| `server/routes/decks/[id]/index.dart` | GET retorna `dc.condition`; PUT inclui condition no batch INSERT |
+| `app/lib/features/decks/models/deck_card_item.dart` | Enum `CardCondition` + campo `condition` + `copyWith` + `fromJson` |
+| `app/lib/features/decks/providers/deck_provider.dart` | Parâmetro `condition` em `addCardToDeck` e `updateDeckCardEntry` |
+| `app/lib/features/decks/screens/deck_details_screen.dart` | Dropdown de condição no dialog de edição + badge na lista de cartas |

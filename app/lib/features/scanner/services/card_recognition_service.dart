@@ -372,6 +372,13 @@ class CardRecognitionService {
     final confidence = _calculateConfidence(unique);
     final setCodeCandidates = _extractSetCodeCandidates(recognizedText.text);
 
+    // Extrai informações do colecionador da parte inferior da carta
+    final collectorInfo = _extractCollectorInfo(
+      recognizedText,
+      imageWidth,
+      imageHeight,
+    );
+
     return CardRecognitionResult.success(
       primaryName: unique.first.text,
       alternatives:
@@ -384,6 +391,7 @@ class CardRecognitionService {
       setCodeCandidates: setCodeCandidates,
       confidence: confidence,
       allCandidates: unique,
+      collectorInfo: collectorInfo,
     );
   }
 
@@ -420,6 +428,150 @@ class CardRecognitionService {
     }
 
     return candidates;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EXTRAÇÃO DE INFORMAÇÕES DO COLECIONADOR (parte inferior da carta)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Extrai número de colecionador, set code e status foil da parte inferior
+  /// da carta.
+  ///
+  /// Cartas modernas (2020+) têm na parte inferior um formato como:
+  ///   "157/274 • BLB • EN"    (non-foil)
+  ///   "157/274 ★ BLB ★ EN"    (foil)
+  ///   "157 BLB EN"            (simplificado)
+  ///   "BLB • 157/274"         (ordem alternativa)
+  ///
+  /// Também funciona para layouts mais antigos como "CMM 157"
+  CollectorInfo? _extractCollectorInfo(
+    RecognizedText recognizedText,
+    double imageWidth,
+    double imageHeight,
+  ) {
+    // Coleta texto RAW de blocos/linhas na parte inferior da carta (>80%)
+    final bottomTexts = <String>[];
+
+    for (final block in recognizedText.blocks) {
+      final relTop = block.boundingBox.top / imageHeight;
+
+      // Blocos na região inferior da carta (>80% da altura)
+      if (relTop > 0.80) {
+        bottomTexts.add(block.text);
+        for (final line in block.lines) {
+          bottomTexts.add(line.text);
+        }
+      } else {
+        // Mesmo em blocos mais altos, linhas individuais podem estar embaixo
+        for (final line in block.lines) {
+          final lineRelTop = line.boundingBox.top / imageHeight;
+          if (lineRelTop > 0.80) {
+            bottomTexts.add(line.text);
+          }
+        }
+      }
+    }
+
+    if (bottomTexts.isEmpty) return null;
+
+    String? collectorNumber;
+    String? totalInSet;
+    String? setCode;
+    bool? isFoil;
+    String? language;
+
+    // Junta todo o texto inferior para análise
+    final rawBottom = bottomTexts.join(' ').trim();
+
+    // ── Detecção de foil (★) vs non-foil (•) ──
+    // A estrela ★ (U+2605) indica foil
+    // O ponto • (U+2022) indica non-foil
+    // Alguns OCRs lêem ★ como * ou ✩ ou ☆
+    if (rawBottom.contains('★') ||
+        rawBottom.contains('✩') ||
+        rawBottom.contains('☆')) {
+      isFoil = true;
+    } else if (rawBottom.contains('•') || rawBottom.contains('·')) {
+      isFoil = false;
+    }
+
+    // ── Padrão principal: "157/274" (collector_number/total) ──
+    final collectorSlashPattern = RegExp(r'(\d{1,4})\s*/\s*(\d{1,4})');
+    final slashMatch = collectorSlashPattern.firstMatch(rawBottom);
+    if (slashMatch != null) {
+      collectorNumber = slashMatch.group(1);
+      totalInSet = slashMatch.group(2);
+    }
+
+    // ── Padrão alternativo: número solto sem barra (ex: "157") ──
+    // Só usa se não encontrou o padrão com barra
+    if (collectorNumber == null) {
+      // Procura números de 1-4 dígitos que NÃO sejam parte de um ano (2024)
+      final soloNumberPattern = RegExp(
+        r'(?<!\d)(\d{1,4})(?!\d|/\d)',
+      );
+      for (final m in soloNumberPattern.allMatches(rawBottom)) {
+        final num = m.group(1)!;
+        final numVal = int.tryParse(num);
+        // Ignora anos (1993-2030) e números muito grandes
+        if (numVal != null && (numVal < 1993 || numVal > 2030) && numVal <= 999) {
+          collectorNumber = num;
+          break;
+        }
+      }
+    }
+
+    // ── Detecção de Set Code (3-5 letras maiúsculas) ──
+    // O set code fica próximo ao collector number, geralmente separado por •/★
+    // Exemplos: BLB, CMM, MH3, 2XM, M21
+    final setCodePattern = RegExp(
+      r'\b([A-Z][A-Z0-9]{1,4})\b',
+    );
+    for (final m in setCodePattern.allMatches(rawBottom.toUpperCase())) {
+      final candidate = m.group(1)!;
+      // Filtra: não pode ser só números, não pode ser stopword, não pode ser idioma longo
+      if (RegExp(r'^\d+$').hasMatch(candidate)) continue;
+      if (_setCodeStopwords.contains(candidate)) continue;
+      // Set codes têm 2-5 caracteres e normalmente 3
+      if (candidate.length < 2 || candidate.length > 5) continue;
+      // Ignora tokens que parecem ser parte de texto de artista/copyright
+      if ({'TM', 'LLC', 'INC', 'CO', 'BY', 'OF', 'II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'XI', 'XII'}
+          .contains(candidate)) continue;
+      setCode = candidate;
+      break;
+    }
+
+    // ── Detecção de idioma (EN, PT, JP, DE, FR, ES, IT, RU, KO, ZH, JA) ──
+    final langPattern = RegExp(
+      r'\b(EN|PT|JP|JA|DE|FR|ES|IT|RU|KO|ZH|PH|CS|CT)\b',
+    );
+    final langMatch = langPattern.firstMatch(rawBottom.toUpperCase());
+    if (langMatch != null) {
+      language = langMatch.group(1);
+    }
+
+    // Se não encontrou nada útil, retorna null
+    if (collectorNumber == null && setCode == null && isFoil == null) {
+      return null;
+    }
+
+    debugPrint(
+      '[🔍 Collector] Bottom: "$rawBottom" → '
+      '#${collectorNumber ?? "?"}'
+      '/${totalInSet ?? "?"} '
+      '${isFoil == true ? "★FOIL" : isFoil == false ? "•NON-FOIL" : "?"} '
+      '${setCode ?? "?"} '
+      '${language ?? "?"}',
+    );
+
+    return CollectorInfo(
+      collectorNumber: collectorNumber,
+      totalInSet: totalInSet,
+      setCode: setCode,
+      isFoil: isFoil,
+      language: language,
+      rawBottomText: rawBottom,
+    );
   }
 
   /// Avalia se um texto é candidato a nome de carta
@@ -551,8 +703,12 @@ class CardRecognitionService {
       score -= 20;
     }
 
-    // Apóstrofe (comum: "Jace's", "Urza's")
-    if (cleaned.contains("'")) score += 15;
+    // Apóstrofe possessivo (extremamente comum: "Jace's", "Urza's", "Bender's")
+    if (RegExp(r"'s\b", caseSensitive: false).hasMatch(cleaned)) {
+      score += 20; // Padrão possessivo = forte indicador de nome MTG
+    } else if (cleaned.contains("'")) {
+      score += 12;
+    }
 
     // Hífen (comum: "Will-o'-the-Wisp")
     if (cleaned.contains("-")) score += 10;
@@ -678,21 +834,27 @@ class CardRecognitionService {
   }
 
   /// Calcula confiança final
+  ///
+  /// O score máximo realista no live_stream para um nome perfeito no topo
+  /// da carta é ~100-110 pontos (posição 55+15+12+8 = 90, texto ~20-30).
+  /// Usar maxScore=150 fazia nomes perfeitos darem 66% — recalibrado.
   double _calculateConfidence(List<CardNameCandidate> candidates) {
     if (candidates.isEmpty) return 0;
 
-    const maxScore = 150.0;
+    const maxScore = 115.0; // calibrado para score realista no topo da carta
     var conf = (candidates.first.score / maxScore) * 100;
 
     // Bônus por diferença clara entre primeiro e segundo
     if (candidates.length >= 2) {
       final diff = candidates[0].score - candidates[1].score;
-      if (diff > 25) conf += 8;
-      if (diff > 50) conf += 8;
+      if (diff > 20) conf += 5;
+      if (diff > 40) conf += 5;
+      if (diff > 60) conf += 5;
     }
 
     // Bônus por poucos candidatos (menos ambiguidade)
     if (candidates.length <= 3) conf += 5;
+    if (candidates.length == 1) conf += 5; // candidato único = alta certeza
 
     return conf.clamp(0, 100);
   }

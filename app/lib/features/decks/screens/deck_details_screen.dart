@@ -630,6 +630,40 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                               .outline,
                                                     ),
                                               ),
+                                            if (card.condition != CardCondition.nm) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                  vertical: 1,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: _conditionColor(card.condition)
+                                                      .withOpacity(0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                    color: _conditionColor(
+                                                      card.condition,
+                                                    ),
+                                                    width: 0.5,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  card.condition.code,
+                                                  style: theme
+                                                      .textTheme.labelSmall
+                                                      ?.copyWith(
+                                                        fontSize: 9,
+                                                        color: _conditionColor(
+                                                          card.condition,
+                                                        ),
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ],
@@ -1167,6 +1201,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
     bool isSaving = false;
     String? error;
     String selectedCardId = card.id;
+    CardCondition selectedCondition = card.condition;
 
     await showDialog<void>(
       context: context,
@@ -1273,6 +1308,34 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                           );
                         },
                       ),
+                      const SizedBox(height: 12),
+                      // --- Condição (TCGPlayer standard) ---
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Condição',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<CardCondition>(
+                            isExpanded: true,
+                            value: selectedCondition,
+                            items: CardCondition.values.map((c) {
+                              return DropdownMenuItem<CardCondition>(
+                                value: c,
+                                child: Text('${c.code} — ${c.label}'),
+                              );
+                            }).toList(),
+                            onChanged: isSaving
+                                ? null
+                                : (v) {
+                                    if (v == null) return;
+                                    setDialogState(
+                                      () => selectedCondition = v,
+                                    );
+                                  },
+                          ),
+                        ),
+                      ),
                       if (error != null) ...[
                         const SizedBox(height: 12),
                         Text(
@@ -1316,6 +1379,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   quantity: qty,
                                   cardName: card.name,
                                   consolidateSameName: consolidateSameName,
+                                  condition: selectedCondition.code,
                                 );
                                 if (!ctx.mounted) return;
                                 Navigator.pop(ctx);
@@ -1868,6 +1932,22 @@ class _PricingRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Retorna cor indicativa da condição da carta (TCGPlayer standard).
+Color _conditionColor(CardCondition c) {
+  switch (c) {
+    case CardCondition.nm:
+      return const Color(0xFF22C55E); // green
+    case CardCondition.lp:
+      return const Color(0xFF06B6D4); // cyan
+    case CardCondition.mp:
+      return const Color(0xFFF59E0B); // amber
+    case CardCondition.hp:
+      return const Color(0xFFF97316); // orange
+    case CardCondition.dmg:
+      return const Color(0xFFEF4444); // red
   }
 }
 

@@ -90,7 +90,10 @@ class ScannerProvider extends ChangeNotifier {
 
     // Confirmado por N frames consecutivos → busca automática
     if (_liveConfirmCount >= _liveConfirmThreshold) {
-      debugPrint('[📸 Live] Confirmado: "$detected" (${result.confidence}%)');
+      debugPrint(
+        '[📸 Live] Confirmado: "$detected" (${result.confidence}%)'
+        '${result.collectorInfo?.hasData == true ? ' | Collector: ${result.collectorInfo}' : ''}',
+      );
       _liveDetectedName = null;
       _liveConfirmCount = 0;
 
@@ -108,6 +111,7 @@ class ScannerProvider extends ChangeNotifier {
           _autoSelectedCard = _tryAutoSelectEdition(
             printings: resolved,
             setCodeCandidates: result.setCodeCandidates,
+            collectorInfo: result.collectorInfo,
           );
           _setState(ScannerState.found);
           return true;
@@ -169,6 +173,7 @@ class ScannerProvider extends ChangeNotifier {
         _autoSelectedCard = _tryAutoSelectEdition(
           printings: resolved,
           setCodeCandidates: result.setCodeCandidates,
+          collectorInfo: result.collectorInfo,
         );
         _setState(ScannerState.found);
         return;
@@ -206,6 +211,7 @@ class ScannerProvider extends ChangeNotifier {
           setCodeCandidates: result.setCodeCandidates,
           confidence: result.confidence * 0.9,
           allCandidates: result.allCandidates,
+          collectorInfo: result.collectorInfo,
         );
         return altExact;
       }
@@ -230,6 +236,7 @@ class ScannerProvider extends ChangeNotifier {
             setCodeCandidates: result.setCodeCandidates,
             confidence: result.confidence * 0.8,
             allCandidates: result.allCandidates,
+            collectorInfo: result.collectorInfo,
           );
           return bestExact;
         }
@@ -254,6 +261,7 @@ class ScannerProvider extends ChangeNotifier {
         setCodeCandidates: result.setCodeCandidates,
         confidence: result.confidence * 0.7,
         allCandidates: result.allCandidates,
+        collectorInfo: result.collectorInfo,
       );
       debugPrint(
         '[🔍 Resolve] Encontrou "$resolvedName" via Scryfall '
@@ -268,11 +276,52 @@ class ScannerProvider extends ChangeNotifier {
   DeckCardItem? _tryAutoSelectEdition({
     required List<DeckCardItem> printings,
     required List<String> setCodeCandidates,
+    CollectorInfo? collectorInfo,
   }) {
     if (printings.isEmpty) return null;
 
     if (printings.length == 1) return printings.first;
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRIORIDADE 1: Set code extraído da parte inferior da carta (mais preciso)
+    // O set code do bottom é o que realmente está impresso na carta física
+    // ═══════════════════════════════════════════════════════════════════════
+    if (collectorInfo?.setCode != null) {
+      final bottomSet = collectorInfo!.setCode!.toUpperCase();
+      final matches =
+          printings
+              .where((p) => p.setCode.trim().isNotEmpty)
+              .where((p) => p.setCode.toUpperCase() == bottomSet)
+              .toList();
+
+      if (matches.isNotEmpty) {
+        // Se temos collector number, tenta match mais preciso ainda
+        if (collectorInfo.collectorNumber != null && matches.length > 1) {
+          final cn = collectorInfo.collectorNumber!;
+          final exact = matches.where(
+            (p) => p.collectorNumber == cn,
+          ).toList();
+          if (exact.isNotEmpty) {
+            debugPrint(
+              '[📌 AutoSelect] Match exato: $bottomSet #$cn'
+              '${collectorInfo.isFoil == true ? " ★FOIL" : ""}',
+            );
+            return exact.first;
+          }
+        }
+
+        debugPrint(
+          '[📌 AutoSelect] Match pelo set code do bottom: $bottomSet'
+          '${collectorInfo.collectorNumber != null ? " #${collectorInfo.collectorNumber}" : ""}'
+          '${collectorInfo.isFoil == true ? " ★FOIL" : ""}',
+        );
+        return matches.first;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRIORIDADE 2: Set codes do OCR geral (menos preciso, pode ter ruído)
+    // ═══════════════════════════════════════════════════════════════════════
     for (final code in setCodeCandidates) {
       final matches =
           printings
@@ -282,7 +331,10 @@ class ScannerProvider extends ChangeNotifier {
       if (matches.length == 1) return matches.first;
     }
 
-    return null;
+    // Se não achou set code exato, auto-seleciona a primeira printing
+    // (geralmente a mais recente). Não mostra modal — o usuário quer
+    // adicionar a carta, não escolher edição manualmente.
+    return printings.first;
   }
 
   /// Busca manual por um nome alternativo
@@ -306,6 +358,7 @@ class ScannerProvider extends ChangeNotifier {
         _autoSelectedCard = _tryAutoSelectEdition(
           printings: cards,
           setCodeCandidates: _lastResult?.setCodeCandidates ?? const [],
+          collectorInfo: _lastResult?.collectorInfo,
         );
         _setState(ScannerState.found);
       } else {

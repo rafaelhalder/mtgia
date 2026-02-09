@@ -97,6 +97,7 @@ class DeckProvider extends ChangeNotifier {
     required int quantity,
     String? cardName,
     bool consolidateSameName = false,
+    String condition = 'NM',
   }) async {
     if (quantity <= 0) {
       throw Exception('Quantidade deve ser > 0');
@@ -109,6 +110,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': newCardId,
         'quantity': quantity,
         'replace_same_name': true,
+        'condition': condition,
       });
 
       if (response.statusCode != 200) {
@@ -133,6 +135,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': newCardId,
         'quantity': quantity,
         'replace_same_name': false,
+        'condition': condition,
       });
 
       if (response.statusCode != 200) {
@@ -369,6 +372,7 @@ class DeckProvider extends ChangeNotifier {
     DeckCardItem card,
     int quantity, {
     bool isCommander = false,
+    String condition = 'NM',
   }) async {
     if (_selectedDeck == null || _selectedDeck!.id != deckId) {
       await fetchDeckDetails(deckId);
@@ -386,6 +390,7 @@ class DeckProvider extends ChangeNotifier {
         'card_id': card.id,
         'quantity': quantity,
         'is_commander': isCommander,
+        'condition': condition,
       });
 
       if (response.statusCode == 200) {

@@ -275,6 +275,7 @@ Future<List<Map<String, dynamic>>> _fetchScryfallCards({
 }
 
 /// Insere ou atualiza staples no banco de dados
+/// Batch UPSERT: 1 query multi-VALUES por lote (antes: N queries 1-a-1)
 Future<Map<String, int>> _upsertStaples({
   required Session conn,
   required List<Map<String, dynamic>> cards,
@@ -283,53 +284,104 @@ Future<Map<String, int>> _upsertStaples({
   required String category,
   List<String>? colorIdentity,
 }) async {
+  if (cards.isEmpty) return {'inserted': 0, 'updated': 0};
+
   int inserted = 0;
   int updated = 0;
 
-  for (final card in cards) {
+  // Processa em lotes de 50 para não estourar parâmetros
+  const batchSize = 50;
+  for (var i = 0; i < cards.length; i += batchSize) {
+    final end = (i + batchSize > cards.length) ? cards.length : i + batchSize;
+    final batch = cards.sublist(i, end);
+
+    final values = <String>[];
+    final params = <String, dynamic>{};
+
+    for (var j = 0; j < batch.length; j++) {
+      final card = batch[j];
+      values.add(
+        '(@name$j, @format$j, @arch$j, @colors$j, @rank$j, @cat$j, @sid$j::uuid, FALSE, CURRENT_TIMESTAMP)',
+      );
+      params['name$j'] = card['name'];
+      params['format$j'] = format;
+      params['arch$j'] = archetype;
+      params['colors$j'] = TypedValue(
+          Type.textArray, colorIdentity ?? card['color_identity'] ?? []);
+      params['rank$j'] = card['edhrec_rank'];
+      params['cat$j'] = category;
+      params['sid$j'] = card['scryfall_id'];
+    }
+
     try {
-      // Tenta inserir, se já existir atualiza
       final result = await conn.execute(
         Sql.named('''
           INSERT INTO format_staples 
             (card_name, format, archetype, color_identity, edhrec_rank, category, scryfall_id, is_banned, last_synced_at)
-          VALUES 
-            (@name, @format, @archetype, @colors, @rank, @category, @scryfall_id::uuid, FALSE, CURRENT_TIMESTAMP)
+          VALUES ${values.join(', ')}
           ON CONFLICT (card_name, format, archetype) 
           DO UPDATE SET 
-            edhrec_rank = @rank,
-            color_identity = @colors,
-            scryfall_id = @scryfall_id::uuid,
+            edhrec_rank = EXCLUDED.edhrec_rank,
+            color_identity = EXCLUDED.color_identity,
+            scryfall_id = EXCLUDED.scryfall_id,
             is_banned = FALSE,
             last_synced_at = CURRENT_TIMESTAMP
           RETURNING (xmax = 0) AS inserted
         '''),
-        parameters: {
-          'name': card['name'],
-          'format': format,
-          'archetype': archetype,
-          'colors': TypedValue(Type.textArray, colorIdentity ?? card['color_identity'] ?? []),
-          'rank': card['edhrec_rank'],
-          'category': category,
-          'scryfall_id': card['scryfall_id'],
-        },
+        parameters: params,
       );
 
-      if (result.isNotEmpty && result.first[0] == true) {
-        inserted++;
-      } else {
-        updated++;
+      for (final row in result) {
+        if (row[0] == true) {
+          inserted++;
+        } else {
+          updated++;
+        }
       }
     } catch (e) {
-      // Ignora erros individuais para não parar o processo
-      // print('     ⚠️ Erro ao inserir ${card['name']}: $e');
+      // Fallback: se batch falhar, tenta individualmente
+      for (final card in batch) {
+        try {
+          final result = await conn.execute(
+            Sql.named('''
+              INSERT INTO format_staples 
+                (card_name, format, archetype, color_identity, edhrec_rank, category, scryfall_id, is_banned, last_synced_at)
+              VALUES 
+                (@name, @format, @archetype, @colors, @rank, @category, @scryfall_id::uuid, FALSE, CURRENT_TIMESTAMP)
+              ON CONFLICT (card_name, format, archetype) 
+              DO UPDATE SET 
+                edhrec_rank = @rank,
+                color_identity = @colors,
+                scryfall_id = @scryfall_id::uuid,
+                is_banned = FALSE,
+                last_synced_at = CURRENT_TIMESTAMP
+              RETURNING (xmax = 0) AS inserted
+            '''),
+            parameters: {
+              'name': card['name'],
+              'format': format,
+              'archetype': archetype,
+              'colors': TypedValue(Type.textArray,
+                  colorIdentity ?? card['color_identity'] ?? []),
+              'rank': card['edhrec_rank'],
+              'category': category,
+              'scryfall_id': card['scryfall_id'],
+            },
+          );
+          if (result.isNotEmpty && result.first[0] == true) {
+            inserted++;
+          } else {
+            updated++;
+          }
+        } catch (_) {}
+      }
     }
   }
 
   return {'inserted': inserted, 'updated': updated};
 }
 
-/// Verifica cartas banidas e marca no banco
+/// Verifica cartas banidas e marca no banco (batch UPDATE)
 Future<int> _syncBannedCards(Session conn, String format) async {
   int bannedCount = 0;
 
@@ -340,26 +392,24 @@ Future<int> _syncBannedCards(Session conn, String format) async {
       limit: 200,
     );
 
-    for (final card in bannedCards) {
-      try {
-        final result = await conn.execute(
-          Sql.named('''
-            UPDATE format_staples 
-            SET is_banned = TRUE, last_synced_at = CURRENT_TIMESTAMP
-            WHERE card_name = @name AND format = @format
-          '''),
-          parameters: {
-            'name': card['name'],
-            'format': format,
-          },
-        );
-        
-        if (result.affectedRows > 0) {
-          bannedCount++;
-        }
-      } catch (e) {
-        // Ignora erros individuais
+    // Batch UPDATE: 1 query com IN(...) ao invés de N queries 1-a-1
+    if (bannedCards.isNotEmpty) {
+      final nameParams = <String>[];
+      final params = <String, dynamic>{'format': format};
+      for (var i = 0; i < bannedCards.length; i++) {
+        nameParams.add('@name$i');
+        params['name$i'] = bannedCards[i]['name'];
       }
+
+      final result = await conn.execute(
+        Sql.named('''
+          UPDATE format_staples 
+          SET is_banned = TRUE, last_synced_at = CURRENT_TIMESTAMP
+          WHERE card_name IN (${nameParams.join(', ')}) AND format = @format
+        '''),
+        parameters: params,
+      );
+      bannedCount = result.affectedRows;
     }
 
     // Também atualiza a tabela card_legalities se existir dados

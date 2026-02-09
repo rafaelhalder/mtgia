@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../providers/scanner_provider.dart';
 import '../widgets/scanner_overlay.dart';
 import '../widgets/scanned_card_preview.dart';
@@ -31,10 +32,9 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   bool _hasPermission = false;
   String? _permissionError;
   bool _isInitializingCamera = false;
-  String? _lastAutoSelectedCardId;
   bool _isStreaming = false;
   DateTime _lastFrameProcessed = DateTime.now();
-  static const _frameThrottleMs = 1200; // intervalo mínimo entre processamentos
+  static const _frameThrottleMs = 800; // intervalo mínimo entre processamentos
 
   @override
   void initState() {
@@ -112,7 +112,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
 
       final controller = CameraController(
         camera,
-        ResolutionPreset.medium, // medium = melhor performance para stream
+        ResolutionPreset.high, // high = boa qualidade OCR sem ser pesado demais
         enableAudio: false,
         imageFormatGroup: defaultTargetPlatform == TargetPlatform.iOS
             ? ImageFormatGroup.bgra8888
@@ -120,12 +120,25 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       );
       await controller.initialize();
 
-      // Configura foco automático
+      // Configura foco automático contínuo
       try {
         await controller.setFocusMode(FocusMode.auto);
-      } catch (_) {
-        // Ignora se não suportado
-      }
+      } catch (_) {}
+
+      // Aplica zoom leve para aproximar o nome da carta
+      try {
+        final maxZoom = await controller.getMaxZoomLevel();
+        final minZoom = await controller.getMinZoomLevel();
+        // Zoom 1.5x ou o máximo disponível — ideal para ler nome de carta
+        final targetZoom = (minZoom + 0.5).clamp(minZoom, maxZoom.clamp(minZoom, 2.5));
+        await controller.setZoomLevel(targetZoom);
+        debugPrint('[📸 Camera] Zoom: $targetZoom (min=$minZoom, max=$maxZoom)');
+      } catch (_) {}
+
+      // Ativa exposição automática para condições de luz variadas
+      try {
+        await controller.setExposureMode(ExposureMode.auto);
+      } catch (_) {}
 
       if (!mounted) {
         await controller.dispose();
@@ -239,7 +252,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${card.name} adicionada ao deck!'),
-          backgroundColor: Colors.green,
+          backgroundColor: AppTheme.loomCyan.withValues(alpha: 0.9),
           action: SnackBarAction(
             label: 'Ver Deck',
             textColor: Colors.white,
@@ -256,7 +269,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(deckProvider.errorMessage ?? 'Erro ao adicionar carta'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFFDC2626),
         ),
       );
     }
@@ -296,7 +309,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                         : Icons.auto_fix_off,
                     color:
                         scannerProvider.useFoilMode
-                            ? Colors.amber
+                            ? AppTheme.mythicGold
                             : Colors.white,
                   ),
                   tooltip: 'Modo Foil',
@@ -313,22 +326,6 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   }
 
   Widget _buildBody(ScannerProvider scannerProvider) {
-    if (scannerProvider.state == ScannerState.idle) {
-      _lastAutoSelectedCardId = null;
-    }
-
-    final auto = scannerProvider.autoSelectedCard;
-    if (scannerProvider.state == ScannerState.found &&
-        auto != null &&
-        auto.id.isNotEmpty &&
-        _lastAutoSelectedCardId != auto.id) {
-      _lastAutoSelectedCardId = auto.id;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _addCardToDeck(auto);
-      });
-    }
-
     // Erro de permissão
     if (!_hasPermission || _permissionError != null) {
       return _buildPermissionError();
@@ -383,7 +380,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.8),
+                  color: AppTheme.loomCyan.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -442,7 +439,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.9),
+                color: AppTheme.mythicGold.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Row(
@@ -488,9 +485,14 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             ),
           ),
 
-        // Resultado - carta encontrada
+        // Resultado - carta encontrada (ManaBox-style full screen)
         if (scannerProvider.state == ScannerState.found &&
-            scannerProvider.lastResult != null)
+            scannerProvider.lastResult != null) ...[
+          // Dark overlay covering the camera
+          Positioned.fill(
+            child: Container(color: const Color(0xFF0D1117)),
+          ),
+          // Card preview anchored to bottom
           Positioned(
             bottom: 0,
             left: 0,
@@ -498,7 +500,9 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             child: ScannedCardPreview(
               result: scannerProvider.lastResult!,
               foundCards: scannerProvider.foundCards,
-              onCardSelected: _addCardToDeck,
+              onCardSelected: (card) {
+                _addCardToDeck(card);
+              },
               onAlternativeSelected: scannerProvider.searchAlternative,
               onRetry: () {
                 scannerProvider.reset();
@@ -506,6 +510,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
               },
             ),
           ),
+        ],
 
         // Resultado - carta não encontrada
         if (scannerProvider.state == ScannerState.notFound ||

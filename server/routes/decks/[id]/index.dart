@@ -229,15 +229,17 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             final pId = 'c$i';
             final pQty = 'q$i';
             final pCmdr = 'cmd$i';
+            final pCond = 'cond$i';
 
-            values.add('(@deckId, @$pId, @$pQty, @$pCmdr)');
+            values.add('(@deckId, @$pId, @$pQty, @$pCmdr, @$pCond)');
             params[pId] = card['card_id'];
             params[pQty] = card['quantity'];
             params[pCmdr] = card['is_commander'] ?? false;
+            params[pCond] = _validateCardCondition(card['condition']?.toString());
           }
 
           final batchInsertSql =
-              'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander) VALUES ${values.join(', ')}';
+              'INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition) VALUES ${values.join(', ')}';
 
           await session.execute(
             Sql.named(batchInsertSql),
@@ -336,6 +338,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
 	        SELECT
 	          dc.quantity,
 	          dc.is_commander,
+	          dc.condition,
 	          c.id,
 	          c.name,
 	          c.mana_cost,
@@ -473,4 +476,12 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
       body: {'error': 'Failed to retrieve deck details: $e'},
     );
   }
+}
+
+/// Valida e normaliza o valor de condição da carta (TCGPlayer standard).
+String _validateCardCondition(String? raw) {
+  if (raw == null) return 'NM';
+  final upper = raw.trim().toUpperCase();
+  const valid = {'NM', 'LP', 'MP', 'HP', 'DMG'};
+  return valid.contains(upper) ? upper : 'NM';
 }
