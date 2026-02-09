@@ -108,8 +108,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _usernameController,
                       decoration: InputDecoration(
                         labelText: 'Nome de Usuário',
-                        hintText: 'seuusuario',
-                        prefixIcon: const Icon(Icons.person_outline),
+                        hintText: 'ex: mage42',
+                        helperText: 'Único e permanente — seu @. Depois você pode escolher um nick no perfil.',
+                        helperMaxLines: 2,
+                        prefixIcon: const Icon(Icons.alternate_email),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

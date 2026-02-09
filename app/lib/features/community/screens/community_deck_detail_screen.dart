@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../decks/providers/deck_provider.dart';
+import '../../social/screens/user_profile_screen.dart';
 import '../providers/community_provider.dart';
 
 class CommunityDeckDetailScreen extends StatefulWidget {
@@ -186,11 +187,28 @@ class _CommunityDeckDetailScreenState
                     const Icon(Icons.person_outline,
                         size: 16, color: AppTheme.textSecondary),
                     const SizedBox(width: 4),
-                    Text(
-                      deck['owner_username'] ?? 'Anônimo',
-                      style: const TextStyle(
-                        color: AppTheme.loomCyan,
-                        fontSize: 13,
+                    GestureDetector(
+                      onTap: deck['owner_id'] != null
+                          ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => UserProfileScreen(
+                                      userId: deck['owner_id'] as String),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: Text(
+                        deck['owner_username'] ?? 'Anônimo',
+                        style: TextStyle(
+                          color: AppTheme.loomCyan,
+                          fontSize: 13,
+                          decoration: deck['owner_id'] != null
+                              ? TextDecoration.underline
+                              : null,
+                          decorationColor: AppTheme.loomCyan,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),

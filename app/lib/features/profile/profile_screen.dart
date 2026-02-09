@@ -126,9 +126,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   TextField(
                     controller: _displayNameController,
                     decoration: const InputDecoration(
-                      labelText: 'Nome exibido',
-                      hintText: 'Como você quer aparecer',
-                      prefixIcon: Icon(Icons.badge_outlined),
+                      labelText: 'Nick / Apelido',
+                      hintText: 'Ex: Planeswalker42',
+                      prefixIcon: Icon(Icons.face),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Seu nick público — é como os outros jogadores vão te encontrar na busca e ver nos seus decks. Se não preencher, será usado o nome de usuário (@${user.username}).',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF94A3B8),
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),

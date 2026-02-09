@@ -47,6 +47,7 @@ Future<Response> _getPublicDeck(RequestContext context, String deckId) async {
         SELECT d.id, d.name, d.format, d.description,
                d.synergy_score, d.strengths, d.weaknesses,
                d.is_public, d.created_at,
+               u.id as owner_id,
                u.username as owner_username
         FROM decks d
         JOIN users u ON u.id = d.user_id

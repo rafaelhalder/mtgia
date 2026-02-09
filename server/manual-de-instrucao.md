@@ -2923,3 +2923,126 @@ O ManaLoom precisava evoluir de um app pessoal de deck building para uma platafo
 - Badge "Privado": `#64748B` (cinza neutro)
 - Chips de formato: `manaViolet` com fundo alpha 20%
 - Botão copiar: `loomCyan` sólido com texto branco
+
+---
+
+## 17. Sistema Social: Follow, Busca de Usuários e Perfis Públicos
+
+### Porquê
+Completar o ciclo social do app: além de navegar decks públicos, o usuário pode **buscar outros jogadores**, **ver perfis** com seus decks, e **seguir/deixar de seguir** — criando um feed personalizado de decks dos seguidos.
+
+### Arquitetura
+
+```
+┌─ Banco ──────────────────────────┐
+│ user_follows                     │
+│  follower_id → users(id)         │
+│  following_id → users(id)        │
+│  UNIQUE(follower_id, following_id)│
+│  CHECK(follower_id ≠ following_id)│
+└──────────────────────────────────┘
+
+┌─ Server (sem auth) ─────────────────────────┐
+│ GET  /community/users?q=<query>             │ → busca usuários
+│ GET  /community/users/:id                   │ → perfil público
+│ GET  /community/decks/following             │ → feed (JWT manual)
+└─────────────────────────────────────────────┘
+
+┌─ Server (com auth via middleware) ──────────┐
+│ POST   /users/:id/follow                    │ → seguir
+│ DELETE /users/:id/follow                    │ → deixar de seguir
+│ GET    /users/:id/follow                    │ → checar se segue
+│ GET    /users/:id/followers                 │ → listar seguidores
+│ GET    /users/:id/following                 │ → listar seguidos
+└─────────────────────────────────────────────┘
+```
+
+### DB: Tabela `user_follows`
+
+```sql
+CREATE TABLE IF NOT EXISTS user_follows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_follow UNIQUE (follower_id, following_id),
+    CONSTRAINT chk_no_self_follow CHECK (follower_id != following_id)
+);
+```
+
+Auto-migrada em `_ensureRuntimeSchema()`. `ON CONFLICT DO NOTHING` no insert.
+
+### Endpoints
+
+| Método | Rota | Auth | Descrição |
+|--------|------|------|-----------|
+| GET | `/community/users?q=` | Não | Busca usuários por username/display_name |
+| GET | `/community/users/:id` | Opcional | Perfil público + decks + is_following |
+| GET | `/community/decks/following` | JWT manual | Feed de decks dos seguidos |
+| POST | `/users/:id/follow` | Sim | Seguir usuário |
+| DELETE | `/users/:id/follow` | Sim | Deixar de seguir |
+| GET | `/users/:id/follow` | Sim | Checar se segue |
+| GET | `/users/:id/followers` | Sim | Listar seguidores |
+| GET | `/users/:id/following` | Sim | Listar seguidos |
+
+### Flutter: Componentes
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `social/providers/social_provider.dart` | Provider com `PublicUser`, `PublicDeckSummary`, follow/search/feed |
+| `social/screens/user_profile_screen.dart` | Perfil com avatar, stats, 3 tabs, botão Seguir |
+| `social/screens/user_search_screen.dart` | Busca com debounce 400ms |
+
+### Integração
+
+- `SocialProvider` no `MultiProvider` em `main.dart`
+- Rotas: `/community/search-users`, `/community/user/:userId`
+- Usernames clicáveis em `loomCyan` sublinhado (community screen + detail)
+- Server retorna `owner_id` nos endpoints de community decks
+
+### Paleta Visual (Social)
+- Avatar fallback: iniciais em `manaViolet` sobre fundo alpha 30%
+- Botão "Seguir": `manaViolet` sólido
+- Botão "Deixar de seguir": `surfaceSlate` com borda `outlineMuted`
+- Stats: ícones em `loomCyan`
+- Usernames clicáveis: `loomCyan` sublinhado
+
+---
+
+## 🔀 CommunityScreen com Abas (UX Social Integrada)
+
+**Data:** 23 de Novembro de 2025
+
+### Problema
+A busca de usuários ficava escondida atrás de um ícone 🔍 no AppBar, difícil de descobrir. Não existia um feed dos jogadores seguidos. O conceito de "nick" (display_name) não ficava claro para o usuário.
+
+### Solução: 3 Abas na CommunityScreen
+
+A `CommunityScreen` foi reescrita com `TabController` de 3 abas:
+
+| Aba | Ícone | Conteúdo |
+|-----|-------|----------|
+| **Explorar** | `Icons.public` | Decks públicos com busca textual + filtros de formato (comportamento original) |
+| **Seguindo** | `Icons.people` | Feed de decks públicos dos usuários que o jogador segue (via `SocialProvider.fetchFollowingFeed()`) |
+| **Usuários** | `Icons.person_search` | Busca inline de jogadores por nick ou username (debounce 400ms) |
+
+### Arquitetura
+
+- `_ExploreTab`: mantém o código original de decks públicos com `AutomaticKeepAliveClientMixin`
+- `_FollowingFeedTab`: consome `SocialProvider.followingFeed`, com `RefreshIndicator` para pull-to-refresh
+- `_UserSearchTab`: busca inline embutida (antes era tela separada `UserSearchScreen`)
+- Cada aba usa `AutomaticKeepAliveClientMixin` para preservar estado ao trocar de tab
+- O feed "Seguindo" carrega automaticamente ao selecionar a aba (via `_onTabChanged`)
+
+### Sistema de Nick / Display Name
+
+**Fluxo completo:**
+1. **Cadastro** (`register_screen.dart`): só pede `username` (único, permanente, min 3 chars). Helper text explica que é o "@" e que o nick pode ser definido depois.
+2. **Perfil** (`profile_screen.dart`): campo "Nick / Apelido" com texto explicativo: "Seu nick público — é como os outros jogadores vão te encontrar na busca e ver nos seus decks."
+3. **Busca** (`GET /community/users?q=`): pesquisa tanto em `username` quanto em `display_name` (LIKE case-insensitive)
+4. **Exibição**: se o user tem `display_name`, mostra o nick como nome principal + `@username` abaixo. Se não tem, mostra o `username`.
+
+### Arquivos Alterados
+- `app/lib/features/community/screens/community_screen.dart` — reescrito com 3 abas
+- `app/lib/features/profile/profile_screen.dart` — label "Nick / Apelido", hint "Ex: Planeswalker42", texto explicativo
+- `app/lib/features/auth/screens/register_screen.dart` — helperText no campo username, ícone `alternate_email`

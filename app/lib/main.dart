@@ -25,6 +25,9 @@ import 'features/profile/profile_screen.dart';
 import 'features/scanner/screens/card_scanner_screen.dart';
 import 'features/community/providers/community_provider.dart';
 import 'features/community/screens/community_screen.dart';
+import 'features/social/providers/social_provider.dart';
+import 'features/social/screens/user_profile_screen.dart';
+import 'features/social/screens/user_search_screen.dart';
 
 void main() {
   runApp(const ManaLoomApp());
@@ -43,6 +46,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   late final CardProvider _cardProvider;
   late final MarketProvider _marketProvider;
   late final CommunityProvider _communityProvider;
+  late final SocialProvider _socialProvider;
   late final GoRouter _router;
 
   @override
@@ -53,6 +57,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _cardProvider = CardProvider();
     _marketProvider = MarketProvider();
     _communityProvider = CommunityProvider();
+    _socialProvider = SocialProvider();
 
     // Log da URL da API no boot
     ApiClient.debugLogBaseUrl();
@@ -163,6 +168,19 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             GoRoute(
               path: '/community',
               builder: (context, state) => const CommunityScreen(),
+              routes: [
+                GoRoute(
+                  path: 'search-users',
+                  builder: (context, state) => const UserSearchScreen(),
+                ),
+                GoRoute(
+                  path: 'user/:userId',
+                  builder: (context, state) {
+                    final userId = state.pathParameters['userId']!;
+                    return UserProfileScreen(userId: userId);
+                  },
+                ),
+              ],
             ),
             GoRoute(
               path: '/profile',
@@ -183,6 +201,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         ChangeNotifierProvider.value(value: _cardProvider),
         ChangeNotifierProvider.value(value: _marketProvider),
         ChangeNotifierProvider.value(value: _communityProvider),
+        ChangeNotifierProvider.value(value: _socialProvider),
       ],
       child: MaterialApp.router(
         title: 'ManaLoom - Deck Builder',

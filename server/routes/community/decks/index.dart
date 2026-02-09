@@ -78,6 +78,7 @@ Future<Response> _listPublicDecks(RequestContext context) async {
         d.description,
         d.synergy_score,
         d.created_at,
+        u.id as owner_id,
         u.username as owner_username,
         cmd.commander_name,
         cmd.commander_image_url,
@@ -96,7 +97,7 @@ Future<Response> _listPublicDecks(RequestContext context) async {
       ) cmd ON true
       LEFT JOIN deck_cards dc ON d.id = dc.deck_id
       WHERE $whereClause
-      GROUP BY d.id, u.username, cmd.commander_name, cmd.commander_image_url
+      GROUP BY d.id, u.id, u.username, cmd.commander_name, cmd.commander_image_url
       ORDER BY d.created_at DESC
       LIMIT @lim OFFSET @off
     ''';

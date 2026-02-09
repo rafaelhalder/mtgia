@@ -8,6 +8,7 @@ class CommunityDeck {
   final String format;
   final String? description;
   final int? synergyScore;
+  final String? ownerId;
   final String? ownerUsername;
   final String? commanderName;
   final String? commanderImageUrl;
@@ -20,6 +21,7 @@ class CommunityDeck {
     required this.format,
     this.description,
     this.synergyScore,
+    this.ownerId,
     this.ownerUsername,
     this.commanderName,
     this.commanderImageUrl,
@@ -34,6 +36,7 @@ class CommunityDeck {
       format: json['format'] as String,
       description: json['description'] as String?,
       synergyScore: json['synergy_score'] as int?,
+      ownerId: json['owner_id'] as String?,
       ownerUsername: json['owner_username'] as String?,
       commanderName: json['commander_name'] as String?,
       commanderImageUrl: json['commander_image_url'] as String?,
