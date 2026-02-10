@@ -162,4 +162,21 @@ class CardProvider extends ChangeNotifier {
     final list = (data['data'] as List?)?.whereType<Map>().toList() ?? const [];
     return list.map((m) => m.cast<String, dynamic>()).toList();
   }
+
+  /// Chama /cards/resolve para importar todas as edições do Scryfall
+  /// e depois retorna a lista atualizada de printings do banco.
+  Future<List<Map<String, dynamic>>> resolveAndFetchPrintings(String name) async {
+    // Usa o parâmetro sync=true que importa automaticamente do Scryfall
+    final encoded = Uri.encodeQueryComponent(name.trim());
+    final response = await _apiClient.get(
+      '/cards/printings?name=$encoded&limit=50&sync=true',
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao sincronizar edições: ${response.statusCode}');
+    }
+
+    final data = response.data as Map<String, dynamic>;
+    final list = (data['data'] as List?)?.whereType<Map>().toList() ?? const [];
+    return list.map((m) => m.cast<String, dynamic>()).toList();
+  }
 }

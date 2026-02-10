@@ -213,6 +213,7 @@ class _BinderListViewState extends State<_BinderListView>
               context,
               cardId: card['id'] as String,
               cardName: card['name'] as String?,
+              cardImageUrl: card['image_url'] as String?,
               initialListType: widget.listType,
               onSave: (data) async {
                 final ok = await provider.addItem(
@@ -254,6 +255,7 @@ class _BinderListViewState extends State<_BinderListView>
               context,
               cardId: card['id'] as String,
               cardName: card['name'] as String?,
+              cardImageUrl: card['image_url'] as String?,
               initialListType: widget.listType,
               onSave: (data) async {
                 final ok = await provider.addItem(

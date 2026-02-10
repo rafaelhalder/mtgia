@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
+import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 
 String? _normalizeScryfallImageUrl(String? url) {
@@ -42,6 +44,7 @@ Future<Response> onRequest(RequestContext context) async {
   final name = params['name']?.trim();
   final limit = int.tryParse(params['limit'] ?? '50') ?? 50;
   final safeLimit = limit.clamp(1, 200);
+  final syncFromScryfall = params['sync'] == 'true';
 
   if (name == null || name.isEmpty) {
     return Response.json(
@@ -49,6 +52,39 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'error': 'name é obrigatório'},
     );
   }
+
+  // Busca local
+  var data = await _queryPrintings(pool, name, safeLimit, hasSets);
+
+  // Se sync=true e encontrou poucas edições, busca do Scryfall
+  if (syncFromScryfall && data.length <= 1) {
+    try {
+      final imported = await _syncPrintingsFromScryfall(pool, name);
+      if (imported > 0) {
+        // Re-query com as edições importadas
+        data = await _queryPrintings(pool, name, safeLimit, hasSets);
+      }
+    } catch (e) {
+      stderr.writeln('[printings/sync] Erro: $e');
+    }
+  }
+
+  return Response.json(
+    body: {
+      'name': name,
+      'total_returned': data.length,
+      'data': data,
+    },
+  );
+}
+
+/// Faz a query de printings no banco local
+Future<List<Map<String, dynamic>>> _queryPrintings(
+  Pool pool,
+  String name,
+  int limit,
+  bool hasSets,
+) async {
 
   final sql = hasSets
       ? '''
@@ -101,13 +137,13 @@ Future<Response> onRequest(RequestContext context) async {
 
   final result = await pool.execute(
     Sql.named(sql),
-    parameters: {'name': name, 'limit': safeLimit},
+    parameters: {'name': name, 'limit': limit},
   );
 
   final data = result.map((row) {
     final m = row.toColumnMap();
     final imageUrl = _normalizeScryfallImageUrl(m['image_url']?.toString());
-    return {
+    return <String, dynamic>{
       'id': m['id'],
       'scryfall_id': m['scryfall_id'],
       'name': m['name'],
@@ -133,13 +169,141 @@ Future<Response> onRequest(RequestContext context) async {
     };
   }).toList();
 
-  return Response.json(
-    body: {
-      'name': name,
-      'total_returned': data.length,
-      'data': data,
+  return data;
+}
+
+/// Busca todas as printings de uma carta no Scryfall e importa no banco
+Future<int> _syncPrintingsFromScryfall(Pool pool, String name) async {
+  // 1. Buscar a carta principal no Scryfall
+  final encoded = Uri.encodeQueryComponent(name.trim());
+  final uri = Uri.parse(
+    'https://api.scryfall.com/cards/named?fuzzy=$encoded',
+  );
+
+  final response = await http.get(uri, headers: {
+    'Accept': 'application/json',
+    'User-Agent': 'MTGDeckBuilder/1.0',
+  });
+
+  if (response.statusCode != 200) return 0;
+
+  final card = jsonDecode(response.body) as Map<String, dynamic>;
+  final printsUri = card['prints_search_uri'] as String?;
+  if (printsUri == null) return 0;
+
+  // 2. Buscar todas as printings
+  final printsResponse = await http.get(
+    Uri.parse(printsUri),
+    headers: {
+      'Accept': 'application/json',
+      'User-Agent': 'MTGDeckBuilder/1.0',
     },
   );
+
+  if (printsResponse.statusCode != 200) return 0;
+
+  final body = jsonDecode(printsResponse.body) as Map<String, dynamic>;
+  final printings = (body['data'] as List?)?.whereType<Map<String, dynamic>>() ?? [];
+
+  // Filtrar: só paper, sem art_series, sem tokens
+  final filtered = printings.where((p) {
+    final games = p['games'] as List?;
+    final isPaper = games?.contains('paper') ?? false;
+    final layout = p['layout']?.toString() ?? '';
+    return isPaper && layout != 'art_series' && layout != 'token';
+  }).take(30).toList();
+
+  var imported = 0;
+
+  for (final p in filtered) {
+    final oracleId = p['oracle_id'] as String?;
+    if (oracleId == null || oracleId.isEmpty) continue;
+
+    final cardName = p['name']?.toString() ?? '';
+    final manaCost = p['mana_cost']?.toString();
+    final typeLine = p['type_line']?.toString();
+    final oracleText = p['oracle_text']?.toString();
+    final setCode = p['set']?.toString();
+    final rarity = p['rarity']?.toString();
+    final cmc = p['cmc']?.toString();
+
+    final colors = <String>[];
+    if (p['colors'] is List) {
+      for (final c in p['colors'] as List) {
+        colors.add(c.toString());
+      }
+    }
+
+    final colorIdentity = <String>[];
+    if (p['color_identity'] is List) {
+      for (final c in p['color_identity'] as List) {
+        colorIdentity.add(c.toString());
+      }
+    }
+
+    final encodedCardName = Uri.encodeQueryComponent(cardName);
+    final setParam = setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
+    final imageUrl =
+        'https://api.scryfall.com/cards/named?exact=$encodedCardName$setParam&format=image';
+
+    try {
+      await pool.execute(
+        Sql.named('''
+          INSERT INTO cards (scryfall_id, name, mana_cost, type_line, oracle_text,
+                             colors, color_identity, image_url, set_code, rarity, cmc)
+          VALUES (
+            @oracle_id::uuid, @name, @mana_cost, @type_line, @oracle_text,
+            @colors::text[], @color_identity::text[], @image_url, @set_code, @rarity,
+            @cmc::decimal
+          )
+          ON CONFLICT (scryfall_id) DO NOTHING
+        '''),
+        parameters: {
+          'oracle_id': oracleId,
+          'name': cardName,
+          'mana_cost': manaCost,
+          'type_line': typeLine,
+          'oracle_text': oracleText,
+          'colors': colors,
+          'color_identity': colorIdentity,
+          'image_url': imageUrl,
+          'set_code': setCode,
+          'rarity': rarity,
+          'cmc': cmc != null ? double.tryParse(cmc) ?? 0.0 : 0.0,
+        },
+      );
+      imported++;
+    } catch (e) {
+      stderr.writeln('[printings/sync] Insert error ($cardName/$setCode): $e');
+    }
+  }
+
+  // Garantir que os sets existam
+  for (final p in filtered) {
+    final setCode = p['set']?.toString();
+    final setName = p['set_name']?.toString();
+    final releasedAt = p['released_at']?.toString();
+    if (setCode == null || setCode.isEmpty) continue;
+
+    try {
+      await pool.execute(
+        Sql.named('''
+          INSERT INTO sets (code, name, release_date)
+          VALUES (@code, @name, @release_date::date)
+          ON CONFLICT (code) DO NOTHING
+        '''),
+        parameters: {
+          'code': setCode,
+          'name': setName ?? setCode.toUpperCase(),
+          'release_date': releasedAt,
+        },
+      );
+    } catch (_) {
+      // Ignore set insertion errors
+    }
+  }
+
+  return imported;
 }
 
 Future<bool> _hasTable(Pool pool, String tableName) async {

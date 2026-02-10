@@ -15,6 +15,7 @@ class BinderItemEditor extends StatefulWidget {
   /// cardId obrigatório para adição. Quando [item] != null, usa item.cardId.
   final String? cardId;
   final String? cardName;
+  final String? cardImageUrl;
 
   /// Tipo de lista inicial: 'have' ou 'want' (apenas para adição)
   final String initialListType;
@@ -28,6 +29,7 @@ class BinderItemEditor extends StatefulWidget {
     this.item,
     this.cardId,
     this.cardName,
+    this.cardImageUrl,
     this.initialListType = 'have',
     this.onSave,
     this.onDelete,
@@ -39,6 +41,7 @@ class BinderItemEditor extends StatefulWidget {
     BinderItem? item,
     String? cardId,
     String? cardName,
+    String? cardImageUrl,
     String initialListType = 'have',
     Future<bool> Function(Map<String, dynamic> data)? onSave,
     Future<bool> Function()? onDelete,
@@ -54,6 +57,7 @@ class BinderItemEditor extends StatefulWidget {
         item: item,
         cardId: cardId,
         cardName: cardName,
+        cardImageUrl: cardImageUrl,
         initialListType: initialListType,
         onSave: onSave,
         onDelete: onDelete,
@@ -117,7 +121,15 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
     setState(() => _loadingPrintings = true);
     try {
       final provider = context.read<CardProvider>();
-      final results = await provider.fetchPrintingsByName(widget.cardName!);
+      var results = await provider.fetchPrintingsByName(widget.cardName!);
+
+      // Se só encontrou 0-1 edição, importa do Scryfall e busca de novo
+      if (results.length <= 1) {
+        debugPrint('[BinderItemEditor] Poucas edições (${results.length}), resolvendo via Scryfall...');
+        results = await provider.resolveAndFetchPrintings(widget.cardName!);
+        debugPrint('[BinderItemEditor] Após resolve: ${results.length} edições');
+      }
+
       if (!mounted) return;
       setState(() {
         _printings = results;
@@ -129,8 +141,8 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
           if (idx >= 0) _selectedPrintingIndex = idx;
         }
       });
-    } catch (_) {
-      // Silencioso — funciona sem printings
+    } catch (e) {
+      debugPrint('[BinderItemEditor] Erro ao buscar edições: $e');
     } finally {
       if (mounted) setState(() => _loadingPrintings = false);
     }
@@ -144,12 +156,12 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
     return widget.cardId;
   }
 
-  /// Retorna a image_url da edição selecionada
+  /// Retorna a image_url da edição selecionada (fallback: imagem original)
   String? get _selectedImageUrl {
     if (_printings.isNotEmpty && _selectedPrintingIndex < _printings.length) {
       return _printings[_selectedPrintingIndex]['image_url'] as String?;
     }
-    return null;
+    return widget.cardImageUrl;
   }
 
   /// Retorna o preço de mercado da edição selecionada
@@ -343,13 +355,25 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                     ),
                   ),
                 )
-              else if (_printings.length > 1) ...[
-                const Text('Edição',
-                    style: TextStyle(
-                        color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
+              else if (_printings.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Text('Edição',
+                        style: TextStyle(
+                            color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
+                    const Spacer(),
+                    Text(
+                      '${_printings.length} ${_printings.length == 1 ? 'disponível' : 'disponíveis'}',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontSm,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 SizedBox(
-                  height: 52,
+                  height: 56,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _printings.length,
@@ -365,11 +389,12 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
 
                       return GestureDetector(
                         onTap: () => setState(() => _selectedPrintingIndex = index),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppTheme.manaViolet.withValues(alpha: 0.2)
+                                ? AppTheme.manaViolet.withValues(alpha: 0.25)
                                 : AppTheme.surfaceSlate2,
                             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                             border: Border.all(
@@ -386,18 +411,26 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    setCode,
-                                    style: TextStyle(
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
                                       color: isSelected
                                           ? AppTheme.manaViolet
-                                          : AppTheme.textPrimary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
+                                          : AppTheme.outlineMuted.withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      setCode,
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : AppTheme.textPrimary,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 11,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
                                   ),
                                   if (year.isNotEmpty) ...[
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 6),
                                     Text(
                                       year,
                                       style: const TextStyle(
@@ -419,16 +452,18 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                                   ],
                                 ],
                               ),
-                              if (setName != setCode)
-                                Text(
-                                  setName,
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 10,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              const SizedBox(height: 2),
+                              Text(
+                                setName,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? AppTheme.textPrimary
+                                      : AppTheme.textSecondary,
+                                  fontSize: 10,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ],
                           ),
                         ),
