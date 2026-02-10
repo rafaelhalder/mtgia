@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../../lib/notification_service.dart';
 
 Future<Response> onRequest(RequestContext context, String id) async {
   switch (context.request.method) {
@@ -52,6 +53,23 @@ Future<Response> _followUser(RequestContext context, String targetId) async {
 
     // Retornar contadores atualizados
     final counts = await _getFollowCounts(conn, targetId);
+
+    // 🔔 Notificação: novo seguidor
+    final followerInfo = await conn.execute(
+      Sql.named('SELECT username, display_name FROM users WHERE id = @id'),
+      parameters: {'id': userId},
+    );
+    final followerName = followerInfo.isNotEmpty
+        ? (followerInfo.first.toColumnMap()['display_name'] ??
+            followerInfo.first.toColumnMap()['username']) as String
+        : 'Alguém';
+    await NotificationService.create(
+      pool: conn,
+      userId: targetId,
+      type: 'new_follower',
+      title: '$followerName começou a seguir você',
+      referenceId: userId,
+    );
 
     return Response.json(
       statusCode: HttpStatus.ok,

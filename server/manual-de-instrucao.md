@@ -3243,3 +3243,162 @@ delivered → completed / disputed
 - `app/lib/features/trades/screens/create_trade_screen.dart` — criação de proposta
 - `app/lib/features/trades/screens/trade_detail_screen.dart` — detalhe + chat + ações
 - `app/lib/main.dart` — import + TradeProvider + rotas + redirect
+
+---
+
+## 💬 Épico 4 — Mensagens Diretas (DM)
+
+### O Porquê
+Jogadores precisam de um canal direto de comunicação fora dos trades (combinar partidas, discutir decks, negociar informalmente). O sistema foi projetado com:
+- **Uma conversa única por par de usuários** (evita duplicatas via `UNIQUE(LEAST, GREATEST)`).
+- **Polling no Flutter** (5s no chat ativo) sem complicar com WebSockets no MVP.
+- **Notificação automática** ao receber mensagem.
+
+### Schema (2 tabelas)
+```sql
+-- Conversas (par de usuários, sem self-chat)
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_a_id UUID NOT NULL REFERENCES users(id),
+  user_b_id UUID NOT NULL REFERENCES users(id),
+  last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id)),
+  CHECK (user_a_id <> user_b_id)
+);
+
+-- Mensagens diretas
+CREATE TABLE IF NOT EXISTS direct_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id),
+  sender_id UUID NOT NULL REFERENCES users(id),
+  content TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dm_unread ON direct_messages(conversation_id, sender_id) WHERE read_at IS NULL;
+```
+
+### Endpoints (Server)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/conversations` | Lista conversas do usuário com preview, unread count |
+| `POST` | `/conversations` | Cria ou retorna conversa existente (`{ other_user_id }`) |
+| `GET` | `/conversations/:id/messages` | Mensagens paginadas (DESC) |
+| `POST` | `/conversations/:id/messages` | Envia mensagem + cria notificação `direct_message` |
+| `PUT` | `/conversations/:id/read` | Marca mensagens do outro user como lidas |
+
+### Flutter — Provider (`MessageProvider`)
+- **Models:** `ConversationUser`, `Conversation`, `DirectMessage`
+- **Métodos:** `fetchConversations()`, `getOrCreateConversation(userId)`, `fetchMessages(convId)`, `sendMessage(convId, content)`, `markAsRead(convId)`
+- **Getter:** `totalUnread` — soma de `unreadCount` de todas as conversas
+
+### Flutter — Telas
+- **`MessageInboxScreen`** (`/messages`): Lista de conversas com avatar, nome, preview da última mensagem, badge de não-lidas, tempo relativo. Pull-to-refresh.
+- **`ChatScreen`** (`/messages/chat`): ListView reverso com bolhas (cores diferentes me/outro), polling 5s via `Timer.periodic`, campo de texto com botão enviar.
+- **Botão "Mensagem"** no `UserProfileScreen`: Ao lado do Follow, abre chat via `getOrCreateConversation`.
+
+### Arquivos Criados/Modificados
+**Server:**
+- `server/bin/migrate_conversations_notifications.dart` — migration script
+- `server/routes/conversations/_middleware.dart` — auth middleware
+- `server/routes/conversations/index.dart` — GET + POST /conversations
+- `server/routes/conversations/[id]/messages.dart` — GET + POST messages
+- `server/routes/conversations/[id]/read.dart` — PUT mark read
+
+**Flutter:**
+- `app/lib/features/messages/providers/message_provider.dart` — models + provider
+- `app/lib/features/messages/screens/message_inbox_screen.dart` — inbox
+- `app/lib/features/messages/screens/chat_screen.dart` — chat com polling
+- `app/lib/features/social/screens/user_profile_screen.dart` — botão "Mensagem"
+- `app/lib/main.dart` — MessageProvider + rota /messages
+
+---
+
+## 🔔 Épico 5 — Notificações
+
+### O Porquê
+Sem notificações, o usuário não sabe quando alguém segue, envia proposta de trade, aceita, envia mensagem etc. O sistema foi desenhado para:
+- **9 tipos de notificação** cobrindo follow, trades e DMs.
+- **Polling passivo** (30s) no Flutter para badge no sino.
+- **Tap navega ao contexto** (perfil, trade detail, mensagens).
+
+### Schema (1 tabela)
+```sql
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  type TEXT NOT NULL CHECK (type IN (
+    'new_follower', 'trade_offer_received', 'trade_accepted',
+    'trade_declined', 'trade_shipped', 'trade_delivered',
+    'trade_completed', 'trade_message', 'direct_message'
+  )),
+  reference_id TEXT,
+  title TEXT NOT NULL,
+  body TEXT,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id) WHERE read_at IS NULL;
+```
+
+### Endpoints (Server)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/notifications` | Lista paginada (opcional `?unread_only=true`) |
+| `GET` | `/notifications/count` | `{ unread: N }` |
+| `PUT` | `/notifications/:id/read` | Marca uma notificação como lida |
+| `PUT` | `/notifications/read-all` | Marca todas como lidas |
+
+### Triggers Automáticos (NotificationService)
+Helper estático `NotificationService.create(pool, userId, type, title, body?, referenceId?)`. Inserido nos handlers existentes:
+
+| Handler | Tipo de Notificação | Destinatário |
+|---------|---------------------|--------------|
+| `POST /users/:id/follow` | `new_follower` | Usuário seguido |
+| `POST /trades` | `trade_offer_received` | Receiver do trade |
+| `PUT /trades/:id/respond` (accept) | `trade_accepted` | Sender |
+| `PUT /trades/:id/respond` (decline) | `trade_declined` | Sender |
+| `PUT /trades/:id/status` (shipped) | `trade_shipped` | Outra parte |
+| `PUT /trades/:id/status` (delivered) | `trade_delivered` | Outra parte |
+| `PUT /trades/:id/status` (completed) | `trade_completed` | Outra parte |
+| `POST /trades/:id/messages` | `trade_message` | Outra parte |
+| `POST /conversations/:id/messages` | `direct_message` | Outro user |
+
+### Flutter — Provider (`NotificationProvider`)
+- **Model:** `AppNotification` (id, type, referenceId, title, body, readAt, createdAt, isRead)
+- **Polling:** `Timer.periodic(30s)` chama `fetchUnreadCount()`. Inicia/para via `startPolling()`/`stopPolling()` (controlado por `AuthProvider`).
+- **Métodos:** `fetchNotifications()`, `markAsRead(id)`, `markAllAsRead()`
+
+### Flutter — UI
+- **Badge no sino** (`MainScaffold` AppBar): `Selector<NotificationProvider, int>` mostra badge vermelho com count (cap 99+). Ícone `notifications_outlined`.
+- **`NotificationScreen`** (`/notifications`): Lista com ícones/cores por tipo, "Ler todas" no AppBar, tap marca como lida e navega ao contexto:
+  - `new_follower` → `/community/user/:referenceId`
+  - `trade_*` → `/trades/:referenceId`
+  - `direct_message` → `/messages`
+
+### Arquivos Criados/Modificados
+**Server:**
+- `server/lib/notification_service.dart` — helper estático
+- `server/routes/notifications/_middleware.dart` — auth
+- `server/routes/notifications/index.dart` — GET lista
+- `server/routes/notifications/count.dart` — GET count
+- `server/routes/notifications/[id]/read.dart` — PUT read
+- `server/routes/notifications/read-all.dart` — PUT read-all
+- `server/routes/users/[id]/follow/index.dart` — trigger new_follower
+- `server/routes/trades/index.dart` — trigger trade_offer_received
+- `server/routes/trades/[id]/respond.dart` — trigger trade_accepted/declined
+- `server/routes/trades/[id]/status.dart` — trigger trade_shipped/delivered/completed
+- `server/routes/trades/[id]/messages.dart` — trigger trade_message
+- `server/routes/conversations/[id]/messages.dart` — trigger direct_message
+- `server/routes/_middleware.dart` — DDL das 3 tabelas + 4 índices
+
+**Flutter:**
+- `app/lib/features/notifications/providers/notification_provider.dart` — model + provider
+- `app/lib/features/notifications/screens/notification_screen.dart` — tela
+- `app/lib/core/widgets/main_scaffold.dart` — badge no sino + ícone chat
+- `app/lib/main.dart` — NotificationProvider + rota /notifications + auth listener

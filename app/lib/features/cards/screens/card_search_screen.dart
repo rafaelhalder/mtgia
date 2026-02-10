@@ -51,6 +51,7 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _scrollController.removeListener(_onScroll);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();

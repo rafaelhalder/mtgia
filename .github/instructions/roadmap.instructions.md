@@ -50,19 +50,19 @@ applyTo: '**'
 
 **Fluxo de status:** pending → accepted → shipped → delivered → completed (ou declined/cancelled/disputed)
 
-### ⏳ Épico 4 — Mensagens Diretas (~3-4 dias, paralelo ao 3)
-- [ ] 4.1 DB: `conversations` (UNIQUE par de users) + `direct_messages` (read_at)
-- [ ] 4.2 Server: GET/POST `/conversations`, GET/POST messages, PUT read
-- [ ] 4.3 Flutter: Inbox de mensagens (avatar, preview, badge não-lidas)
-- [ ] 4.4 Flutter: Tela chat (bolhas, scroll infinito, polling 5s)
-- [ ] 4.5 Flutter: Botão "Mensagem" no perfil público
+### ✅ Épico 4 — Mensagens Diretas (~3-4 dias, paralelo ao 3)
+- [x] 4.1 DB: `conversations` (UNIQUE par de users) + `direct_messages` (read_at)
+- [x] 4.2 Server: GET/POST `/conversations`, GET/POST messages, PUT read
+- [x] 4.3 Flutter: Inbox de mensagens (avatar, preview, badge não-lidas)
+- [x] 4.4 Flutter: Tela chat (bolhas, scroll infinito, polling 5s)
+- [x] 4.5 Flutter: Botão "Mensagem" no perfil público
 
-### ⏳ Épico 5 — Notificações (~2-3 dias, incremental)
-- [ ] 5.1 DB: `notifications` (type, reference_id, title, body, read_at)
-- [ ] 5.2 Server: GET list, GET count, PUT read, PUT read-all
-- [ ] 5.3 Server: Criar notificações automaticamente nos handlers (follow, trade, message)
-- [ ] 5.4 Flutter: Ícone sino + badge no AppBar
-- [ ] 5.5 Flutter: Tela de notificações (tap navega pro contexto)
+### ✅ Épico 5 — Notificações (~2-3 dias, incremental)
+- [x] 5.1 DB: `notifications` (type, reference_id, title, body, read_at)
+- [x] 5.2 Server: GET list, GET count, PUT read, PUT read-all
+- [x] 5.3 Server: Criar notificações automaticamente nos handlers (follow, trade, message)
+- [x] 5.4 Flutter: Ícone sino + badge no AppBar
+- [x] 5.5 Flutter: Tela de notificações (tap navega pro contexto)
 
 ## Ordem de Execução
 ```
@@ -85,6 +85,8 @@ Ao implementar qualquer task deste roadmap:
 6. SocialProvider
 7. BinderProvider ← NOVO (Épico 2)
 8. TradeProvider ← NOVO (Épico 3)
+9. MessageProvider ← NOVO (Épico 4)
+10. NotificationProvider ← NOVO (Épico 5)
 
 ## Palette ManaLoom (usar em todas as telas novas)
 - backgroundAbyss: `#0A0E14`

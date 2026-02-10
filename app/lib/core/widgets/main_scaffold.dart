@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../theme/app_theme.dart';
+import '../../features/notifications/providers/notification_provider.dart';
 
 class MainScaffold extends StatelessWidget {
   final Widget child;
@@ -23,6 +26,46 @@ class MainScaffold extends StatelessWidget {
     }
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundAbyss,
+        elevation: 0,
+        toolbarHeight: 40,
+        automaticallyImplyLeading: false,
+        actions: [
+          // Ícone de mensagens
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline,
+                color: AppTheme.textSecondary, size: 22),
+            onPressed: () => context.push('/messages'),
+            tooltip: 'Mensagens',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+          // Ícone de notificações com badge
+          Selector<NotificationProvider, int>(
+            selector: (_, p) => p.unreadCount,
+            builder: (context, unreadCount, child) {
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: unreadCount > 0,
+                  label: Text(
+                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    style: const TextStyle(fontSize: 9),
+                  ),
+                  backgroundColor: AppTheme.error,
+                  child: const Icon(Icons.notifications_outlined,
+                      color: AppTheme.textSecondary, size: 22),
+                ),
+                onPressed: () => context.push('/notifications'),
+                tooltip: 'Notificações',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,

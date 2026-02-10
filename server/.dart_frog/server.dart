@@ -18,6 +18,10 @@ import '../routes/trades/[id]/messages.dart' as trades_$id_messages;
 import '../routes/trades/[id]/index.dart' as trades_$id_index;
 import '../routes/sets/index.dart' as sets_index;
 import '../routes/rules/index.dart' as rules_index;
+import '../routes/notifications/read-all.dart' as notifications_read_all;
+import '../routes/notifications/index.dart' as notifications_index;
+import '../routes/notifications/count.dart' as notifications_count;
+import '../routes/notifications/[id]/read.dart' as notifications_$id_read;
 import '../routes/market/movers/index.dart' as market_movers_index;
 import '../routes/market/card/[cardId].dart' as market_card_$card_id;
 import '../routes/import/index.dart' as import_index;
@@ -39,6 +43,9 @@ import '../routes/decks/[id]/cards/replace/index.dart' as decks_$id_cards_replac
 import '../routes/decks/[id]/cards/bulk/index.dart' as decks_$id_cards_bulk_index;
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/decks/[id]/ai-analysis/index.dart' as decks_$id_ai_analysis_index;
+import '../routes/conversations/index.dart' as conversations_index;
+import '../routes/conversations/[id]/read.dart' as conversations_$id_read;
+import '../routes/conversations/[id]/messages.dart' as conversations_$id_messages;
 import '../routes/community/users/index.dart' as community_users_index;
 import '../routes/community/users/[id].dart' as community_users_$id;
 import '../routes/community/marketplace/index.dart' as community_marketplace_index;
@@ -64,8 +71,10 @@ import '../routes/ai/archetypes/index.dart' as ai_archetypes_index;
 import '../routes/_middleware.dart' as middleware;
 import '../routes/users/_middleware.dart' as users_middleware;
 import '../routes/trades/_middleware.dart' as trades_middleware;
+import '../routes/notifications/_middleware.dart' as notifications_middleware;
 import '../routes/import/_middleware.dart' as import_middleware;
 import '../routes/decks/_middleware.dart' as decks_middleware;
+import '../routes/conversations/_middleware.dart' as conversations_middleware;
 import '../routes/community/_middleware.dart' as community_middleware;
 import '../routes/binder/_middleware.dart' as binder_middleware;
 import '../routes/auth/_middleware.dart' as auth_middleware;
@@ -102,6 +111,8 @@ Handler buildRootHandler() {
     ..mount('/community/decks', (context) => buildCommunityDecksHandler()(context))
     ..mount('/community/marketplace', (context) => buildCommunityMarketplaceHandler()(context))
     ..mount('/community/users', (context) => buildCommunityUsersHandler()(context))
+    ..mount('/conversations/<id>', (context,id,) => buildConversations$idHandler(id,)(context))
+    ..mount('/conversations', (context) => buildConversationsHandler()(context))
     ..mount('/decks/<id>/ai-analysis', (context,id,) => buildDecks$idAiAnalysisHandler(id,)(context))
     ..mount('/decks/<id>/analysis', (context,id,) => buildDecks$idAnalysisHandler(id,)(context))
     ..mount('/decks/<id>/cards/bulk', (context,id,) => buildDecks$idCardsBulkHandler(id,)(context))
@@ -123,6 +134,8 @@ Handler buildRootHandler() {
     ..mount('/import', (context) => buildImportHandler()(context))
     ..mount('/market/card', (context) => buildMarketCardHandler()(context))
     ..mount('/market/movers', (context) => buildMarketMoversHandler()(context))
+    ..mount('/notifications/<id>', (context,id,) => buildNotifications$idHandler(id,)(context))
+    ..mount('/notifications', (context) => buildNotificationsHandler()(context))
     ..mount('/rules', (context) => buildRulesHandler()(context))
     ..mount('/sets', (context) => buildSetsHandler()(context))
     ..mount('/trades/<id>', (context,id,) => buildTrades$idHandler(id,)(context))
@@ -251,6 +264,20 @@ Handler buildCommunityUsersHandler() {
   final pipeline = const Pipeline().addMiddleware(community_middleware.middleware);
   final router = Router()
     ..all('/', (context) => community_users_index.onRequest(context,))..all('/<id>', (context,id,) => community_users_$id.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildConversations$idHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(conversations_middleware.middleware);
+  final router = Router()
+    ..all('/read', (context) => conversations_$id_read.onRequest(context,id,))..all('/messages', (context) => conversations_$id_messages.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildConversationsHandler() {
+  final pipeline = const Pipeline().addMiddleware(conversations_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => conversations_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
@@ -398,6 +425,20 @@ Handler buildMarketMoversHandler() {
   final pipeline = const Pipeline();
   final router = Router()
     ..all('/', (context) => market_movers_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildNotifications$idHandler(String id,) {
+  final pipeline = const Pipeline().addMiddleware(notifications_middleware.middleware);
+  final router = Router()
+    ..all('/read', (context) => notifications_$id_read.onRequest(context,id,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildNotificationsHandler() {
+  final pipeline = const Pipeline().addMiddleware(notifications_middleware.middleware);
+  final router = Router()
+    ..all('/read-all', (context) => notifications_read_all.onRequest(context,))..all('/', (context) => notifications_index.onRequest(context,))..all('/count', (context) => notifications_count.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

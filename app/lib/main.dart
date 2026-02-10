@@ -33,6 +33,10 @@ import 'features/trades/providers/trade_provider.dart';
 import 'features/trades/screens/trade_inbox_screen.dart';
 import 'features/trades/screens/trade_detail_screen.dart';
 import 'features/collection/screens/collection_screen.dart';
+import 'features/messages/providers/message_provider.dart';
+import 'features/messages/screens/message_inbox_screen.dart';
+import 'features/notifications/providers/notification_provider.dart';
+import 'features/notifications/screens/notification_screen.dart';
 
 void main() {
   runApp(const ManaLoomApp());
@@ -54,6 +58,8 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   late final SocialProvider _socialProvider;
   late final BinderProvider _binderProvider;
   late final TradeProvider _tradeProvider;
+  late final MessageProvider _messageProvider;
+  late final NotificationProvider _notificationProvider;
   late final GoRouter _router;
 
   @override
@@ -67,6 +73,11 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _socialProvider = SocialProvider();
     _binderProvider = BinderProvider();
     _tradeProvider = TradeProvider();
+    _messageProvider = MessageProvider();
+    _notificationProvider = NotificationProvider();
+
+    // Iniciar/parar polling de notificações quando autenticado
+    _authProvider.addListener(_onAuthChanged);
 
     // Log da URL da API no boot
     ApiClient.debugLogBaseUrl();
@@ -98,7 +109,9 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             location.startsWith('/collection') ||
             location.startsWith('/profile') ||
             location.startsWith('/community') ||
-            location.startsWith('/trades');
+            location.startsWith('/trades') ||
+            location.startsWith('/messages') ||
+            location.startsWith('/notifications');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
           debugPrint('[🧭 Router] → /login (rota protegida sem auth)');
@@ -206,6 +219,14 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
               builder: (context, state) => const ProfileScreen(),
             ),
             GoRoute(
+              path: '/messages',
+              builder: (context, state) => const MessageInboxScreen(),
+            ),
+            GoRoute(
+              path: '/notifications',
+              builder: (context, state) => const NotificationScreen(),
+            ),
+            GoRoute(
               path: '/trades',
               builder: (context, state) => const TradeInboxScreen(),
               routes: [
@@ -224,6 +245,14 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     );
   }
 
+  void _onAuthChanged() {
+    if (_authProvider.isAuthenticated) {
+      _notificationProvider.startPolling();
+    } else {
+      _notificationProvider.stopPolling();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -236,6 +265,8 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         ChangeNotifierProvider.value(value: _socialProvider),
         ChangeNotifierProvider.value(value: _binderProvider),
         ChangeNotifierProvider.value(value: _tradeProvider),
+        ChangeNotifierProvider.value(value: _messageProvider),
+        ChangeNotifierProvider.value(value: _notificationProvider),
       ],
       child: MaterialApp.router(
         title: 'ManaLoom - Deck Builder',

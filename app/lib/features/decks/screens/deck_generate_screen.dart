@@ -66,11 +66,13 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
         format: _selectedFormat,
       );
 
+      if (!mounted) return;
       setState(() {
         _generatedDeck = result;
         _isGenerating = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isGenerating = false;
       });

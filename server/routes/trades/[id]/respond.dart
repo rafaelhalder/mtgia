@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/notification_service.dart';
 
 /// PUT /trades/:id/respond → Aceitar ou recusar trade
 Future<Response> onRequest(RequestContext context, String id) async {
@@ -70,6 +71,26 @@ Future<Response> onRequest(RequestContext context, String id) async {
         'notes': action == 'accept' ? 'Proposta aceita' : 'Proposta recusada',
       });
     });
+
+    // 🔔 Notificação: trade aceito/recusado → notificar o sender
+    final responderInfo = await pool.execute(
+      Sql.named('SELECT username, display_name FROM users WHERE id = @id'),
+      parameters: {'id': userId},
+    );
+    final responderName = responderInfo.isNotEmpty
+        ? (responderInfo.first.toColumnMap()['display_name'] ??
+            responderInfo.first.toColumnMap()['username']) as String
+        : 'Alguém';
+    final senderId = trade['sender_id'] as String;
+    await NotificationService.create(
+      pool: pool,
+      userId: senderId,
+      type: action == 'accept' ? 'trade_accepted' : 'trade_declined',
+      title: action == 'accept'
+          ? '$responderName aceitou sua proposta de trade'
+          : '$responderName recusou sua proposta de trade',
+      referenceId: id,
+    );
 
     return Response.json(body: {
       'id': id,

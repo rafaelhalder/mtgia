@@ -211,7 +211,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     color: theme.colorScheme.error,
                   ),
                   const SizedBox(height: 16),
-                  Text(detailsError!),
+                  Text(detailsError),
                   const SizedBox(height: 16),
                   if (isUnauthorized)
                     ElevatedButton(

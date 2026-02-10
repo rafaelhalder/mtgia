@@ -116,6 +116,7 @@ class _ExploreTabState extends State<_ExploreTab>
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -345,6 +346,7 @@ class _FollowingFeedTabState extends State<_FollowingFeedTab>
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }

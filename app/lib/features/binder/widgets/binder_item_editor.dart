@@ -172,6 +172,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
     if (ok) {
       Navigator.pop(context);
     } else {
+      if (!mounted) return;
       setState(() => _saving = false);
     }
   }

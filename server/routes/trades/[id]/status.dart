@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/notification_service.dart';
 
 /// PUT /trades/:id/status → Atualizar status de entrega
 Future<Response> onRequest(RequestContext context, String id) async {
@@ -119,6 +120,35 @@ Future<Response> onRequest(RequestContext context, String id) async {
         'notes': notes ?? 'Status atualizado para $newStatus',
       });
     });
+
+    // 🔔 Notificação: status do trade atualizado → notificar a outra parte
+    final notifyType = 'trade_$newStatus'; // trade_shipped, trade_delivered, trade_completed
+    final validNotifTypes = ['trade_shipped', 'trade_delivered', 'trade_completed'];
+    if (validNotifTypes.contains(notifyType)) {
+      final changerInfo = await pool.execute(
+        Sql.named('SELECT username, display_name FROM users WHERE id = @id'),
+        parameters: {'id': userId},
+      );
+      final changerName = changerInfo.isNotEmpty
+          ? (changerInfo.first.toColumnMap()['display_name'] ??
+              changerInfo.first.toColumnMap()['username']) as String
+          : 'Alguém';
+      final notifyUserId = isSender
+          ? trade['receiver_id'] as String
+          : trade['sender_id'] as String;
+      final statusLabels = {
+        'trade_shipped': 'marcou o trade como enviado',
+        'trade_delivered': 'confirmou o recebimento do trade',
+        'trade_completed': 'finalizou o trade',
+      };
+      await NotificationService.create(
+        pool: pool,
+        userId: notifyUserId,
+        type: notifyType,
+        title: '$changerName ${statusLabels[notifyType]}',
+        referenceId: id,
+      );
+    }
 
     return Response.json(body: {
       'id': id,

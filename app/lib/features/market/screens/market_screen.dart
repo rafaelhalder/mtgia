@@ -16,12 +16,14 @@ class MarketScreen extends StatefulWidget {
 class _MarketScreenState extends State<MarketScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  bool _initialLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<MarketProvider>().fetchMovers();
+    });
   }
 
   @override
@@ -34,14 +36,6 @@ class _MarketScreenState extends State<MarketScreen>
   Widget build(BuildContext context) {
     return Consumer<MarketProvider>(
       builder: (context, provider, _) {
-        // Auto-fetch na primeira abertura
-        if (!_initialLoaded && !provider.isLoading) {
-          _initialLoaded = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            provider.fetchMovers();
-          });
-        }
-
         return Scaffold(
           backgroundColor: AppTheme.backgroundAbyss,
           appBar: AppBar(

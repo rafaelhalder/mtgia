@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/notification_service.dart';
 
 /// GET /trades/:id/messages → Listar mensagens do trade
 /// POST /trades/:id/messages → Enviar mensagem no trade
@@ -146,6 +147,29 @@ Future<Response> _postMessage(RequestContext context, String id) async {
     });
 
     final row = insertResult.first.toColumnMap();
+
+    // 🔔 Notificação: mensagem no trade → notificar a outra parte
+    final recipientId = trade['sender_id'] == userId
+        ? trade['receiver_id'] as String
+        : trade['sender_id'] as String;
+    final senderInfo = await pool.execute(
+      Sql.named('SELECT username, display_name FROM users WHERE id = @id'),
+      parameters: {'id': userId},
+    );
+    final senderName = senderInfo.isNotEmpty
+        ? (senderInfo.first.toColumnMap()['display_name'] ??
+            senderInfo.first.toColumnMap()['username']) as String
+        : 'Alguém';
+    await NotificationService.create(
+      pool: pool,
+      userId: recipientId,
+      type: 'trade_message',
+      title: '$senderName enviou mensagem no trade',
+      body: message != null && message.length > 100
+          ? '${message.substring(0, 100)}...'
+          : message,
+      referenceId: id,
+    );
 
     return Response.json(
       statusCode: HttpStatus.created,

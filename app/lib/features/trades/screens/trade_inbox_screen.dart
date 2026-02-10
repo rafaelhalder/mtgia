@@ -24,12 +24,14 @@ class _TradeInboxTabContentState extends State<TradeInboxTabContent>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        _loadForTab(_tabController.index);
-      }
-    });
+    _tabController.addListener(_onTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadForTab(0));
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      _loadForTab(_tabController.index);
+    }
   }
 
   void _loadForTab(int index) {
@@ -49,6 +51,7 @@ class _TradeInboxTabContentState extends State<TradeInboxTabContent>
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -104,13 +107,15 @@ class _TradeInboxScreenState extends State<TradeInboxScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        _loadForTab(_tabController.index);
-      }
-    });
+    _tabController.addListener(_onTabChanged);
     // Carregar trades recebidos inicialmente
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadForTab(0));
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      _loadForTab(_tabController.index);
+    }
   }
 
   void _loadForTab(int index) {
@@ -130,6 +135,7 @@ class _TradeInboxScreenState extends State<TradeInboxScreen>
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }

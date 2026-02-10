@@ -569,7 +569,7 @@ class _EditionTile extends StatelessWidget {
 }
 
 /// Widget para quando não encontra a carta
-class CardNotFoundWidget extends StatelessWidget {
+class CardNotFoundWidget extends StatefulWidget {
   final String? detectedName;
   final String? errorMessage;
   final VoidCallback onRetry;
@@ -584,8 +584,26 @@ class CardNotFoundWidget extends StatelessWidget {
   });
 
   @override
+  State<CardNotFoundWidget> createState() => _CardNotFoundWidgetState();
+}
+
+class _CardNotFoundWidgetState extends State<CardNotFoundWidget> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(text: widget.detectedName);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final searchController = TextEditingController(text: detectedName);
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -602,7 +620,7 @@ class CardNotFoundWidget extends StatelessWidget {
           const Icon(Icons.search_off, color: Colors.white, size: 48),
           const SizedBox(height: 12),
           Text(
-            errorMessage ?? 'Carta não encontrada',
+            widget.errorMessage ?? 'Carta não encontrada',
             style: const TextStyle(
               color: Colors.white,
               fontSize: AppTheme.fontLg,
@@ -610,16 +628,16 @@ class CardNotFoundWidget extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          if (detectedName != null) ...[
+          if (widget.detectedName != null) ...[
             const SizedBox(height: 8),
             Text(
-              'Detectado: "$detectedName"',
+              'Detectado: "${widget.detectedName}"',
               style: const TextStyle(color: Colors.white70, fontSize: AppTheme.fontSm),
             ),
           ],
           const SizedBox(height: 16),
           TextField(
-            controller: searchController,
+            controller: _searchController,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Digite o nome correto',
@@ -632,17 +650,17 @@ class CardNotFoundWidget extends StatelessWidget {
               ),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.search, color: Colors.white),
-                onPressed: () => onManualSearch(searchController.text),
+                onPressed: () => widget.onManualSearch(_searchController.text),
               ),
             ),
-            onSubmitted: onManualSearch,
+            onSubmitted: widget.onManualSearch,
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: onRetry,
+                  onPressed: widget.onRetry,
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Tentar Novamente'),
                   style: OutlinedButton.styleFrom(

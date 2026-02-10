@@ -6,6 +6,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/cached_card_image.dart';
 import '../../community/screens/community_deck_detail_screen.dart';
 import '../../binder/providers/binder_provider.dart';
+import '../../messages/providers/message_provider.dart';
+import '../../messages/screens/chat_screen.dart';
 import '../providers/social_provider.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -50,6 +52,22 @@ class _UserProfileScreenState extends State<UserProfileScreen>
     }
 
     if (mounted) setState(() => _isToggling = false);
+  }
+
+  Future<void> _openChat(BuildContext context, String userId) async {
+    final msgProvider = context.read<MessageProvider>();
+    final conv = await msgProvider.getOrCreateConversation(userId);
+    if (conv != null && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            conversationId: conv.id,
+            otherUser: conv.otherUser,
+          ),
+        ),
+      );
+    }
   }
 
   void _loadTab(int index) {
@@ -188,46 +206,68 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                     const SizedBox(height: 16),
                     // Follow button (only if not own profile)
                     if (provider.isOwnProfile != true)
-                      SizedBox(
-                        width: 200,
-                        height: 40,
-                        child: ElevatedButton.icon(
-                          onPressed: _isToggling ? null : _toggleFollow,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: provider.isFollowingVisited
-                                ? AppTheme.surfaceSlate
-                                : AppTheme.manaViolet,
-                            foregroundColor: AppTheme.textPrimary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-                              side: provider.isFollowingVisited
-                                  ? const BorderSide(
-                                      color: AppTheme.outlineMuted)
-                                  : BorderSide.none,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 160,
+                            height: 40,
+                            child: ElevatedButton.icon(
+                              onPressed: _isToggling ? null : _toggleFollow,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: provider.isFollowingVisited
+                                    ? AppTheme.surfaceSlate
+                                    : AppTheme.manaViolet,
+                                foregroundColor: AppTheme.textPrimary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusXl),
+                                  side: provider.isFollowingVisited
+                                      ? const BorderSide(
+                                          color: AppTheme.outlineMuted)
+                                      : BorderSide.none,
+                                ),
+                              ),
+                              icon: _isToggling
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    )
+                                  : Icon(
+                                      provider.isFollowingVisited
+                                          ? Icons.person_remove
+                                          : Icons.person_add,
+                                      size: 18,
+                                    ),
+                              label: Text(
+                                provider.isFollowingVisited
+                                    ? 'Deixar de seguir'
+                                    : 'Seguir',
+                                style: const TextStyle(fontSize: AppTheme.fontSm),
+                              ),
                             ),
                           ),
-                          icon: _isToggling
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                )
-                              : Icon(
-                                  provider.isFollowingVisited
-                                      ? Icons.person_remove
-                                      : Icons.person_add,
-                                  size: 18,
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            height: 40,
+                            child: OutlinedButton.icon(
+                              onPressed: () => _openChat(context, widget.userId),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.textPrimary,
+                                side: const BorderSide(color: AppTheme.outlineMuted),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                                 ),
-                          label: Text(
-                            provider.isFollowingVisited
-                                ? 'Deixar de seguir'
-                                : 'Seguir',
-                            style: const TextStyle(fontSize: AppTheme.fontMd),
+                              ),
+                              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                              label: const Text('Mensagem',
+                                  style: TextStyle(fontSize: AppTheme.fontSm)),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                   ],
                 ),

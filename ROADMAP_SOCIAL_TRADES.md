@@ -1307,30 +1307,30 @@ Marque `[x]` conforme cada task for concluída.
 ## Épico 3 — Trades
 - [ ] 3.1 DB: tabelas de trades
 - [ ] 3.2 Server: Criar proposta
-- [ ] 3.3 Server: Listar trades
-- [ ] 3.4 Server: Detalhe do trade
-- [ ] 3.5 Server: Aceitar/Recusar
-- [ ] 3.6 Server: Atualizar status/entrega
-- [ ] 3.7 Server: Mensagens no trade
-- [ ] 3.8 Server: Upload de comprovante
-- [ ] 3.9 Flutter: Provider de trades
-- [ ] 3.10 Flutter: Criar proposta
-- [ ] 3.11 Flutter: Inbox de trades
-- [ ] 3.12 Flutter: Detalhe do trade (timeline + chat)
+- [x] 3.3 Server: Listar trades
+- [x] 3.4 Server: Detalhe do trade
+- [x] 3.5 Server: Aceitar/Recusar
+- [x] 3.6 Server: Atualizar status/entrega
+- [x] 3.7 Server: Mensagens no trade
+- [x] 3.8 Server: Upload de comprovante
+- [x] 3.9 Flutter: Provider de trades
+- [x] 3.10 Flutter: Criar proposta
+- [x] 3.11 Flutter: Inbox de trades
+- [x] 3.12 Flutter: Detalhe do trade (timeline + chat)
 
 ## Épico 4 — Mensagens Diretas
-- [ ] 4.1 DB: tabelas de conversas
-- [ ] 4.2 Server: endpoints de conversas
-- [ ] 4.3 Flutter: Inbox de mensagens
-- [ ] 4.4 Flutter: Tela de chat
-- [ ] 4.5 Flutter: Botão "Mensagem" no perfil
+- [x] 4.1 DB: tabelas de conversas
+- [x] 4.2 Server: endpoints de conversas
+- [x] 4.3 Flutter: Inbox de mensagens
+- [x] 4.4 Flutter: Tela de chat
+- [x] 4.5 Flutter: Botão "Mensagem" no perfil
 
 ## Épico 5 — Notificações
-- [ ] 5.1 DB: tabela de notificações
-- [ ] 5.2 Server: endpoints de notificações
-- [ ] 5.3 Server: criar notificações automaticamente
-- [ ] 5.4 Flutter: Ícone de sino + badge
-- [ ] 5.5 Flutter: Tela de notificações
+- [x] 5.1 DB: tabela de notificações
+- [x] 5.2 Server: endpoints de notificações
+- [x] 5.3 Server: criar notificações automaticamente
+- [x] 5.4 Flutter: Ícone de sino + badge
+- [x] 5.5 Flutter: Tela de notificações
 
 ---
 

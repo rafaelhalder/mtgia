@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../lib/notification_service.dart';
 
 /// GET  /trades  → Listar trades do usuário
 /// POST /trades  → Criar proposta de trade
@@ -202,6 +203,24 @@ Future<Response> _createTrade(RequestContext context) async {
         'created_at': offer['created_at'],
       };
     });
+
+    // 🔔 Notificação: proposta de trade recebida
+    final senderInfo = await pool.execute(
+      Sql.named('SELECT username, display_name FROM users WHERE id = @id'),
+      parameters: {'id': userId},
+    );
+    final senderName = senderInfo.isNotEmpty
+        ? (senderInfo.first.toColumnMap()['display_name'] ??
+            senderInfo.first.toColumnMap()['username']) as String
+        : 'Alguém';
+    await NotificationService.create(
+      pool: pool,
+      userId: receiverId,
+      type: 'trade_offer_received',
+      title: '$senderName enviou uma proposta de trade',
+      body: message,
+      referenceId: tradeResult['id'] as String?,
+    );
 
     return Response.json(statusCode: HttpStatus.created, body: tradeResult);
   } catch (e) {
