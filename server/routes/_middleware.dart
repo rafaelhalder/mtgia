@@ -34,17 +34,8 @@ Handler middleware(Handler handler) {
     // Fornece a conexão do banco de dados para todas as rotas filhas.
     final response = await handler.use(provider<Pool>((_) => _db.connection))(context);
 
-    // Adiciona CORS em TODAS as respostas.
-    // Lê o body original e reconstrói com os headers CORS.
-    final body = await response.body();
-    return Response(
-      statusCode: response.statusCode,
-      body: body,
-      headers: {
-        ...response.headers,
-        ..._corsHeaders,
-      },
-    );
+    // Adiciona CORS em TODAS as respostas via copyWith (só headers, sem tocar no body).
+    return response.copyWith(headers: _corsHeaders);
   };
 }
 
