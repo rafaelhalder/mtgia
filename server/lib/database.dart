@@ -27,6 +27,10 @@ class Database {
   }
 
   /// Carrega as variáveis de ambiente e estabelece o Pool de conexões.
+  ///
+  /// Testa a conexão real com um `SELECT 1` após criar o Pool.
+  /// Se `DB_SSL_MODE` não estiver definido, tenta primeiro com SSL e faz
+  /// fallback para conexão sem SSL (comum em VPS/Docker sem cert).
   Future<void> connect() async {
     if (_connected) return;
 
@@ -41,33 +45,67 @@ class Database {
     final environment = (env['ENVIRONMENT'] ?? 'development').toLowerCase();
 
     if (host == null || port == null || database == null || username == null || password == null) {
-      print('Erro: As variáveis de ambiente do banco de dados não estão configuradas no arquivo .env');
+      print('❌ Erro: Variáveis de ambiente do banco não configuradas.');
+      print('   Necessárias: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS');
       return;
     }
 
-    // Determina o modo SSL baseado no ambiente
-    // Produção: SSL obrigatório para segurança
-    // Desenvolvimento: SSL desabilitado para facilitar setup local
-    final sslMode = _parseSslMode(env['DB_SSL_MODE']) ?? (environment == 'production' ? SslMode.require : SslMode.disable);
+    print('🔌 Conectando ao banco: $host:$port/$database (env: $environment)');
 
-    _pool = Pool.withEndpoints(
-      [
-        Endpoint(
-          host: host,
-          port: port,
-          database: database,
-          username: username,
-          password: password,
-        )
-      ],
-      settings: PoolSettings(
-        maxConnectionCount: 10, // Ajuste conforme necessário
-        sslMode: sslMode,
-      ),
+    final endpoint = Endpoint(
+      host: host,
+      port: port,
+      database: database,
+      username: username,
+      password: password,
     );
 
-    _connected = true;
-    print('✅ Pool de conexões com o banco de dados inicializado (SSL: ${sslMode.name}).');
+    // Se o usuário definiu DB_SSL_MODE, respeita. Senão, tenta smart fallback.
+    final explicitSsl = _parseSslMode(env['DB_SSL_MODE']);
+
+    if (explicitSsl != null) {
+      // Modo SSL explícito — usa direto sem fallback.
+      final ok = await _tryConnect(endpoint, explicitSsl);
+      if (!ok) {
+        print('❌ Falha ao conectar com SSL: ${explicitSsl.name}');
+      }
+      return;
+    }
+
+    // Smart fallback: tenta disable primeiro (mais comum em Docker/VPS),
+    // depois require se falhar.
+    final modes = [SslMode.disable, SslMode.require];
+    for (final mode in modes) {
+      final ok = await _tryConnect(endpoint, mode);
+      if (ok) return;
+      print('⚠️  SSL ${mode.name} falhou, tentando próximo...');
+    }
+
+    print('❌ Não foi possível conectar ao banco com nenhum modo SSL.');
+  }
+
+  /// Tenta criar o pool e validar com `SELECT 1`.
+  Future<bool> _tryConnect(Endpoint endpoint, SslMode sslMode) async {
+    try {
+      final pool = Pool.withEndpoints(
+        [endpoint],
+        settings: PoolSettings(
+          maxConnectionCount: 10,
+          sslMode: sslMode,
+        ),
+      );
+
+      // Testa a conexão real (o Pool é lazy, sem isso não sabemos se funciona).
+      await pool.execute(Sql.named('SELECT 1'));
+
+      _pool = pool;
+      _connected = true;
+      print('✅ Pool de conexões inicializado (SSL: ${sslMode.name}).');
+      return true;
+    } catch (e) {
+      print('⚠️  Erro ao conectar (SSL: ${sslMode.name}): $e');
+      return false;
+    }
   }
 
   /// Fecha a conexão com o banco de dados.
