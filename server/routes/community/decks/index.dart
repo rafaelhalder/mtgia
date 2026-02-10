@@ -85,7 +85,7 @@ Future<Response> _listPublicDecks(RequestContext context) async {
         u.id as owner_id,
         u.username as owner_username,
         cmd.commander_name,
-        cmd.commander_image_url,
+        COALESCE(cmd.commander_image_url, first_card.first_image_url) as commander_image_url,
         COALESCE(SUM(dc.quantity), 0)::int as card_count
       FROM decks d
       JOIN users u ON u.id = d.user_id
@@ -99,9 +99,19 @@ Future<Response> _listPublicDecks(RequestContext context) async {
           AND dc_cmd.is_commander = true
         LIMIT 1
       ) cmd ON true
+      LEFT JOIN LATERAL (
+        SELECT c.image_url as first_image_url
+        FROM deck_cards dc_fc
+        JOIN cards c ON c.id = dc_fc.card_id
+        WHERE dc_fc.deck_id = d.id
+          AND c.image_url IS NOT NULL
+          AND c.image_url != ''
+        ORDER BY dc_fc.quantity DESC, c.name
+        LIMIT 1
+      ) first_card ON true
       LEFT JOIN deck_cards dc ON d.id = dc.deck_id
       WHERE $whereClause
-      GROUP BY d.id, u.id, u.username, cmd.commander_name, cmd.commander_image_url
+      GROUP BY d.id, u.id, u.username, cmd.commander_name, cmd.commander_image_url, first_card.first_image_url
       ORDER BY d.created_at DESC
       LIMIT @lim OFFSET @off
     ''';

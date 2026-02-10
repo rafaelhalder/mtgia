@@ -47,7 +47,7 @@ class CachedCardImage extends StatelessWidget {
       height: height,
       fit: fit,
       fadeInDuration: const Duration(milliseconds: 200),
-      placeholder: (_, __) => _placeholder(),
+      placeholder: (_, __) => _loadingWidget(),
       errorWidget: (_, __, ___) => _errorWidget(),
       // Cache por 30 dias (default do flutter_cache_manager)
       // As imagens do Scryfall raramente mudam, então cache longo é seguro.
@@ -63,7 +63,27 @@ class CachedCardImage extends StatelessWidget {
     return image;
   }
 
+  /// Placeholder estático quando não há URL (sem imagem para carregar)
   Widget _placeholder() {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceSlate,
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusXs),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.style, // ícone de carta MTG genérico
+          color: AppTheme.outlineMuted,
+          size: 28,
+        ),
+      ),
+    );
+  }
+
+  /// Spinner de loading enquanto a imagem está baixando
+  Widget _loadingWidget() {
     return Container(
       width: width,
       height: height,
