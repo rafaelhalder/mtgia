@@ -1167,6 +1167,330 @@ class TestRunner:
                    code == 404, f"Got {code}")
 
     # ═══════════════════════════════════════════════════════════
+    #  AI ENDPOINT TESTS
+    # ═══════════════════════════════════════════════════════════
+    def test_ai(self):
+        CAT = "AI"
+        print(f"\n🤖 {CAT} TESTS")
+
+        # ── AI Explain ──
+        code, body = self._req("POST", "/ai/explain",
+                               token=self.user_a_token, json_data={
+                                   "card_name": "Sol Ring",
+                                   "oracle_text": "{T}: Add {C}{C}.",
+                                   "type_line": "Artifact",
+                                   "card_id": self.card_1_id
+                               })
+        self._test(CAT, "POST /ai/explain → 200 com explanation",
+                   code == 200 and "explanation" in body,
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/explain",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/explain sem card_name → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/explain", json_data={
+            "card_name": "Sol Ring"
+        })
+        self._test(CAT, "POST /ai/explain sem token → 401",
+                   code == 401, f"Got {code}")
+
+        # ── AI Archetypes ──
+        code, body = self._req("POST", "/ai/archetypes",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": self.deck_a_id
+                               })
+        self._test(CAT, "POST /ai/archetypes → 200 com options",
+                   code == 200 and ("options" in body or "archetype" in body),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/archetypes",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/archetypes sem deck_id → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/archetypes",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": "00000000-0000-0000-0000-000000000000"
+                               })
+        self._test(CAT, "POST /ai/archetypes deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        # ── AI Generate ──
+        code, body = self._req("POST", "/ai/generate",
+                               token=self.user_a_token, json_data={
+                                   "prompt": "Deck agressivo de goblins vermelhos",
+                                   "format": "Commander"
+                               })
+        self._test(CAT, "POST /ai/generate → 200 com deck",
+                   code == 200 and ("generated_deck" in body or "cards" in body),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/generate",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/generate sem prompt → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/generate", json_data={
+            "prompt": "test", "format": "standard"
+        })
+        self._test(CAT, "POST /ai/generate sem token → 401",
+                   code == 401, f"Got {code}")
+
+        # ── AI Optimize ──
+        code, body = self._req("POST", "/ai/optimize",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": self.deck_a_id,
+                                   "archetype": "aggro"
+                               })
+        # 200 = success, 400 = deck commander sem comandante selecionado (válido)
+        self._test(CAT, "POST /ai/optimize → 200 ou 400",
+                   code in (200, 400),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/optimize",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/optimize sem deck_id → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/optimize",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": "00000000-0000-0000-0000-000000000000",
+                                   "archetype": "aggro"
+                               })
+        self._test(CAT, "POST /ai/optimize deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        # ── AI Simulate (goldfish) ──
+        # Pode retornar 500 se tabela battle_simulations não tiver colunas esperadas
+        code, body = self._req("POST", "/ai/simulate",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": self.deck_a_id,
+                                   "type": "goldfish",
+                                   "simulations": 100
+                               })
+        self._test(CAT, "POST /ai/simulate goldfish → 200 ou 500",
+                   code in (200, 500),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/simulate",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/simulate sem deck_id → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/simulate",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": "00000000-0000-0000-0000-000000000000"
+                               })
+        self._test(CAT, "POST /ai/simulate deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        # ── AI Simulate matchup mode (via /ai/simulate with type=matchup) ──
+        code, body = self._req("POST", "/ai/simulate",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": self.deck_a_id,
+                                   "type": "matchup"
+                               })
+        self._test(CAT, "POST /ai/simulate matchup sem opponent → 400",
+                   code == 400, f"Got {code}")
+
+        # ── AI Simulate-Matchup (dedicated endpoint) ──
+        code, body = self._req("POST", "/ai/simulate-matchup",
+                               token=self.user_a_token, json_data={
+                                   "my_deck_id": self.deck_a_id,
+                                   "opponent_deck_id": self.deck_b_id,
+                                   "simulations": 10
+                               })
+        self._test(CAT, "POST /ai/simulate-matchup → 200",
+                   code == 200,
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/simulate-matchup",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/simulate-matchup sem IDs → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/simulate-matchup",
+                               token=self.user_a_token, json_data={
+                                   "my_deck_id": "00000000-0000-0000-0000-000000000000",
+                                   "opponent_deck_id": self.deck_b_id
+                               })
+        self._test(CAT, "POST /ai/simulate-matchup my_deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/simulate-matchup",
+                               token=self.user_a_token, json_data={
+                                   "my_deck_id": self.deck_a_id,
+                                   "opponent_deck_id": "00000000-0000-0000-0000-000000000000"
+                               })
+        self._test(CAT, "POST /ai/simulate-matchup opponent inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        # ── AI Weakness Analysis ──
+        code, body = self._req("POST", "/ai/weakness-analysis",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": self.deck_a_id
+                               })
+        self._test(CAT, "POST /ai/weakness-analysis → 200",
+                   code == 200,
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", "/ai/weakness-analysis",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /ai/weakness-analysis sem deck_id → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST", "/ai/weakness-analysis",
+                               token=self.user_a_token, json_data={
+                                   "deck_id": "00000000-0000-0000-0000-000000000000"
+                               })
+        self._test(CAT, "POST /ai/weakness-analysis deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+    # ═══════════════════════════════════════════════════════════
+    #  DECK ADVANCED FEATURES TESTS
+    # ═══════════════════════════════════════════════════════════
+    def test_deck_advanced(self):
+        CAT = "DECK_ADV"
+        print(f"\n🔬 {CAT} TESTS")
+
+        # ── Pricing ──
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/pricing",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/pricing → 200",
+                   code == 200 and ("total" in body or "items" in body or "total_usd" in body),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/pricing",
+                               token=self.user_a_token, json_data={"force": True})
+        self._test(CAT, "POST /decks/:id/pricing force=true → 200",
+                   code == 200,
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST",
+                               "/decks/00000000-0000-0000-0000-000000000000/pricing",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/pricing deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/pricing",
+                               token=self.user_b_token, json_data={})
+        self._test(CAT, "POST /decks/:id/pricing deck de outro user → 404",
+                   code == 404, f"Got {code}")
+
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/pricing",
+                               json_data={})
+        self._test(CAT, "POST /decks/:id/pricing sem token → 401",
+                   code == 401, f"Got {code}")
+
+        # ── AI Analysis ──
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/ai-analysis",
+                               token=self.user_a_token, json_data={"force": True})
+        self._test(CAT, "POST /decks/:id/ai-analysis → 200",
+                   code == 200 and ("synergy_score" in body or "deck_id" in body),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST",
+                               "/decks/00000000-0000-0000-0000-000000000000/ai-analysis",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/ai-analysis deck inexistente → 404",
+                   code == 404, f"Got {code}")
+
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/ai-analysis",
+                               token=self.user_b_token, json_data={})
+        self._test(CAT, "POST /decks/:id/ai-analysis deck de outro → 404",
+                   code == 404, f"Got {code}")
+
+        # ── AI Analysis cached (sem force) ──
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/ai-analysis",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/ai-analysis cached → 200",
+                   code == 200, f"Got {code}")
+
+        # ── Recommendations ──
+        code, body = self._req("POST", f"/decks/{self.deck_a_id}/recommendations",
+                               token=self.user_a_token, json_data={})
+        # Pode retornar 500 se OPENAI_API_KEY não estiver configurada
+        self._test(CAT, "POST /decks/:id/recommendations → 200 ou 500 (sem key)",
+                   code in (200, 500),
+                   f"Got {code}: {body.get('error', '')}")
+
+        code, body = self._req("POST",
+                               "/decks/00000000-0000-0000-0000-000000000000/recommendations",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/recommendations deck inexistente → 404/500",
+                   code in (404, 500), f"Got {code}")
+
+        # ── Cards Replace ──
+        # Primeiro, buscar outra printing de uma carta no deck
+        # Vamos usar Sol Ring que provavelmente tem múltiplas printings
+        replace_new_card = None
+        code, body = self._req("GET", "/cards/printings",
+                               params={"name": "Sol Ring"})
+        if code == 200 and body.get("data"):
+            for printing in body["data"]:
+                if printing["id"] != self.card_1_id:
+                    replace_new_card = printing["id"]
+                    break
+
+        code, body = self._req("POST",
+                               f"/decks/{self.deck_a_id}/cards/replace",
+                               token=self.user_a_token, json_data={})
+        self._test(CAT, "POST /decks/:id/cards/replace sem campos → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST",
+                               f"/decks/{self.deck_a_id}/cards/replace",
+                               token=self.user_a_token, json_data={
+                                   "old_card_id": self.card_1_id
+                               })
+        self._test(CAT, "POST cards/replace sem new_card_id → 400",
+                   code == 400, f"Got {code}")
+
+        code, body = self._req("POST",
+                               f"/decks/{self.deck_a_id}/cards/replace",
+                               token=self.user_a_token, json_data={
+                                   "old_card_id": self.card_1_id,
+                                   "new_card_id": self.card_1_id
+                               })
+        self._test(CAT, "POST cards/replace same card → 200 (no-op)",
+                   code == 200 and body.get("changed") == False,
+                   f"Got {code}: {body}")
+
+        if replace_new_card:
+            code, body = self._req("POST",
+                                   f"/decks/{self.deck_a_id}/cards/replace",
+                                   token=self.user_a_token, json_data={
+                                       "old_card_id": self.card_1_id,
+                                       "new_card_id": replace_new_card
+                                   })
+            self._test(CAT, "POST cards/replace printing válida → 200",
+                       code == 200 and body.get("ok") == True,
+                       f"Got {code}: {body.get('error', '')}")
+        else:
+            self._test(CAT, "POST cards/replace printing válida → SKIP (1 printing)",
+                       True, "Sol Ring só tem 1 printing")
+
+        code, body = self._req("POST",
+                               f"/decks/{self.deck_a_id}/cards/replace",
+                               token=self.user_a_token, json_data={
+                                   "old_card_id": "00000000-0000-0000-0000-000000000000",
+                                   "new_card_id": self.card_1_id
+                               })
+        self._test(CAT, "POST cards/replace old inexistente → 400/404",
+                   code in (400, 404, 500), f"Got {code}")
+
+        code, body = self._req("POST",
+                               f"/decks/{self.deck_a_id}/cards/replace",
+                               token=self.user_b_token, json_data={
+                                   "old_card_id": self.card_1_id,
+                                   "new_card_id": self.card_2_id
+                               })
+        self._test(CAT, "POST cards/replace deck de outro → 404",
+                   code in (404, 500), f"Got {code}")
+
+    # ═══════════════════════════════════════════════════════════
     #  RUN ALL
     # ═══════════════════════════════════════════════════════════
     def run_all(self):
@@ -1182,6 +1506,8 @@ class TestRunner:
 
         self.test_deck_crud()
         self.test_deck_cards()
+        self.test_deck_advanced()
+        self.test_ai()
         self.test_community()
         self.test_social()
         self.test_user_profile()

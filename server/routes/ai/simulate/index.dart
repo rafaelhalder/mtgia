@@ -182,14 +182,13 @@ Future<void> _saveSimulation({
     if (tableExists.isNotEmpty && tableExists.first[0] == true) {
       await pool.execute(
         Sql.named('''
-          INSERT INTO battle_simulations (deck_a_id, deck_b_id, simulation_type, metrics)
-          VALUES (@deckAId, @deckBId, @type, @metrics)
+          INSERT INTO battle_simulations (deck_a_id, deck_b_id, game_log)
+          VALUES (@deckAId, @deckBId, @gameLog::jsonb)
         '''),
         parameters: {
           'deckAId': deckAId,
           'deckBId': deckBId,
-          'type': type,
-          'metrics': jsonEncode(result),
+          'gameLog': jsonEncode({'type': type, ...result}),
         },
       );
     }
