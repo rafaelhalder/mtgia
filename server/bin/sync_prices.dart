@@ -110,8 +110,32 @@ Opções:
     }
 
     stdout.writeln(
-      '✅ Concluído. updated=$updated, missingPrice=$missing, failedBatches=$failedBatches',
+      '✅ Preços atualizados. updated=$updated, missingPrice=$missing, failedBatches=$failedBatches',
     );
+
+    // ── Snapshot diário em price_history (para Market Movers / Cotações) ──
+    if (!dryRun && updated > 0) {
+      stdout.writeln('📊 Salvando snapshot diário em price_history...');
+      try {
+        final historyResult = await connection.execute('''
+          INSERT INTO price_history (card_id, price_date, price_usd)
+          SELECT id, CURRENT_DATE, price
+          FROM cards
+          WHERE price IS NOT NULL AND price > 0
+          ON CONFLICT (card_id, price_date)
+          DO UPDATE SET price_usd = EXCLUDED.price_usd
+        ''');
+        stdout.writeln(
+          '   ✅ price_history: ${historyResult.affectedRows} registros salvos para hoje',
+        );
+      } catch (e) {
+        stderr.writeln(
+          '   ⚠️ price_history não atualizado (tabela pode não existir): $e',
+        );
+      }
+    }
+
+    stdout.writeln('✅ Concluído.');
   } finally {
     await connection.close();
   }

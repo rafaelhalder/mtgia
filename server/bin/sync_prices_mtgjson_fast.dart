@@ -7,14 +7,20 @@ import 'package:dotenv/dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 
-/// Sync de preços via MTGJSON - VERSÃO OTIMIZADA
+/// Sync de preços via MTGJSON - VERSÃO OTIMIZADA v2
+///
+/// Mudanças da v2 (fix OOM crash com AllIdentifiers.json ~400MB):
+/// - Usa `jq` para extrair dados de AllIdentifiers sem carregar tudo em memória
+/// - Fallback para parse direto com tratamento de OOM explícito
+/// - Sempre salva snapshot em price_history
 ///
 /// Estratégia:
-/// 1. Baixa AllPricesToday.json para disco (se não existir ou --force)
-/// 2. Baixa AllIdentifiers.json para disco (se não existir ou --force)
-/// 3. Cria tabela temporária no banco
-/// 4. Insere dados em BATCH (1000 por vez)
-/// 5. UPDATE com JOIN (uma única query!)
+/// 1. Baixa AllPricesToday.json para disco (~30MB)
+/// 2. Baixa AllIdentifiers.json para disco (~400MB) se necessário
+/// 3. Extrai name+setCode via jq (streaming, sem OOM) ou fallback memória
+/// 4. Match com cartas do banco (name + set_code)
+/// 5. INSERT em tabela temp + UPDATE com JOIN
+/// 6. Snapshot em price_history
 ///
 /// Uso:
 ///   dart run bin/sync_prices_mtgjson_fast.dart
@@ -25,7 +31,7 @@ Future<void> main(List<String> args) async {
 
   if (args.contains('--help') || args.contains('-h')) {
     stdout.writeln('''
-sync_prices_mtgjson_fast.dart - Sync de preços OTIMIZADO via MTGJSON
+sync_prices_mtgjson_fast.dart - Sync de preços OTIMIZADO via MTGJSON (v2)
 
 Uso:
   dart run bin/sync_prices_mtgjson_fast.dart
@@ -36,18 +42,10 @@ Opções:
   --dry-run         Não grava no banco
   --help            Mostra esta ajuda
 
-Exemplos:
-  # Primeira execução (baixa tudo ~500MB)
-  dart run bin/sync_prices_mtgjson_fast.dart
-
-  # Execuções seguintes (usa cache se < 20h)
-  dart run bin/sync_prices_mtgjson_fast.dart
-
-  # Forçar re-download
-  dart run bin/sync_prices_mtgjson_fast.dart --force-download
-
-  # Só re-baixa se cache > 12 horas
-  dart run bin/sync_prices_mtgjson_fast.dart --max-age-hours=12
+Notas:
+  - Usa jq (se disponível) para parsear AllIdentifiers sem OOM
+  - Se jq não estiver instalado: apt-get install -y jq
+  - Fallback para parse em memória (precisa ~2GB RAM)
 ''');
     return;
   }
@@ -68,16 +66,16 @@ Exemplos:
   final dryRun = args.contains('--dry-run');
   final maxAgeHours = _parseIntArg(args, '--max-age-hours=') ?? 20;
 
-  stdout.writeln('💲 Sync de preços MTGJSON (FAST) - dryRun=$dryRun, maxAgeHours=$maxAgeHours');
+  stdout.writeln(
+    '💲 Sync de preços MTGJSON v2 (dryRun=$dryRun, maxAgeHours=$maxAgeHours)',
+  );
 
   try {
     // Diretório de cache
     final cacheDir = Directory('cache');
-    if (!cacheDir.existsSync()) {
-      cacheDir.createSync();
-    }
+    if (!cacheDir.existsSync()) cacheDir.createSync();
 
-    // 1) Baixa AllPricesToday.json
+    // ── 1) Baixa AllPricesToday.json (~30MB) ──
     final pricesFile = File('cache/AllPricesToday.json');
     if (_shouldDownload(pricesFile, forceDownload, maxAgeHours)) {
       stdout.writeln('📥 Baixando AllPricesToday.json...');
@@ -86,73 +84,92 @@ Exemplos:
         pricesFile,
       );
     } else {
-      final age = DateTime.now().difference(pricesFile.lastModifiedSync()).inHours;
-      stdout.writeln('📁 Usando cache: AllPricesToday.json (${age}h atrás)');
+      final age =
+          DateTime.now().difference(pricesFile.lastModifiedSync()).inHours;
+      stdout.writeln('📁 Usando cache AllPricesToday.json (${age}h atrás)');
     }
 
-    // 2) Baixa AllIdentifiers.json
+    // ── 2) Baixa AllIdentifiers.json (~400MB) ──
     final identFile = File('cache/AllIdentifiers.json');
     if (_shouldDownload(identFile, forceDownload, maxAgeHours)) {
-      stdout.writeln('📥 Baixando AllIdentifiers.json (grande, ~400MB)...');
+      stdout.writeln('📥 Baixando AllIdentifiers.json (~400MB)...');
       await _downloadFile(
         'https://mtgjson.com/api/v5/AllIdentifiers.json',
         identFile,
       );
     } else {
-      final age = DateTime.now().difference(identFile.lastModifiedSync()).inHours;
-      stdout.writeln('📁 Usando cache: AllIdentifiers.json (${age}h atrás)');
+      final age =
+          DateTime.now().difference(identFile.lastModifiedSync()).inHours;
+      stdout.writeln('📁 Usando cache AllIdentifiers.json (${age}h atrás)');
     }
 
     stdout.writeln('⏱️  Download: ${sw.elapsed.inSeconds}s');
 
-    // 3) Parse dos JSONs
-    stdout.writeln('📖 Parseando AllIdentifiers.json...');
-    final identJson = jsonDecode(await identFile.readAsString()) as Map<String, dynamic>;
-    final identData = identJson['data'] as Map<String, dynamic>? ?? {};
-    stdout.writeln('   ${identData.length} cards no AllIdentifiers');
-
+    // ── 3) Parse AllPricesToday.json (~30MB, seguro para memória) ──
     stdout.writeln('📖 Parseando AllPricesToday.json...');
-    final pricesJson = jsonDecode(await pricesFile.readAsString()) as Map<String, dynamic>;
+    final pricesJson =
+        jsonDecode(await pricesFile.readAsString()) as Map<String, dynamic>;
     final pricesData = pricesJson['data'] as Map<String, dynamic>? ?? {};
     stdout.writeln('   ${pricesData.length} UUIDs com preços');
 
+    // ── 4) Extrair name+setCode do AllIdentifiers (streaming com jq) ──
+    stdout.writeln('📖 Extraindo name/setCode do AllIdentifiers...');
+    final uuidToNameSet = <String, (String name, String setCode)>{};
+    final wantedUuids = pricesData.keys.toSet();
+
+    await _parseIdentifiers(identFile, wantedUuids, uuidToNameSet);
+    stdout.writeln('   ${uuidToNameSet.length} UUIDs resolvidos');
     stdout.writeln('⏱️  Parse: ${sw.elapsed.inSeconds}s');
 
-    // 4) Cria tabela temporária
-    stdout.writeln('🗄️  Criando tabela temporária...');
-    await connection.execute('DROP TABLE IF EXISTS tmp_mtgjson_prices');
-    await connection.execute('''
-      CREATE TEMP TABLE tmp_mtgjson_prices (
-        name TEXT NOT NULL,
-        set_code TEXT NOT NULL,
-        price DECIMAL(10,2) NOT NULL
-      )
-    ''');
+    // ── 5) Carregar cartas do banco ──
+    stdout.writeln('📖 Carregando cartas do banco...');
+    final cardsInDb = await connection.execute(
+      "SELECT id::text, LOWER(name) as name, LOWER(set_code) as set_code FROM cards WHERE name IS NOT NULL AND set_code IS NOT NULL",
+    );
+    final cardMap = <String, String>{}; // "name|set_code" → card_id
+    for (final row in cardsInDb) {
+      cardMap['${row[1]}|${row[2]}'] = row[0] as String;
+    }
+    stdout.writeln('   ${cardMap.length} cartas no banco');
 
-    // 5) Prepara dados para inserção em batch
+    // ── 6) Match e preparação dos dados ──
     stdout.writeln('🔄 Preparando dados...');
-    final rows = <(String name, String setCode, double price)>[];
+    final rows = <(String cardId, double price)>[];
+    var noMatch = 0;
+    var noPrice = 0;
+    var notInDb = 0;
 
     for (final entry in pricesData.entries) {
       final uuid = entry.key;
       final priceInfo = entry.value as Map<String, dynamic>? ?? {};
 
-      // Busca nome/set no AllIdentifiers
-      final cardInfo = identData[uuid] as Map<String, dynamic>?;
-      if (cardInfo == null) continue;
+      final nameSet = uuidToNameSet[uuid];
+      if (nameSet == null) {
+        noMatch++;
+        continue;
+      }
 
-      final name = (cardInfo['name'] as String?)?.trim();
-      final setCode = (cardInfo['setCode'] as String?)?.toLowerCase().trim();
-      if (name == null || name.isEmpty || setCode == null || setCode.isEmpty) continue;
+      final (name, setCode) = nameSet;
+      final key = '${name.toLowerCase()}|${setCode.toLowerCase()}';
+      final cardId = cardMap[key];
+      if (cardId == null) {
+        notInDb++;
+        continue;
+      }
 
-      // Extrai preço USD
       final price = _extractUsdPrice(priceInfo);
-      if (price == null) continue;
+      if (price == null) {
+        noPrice++;
+        continue;
+      }
 
-      rows.add((name, setCode, price));
+      rows.add((cardId, price));
     }
 
-    stdout.writeln('   ${rows.length} registros com preço válido');
+    stdout.writeln('   ✅ ${rows.length} com preço válido para cards no banco');
+    stdout.writeln('   ⚠️ $noMatch sem match no AllIdentifiers');
+    stdout.writeln('   ⚠️ $notInDb match mas não existem no banco');
+    stdout.writeln('   ⚠️ $noPrice sem preço USD');
     stdout.writeln('⏱️  Preparação: ${sw.elapsed.inSeconds}s');
 
     if (dryRun) {
@@ -160,63 +177,67 @@ Exemplos:
       return;
     }
 
-    // 6) Insere em batches de 1000
+    if (rows.isEmpty) {
+      stdout.writeln('⚠️ Nenhum registro para atualizar.');
+      return;
+    }
+
+    // ── 7) Tabela temporária + INSERT batch ──
+    stdout.writeln('🗄️  Criando tabela temporária...');
+    await connection.execute('DROP TABLE IF EXISTS tmp_mtgjson_prices');
+    await connection.execute('''
+      CREATE TEMP TABLE tmp_mtgjson_prices (
+        card_id UUID NOT NULL,
+        price DECIMAL(10,2) NOT NULL
+      )
+    ''');
+
     stdout.writeln('📤 Inserindo na tabela temporária...');
     const batchSize = 1000;
     var inserted = 0;
 
     for (var i = 0; i < rows.length; i += batchSize) {
       final batch = rows.sublist(i, (i + batchSize).clamp(0, rows.length));
-      
-      // Monta VALUES para inserção em massa
       final values = <String>[];
       final params = <String, dynamic>{};
-      
+
       for (var j = 0; j < batch.length; j++) {
-        final (name, setCode, price) = batch[j];
+        final (cardId, price) = batch[j];
         final idx = i + j;
-        values.add('(@name$idx, @set$idx, @price$idx)');
-        params['name$idx'] = name;
-        params['set$idx'] = setCode;
-        params['price$idx'] = price;
+        values.add('(@cid$idx::uuid, @p$idx::decimal)');
+        params['cid$idx'] = cardId;
+        params['p$idx'] = price;
       }
 
       await connection.execute(
-        Sql.named('INSERT INTO tmp_mtgjson_prices (name, set_code, price) VALUES ${values.join(', ')}'),
+        Sql.named(
+          'INSERT INTO tmp_mtgjson_prices (card_id, price) VALUES ${values.join(', ')}',
+        ),
         parameters: params,
       );
 
       inserted += batch.length;
-      if (inserted % 10000 == 0) {
+      if (inserted % 5000 == 0) {
         stdout.writeln('   Inserido: $inserted/${rows.length}');
       }
     }
 
     stdout.writeln('   Total inserido: $inserted');
-    stdout.writeln('⏱️  Insert: ${sw.elapsed.inSeconds}s');
 
-    // 7) Cria índice para acelerar JOIN
-    stdout.writeln('📊 Criando índice...');
-    await connection.execute('''
-      CREATE INDEX idx_tmp_prices_name_set ON tmp_mtgjson_prices (LOWER(name), set_code)
-    ''');
-
-    // 8) UPDATE com JOIN (uma única query!)
+    // ── 8) UPDATE com JOIN ──
     stdout.writeln('🔄 Atualizando tabela cards...');
     final updateResult = await connection.execute('''
       UPDATE cards c
-      SET 
+      SET
         price = t.price,
         price_updated_at = NOW()
       FROM tmp_mtgjson_prices t
-      WHERE LOWER(c.name) = LOWER(t.name)
-        AND LOWER(c.set_code) = t.set_code
+      WHERE c.id = t.card_id
     ''');
-
     stdout.writeln('✅ Cards atualizados: ${updateResult.affectedRows}');
     stdout.writeln('⏱️  Update: ${sw.elapsed.inSeconds}s');
 
-    // 9) Salvar snapshot no price_history (para Market movers)
+    // ── 9) Snapshot em price_history ──
     stdout.writeln('📊 Salvando snapshot diário em price_history...');
     try {
       final historyResult = await connection.execute('''
@@ -224,25 +245,138 @@ Exemplos:
         SELECT id, CURRENT_DATE, price
         FROM cards
         WHERE price IS NOT NULL AND price > 0
-        ON CONFLICT (card_id, price_date) 
+        ON CONFLICT (card_id, price_date)
         DO UPDATE SET price_usd = EXCLUDED.price_usd
       ''');
-      stdout.writeln('   ✅ price_history: ${historyResult.affectedRows} registros salvos para hoje');
+      stdout.writeln(
+        '   ✅ price_history: ${historyResult.affectedRows} registros',
+      );
     } catch (e) {
-      // Tabela pode não existir ainda — não bloqueia o sync
-      stderr.writeln('   ⚠️ price_history não atualizado (rode migrate_price_history.dart): $e');
+      stderr.writeln('   ⚠️ price_history não atualizado: $e');
     }
 
     stdout.writeln('⏱️  Total: ${sw.elapsed.inSeconds}s');
 
     // Cleanup
     await connection.execute('DROP TABLE IF EXISTS tmp_mtgjson_prices');
-
   } catch (e, st) {
     stderr.writeln('❌ Erro: $e');
     stderr.writeln(st);
   } finally {
     await connection.close();
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Extrai name+setCode do AllIdentifiers.json para os UUIDs desejados.
+///
+/// Tenta usar `jq` (streaming, memory-safe).
+/// Fallback: carrega em memória (precisa ~2GB RAM).
+Future<void> _parseIdentifiers(
+  File identFile,
+  Set<String> wantedUuids,
+  Map<String, (String, String)> result,
+) async {
+  // Tentativa 1: jq (streaming, não usa memória do Dart)
+  if (await _tryJqParse(identFile, wantedUuids, result)) {
+    return;
+  }
+
+  // Tentativa 2: carregar em memória (pode OOM em containers com < 2GB)
+  stdout.writeln('   ⚠️ jq não disponível. Carregando em memória...');
+  stdout.writeln('   💡 Para evitar OOM futuro: apt-get install -y jq');
+  try {
+    final content = await identFile.readAsString();
+    stdout.writeln(
+      '   Arquivo lido (${(content.length / 1024 / 1024).toStringAsFixed(0)}MB). Parseando...',
+    );
+
+    final json = jsonDecode(content) as Map<String, dynamic>;
+    final data = json['data'] as Map<String, dynamic>? ?? {};
+    stdout.writeln('   ${data.length} entries no AllIdentifiers');
+
+    for (final uuid in wantedUuids) {
+      final cardInfo = data[uuid] as Map<String, dynamic>?;
+      if (cardInfo == null) continue;
+
+      final name = (cardInfo['name'] as String?)?.trim();
+      final setCode = (cardInfo['setCode'] as String?)?.trim();
+      if (name != null &&
+          name.isNotEmpty &&
+          setCode != null &&
+          setCode.isNotEmpty) {
+        result[uuid] = (name, setCode);
+      }
+    }
+  } catch (e) {
+    stderr.writeln('   ❌ Erro ao parsear AllIdentifiers: $e');
+    stderr.writeln(
+      '   💡 Instale jq: docker exec <container> apt-get install -y jq',
+    );
+    rethrow;
+  }
+}
+
+/// Usa jq para streaming parse (não carrega JSON na memória do Dart).
+Future<bool> _tryJqParse(
+  File identFile,
+  Set<String> wantedUuids,
+  Map<String, (String, String)> result,
+) async {
+  try {
+    final jqCheck = await Process.run('which', ['jq']);
+    if (jqCheck.exitCode != 0) return false;
+
+    stdout.writeln('   Usando jq para extrair dados (memory-safe)...');
+
+    final process = await Process.start('jq', [
+      '-r',
+      '.data | to_entries[] | [.key, (.value.name // ""), (.value.setCode // "")] | @tsv',
+      identFile.path,
+    ]);
+
+    var parsed = 0;
+    var matched = 0;
+    final lines = process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+
+    await for (final line in lines) {
+      parsed++;
+      final parts = line.split('\t');
+      if (parts.length >= 3) {
+        final uuid = parts[0].trim();
+        if (wantedUuids.contains(uuid)) {
+          final name = parts[1].trim();
+          final setCode = parts[2].trim();
+          if (name.isNotEmpty && setCode.isNotEmpty) {
+            result[uuid] = (name, setCode);
+            matched++;
+          }
+        }
+      }
+      if (parsed % 100000 == 0) {
+        stdout.writeln('   jq: $parsed linhas processadas, $matched matches');
+      }
+    }
+
+    // Captura stderr do jq
+    final stderrOutput = await process.stderr.transform(utf8.decoder).join();
+    final exitCode = await process.exitCode;
+
+    if (exitCode != 0) {
+      stderr.writeln('   ⚠️ jq exit=$exitCode: $stderrOutput');
+      return false;
+    }
+
+    stdout.writeln('   jq: $parsed total, $matched matches');
+    return true;
+  } catch (e) {
+    stderr.writeln('   ⚠️ jq failed: $e');
+    return false;
   }
 }
 
@@ -252,9 +386,9 @@ Future<void> _downloadFile(String url, File file) async {
   try {
     final request = http.Request('GET', Uri.parse(url));
     request.headers['User-Agent'] = 'ManaLoom/1.0';
-    
+
     final response = await client.send(request);
-    
+
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
     }
@@ -264,76 +398,67 @@ Future<void> _downloadFile(String url, File file) async {
     var lastPercent = -1;
 
     final sink = file.openWrite();
-    
+
     await for (final chunk in response.stream) {
       sink.add(chunk);
       downloaded += chunk.length;
-      
+
       if (contentLength > 0) {
         final percent = (downloaded * 100 / contentLength).floor();
         if (percent != lastPercent && percent % 10 == 0) {
-          stdout.writeln('   $percent% (${(downloaded / 1024 / 1024).toStringAsFixed(1)} MB)');
+          stdout.writeln(
+            '   $percent% (${(downloaded / 1024 / 1024).toStringAsFixed(1)} MB)',
+          );
           lastPercent = percent;
         }
       }
     }
 
     await sink.close();
-    stdout.writeln('   ✅ Download concluído: ${(downloaded / 1024 / 1024).toStringAsFixed(1)} MB');
+    stdout.writeln(
+      '   ✅ Download: ${(downloaded / 1024 / 1024).toStringAsFixed(1)} MB',
+    );
   } finally {
     client.close();
   }
 }
 
-/// Extrai preço USD do objeto de preços
+/// Extrai preço USD
 double? _extractUsdPrice(Map<String, dynamic> priceData) {
   final paper = priceData['paper'] as Map<String, dynamic>? ?? {};
-
-  // tcgplayer primeiro
   var price = _getPriceFrom(paper, 'tcgplayer');
-  if (price != null) return price;
-
-  // cardkingdom fallback
-  price = _getPriceFrom(paper, 'cardkingdom');
-  if (price != null) return price;
-
-  return null;
+  return price ?? _getPriceFrom(paper, 'cardkingdom');
 }
 
 double? _getPriceFrom(Map<String, dynamic> paper, String provider) {
   final data = paper[provider] as Map<String, dynamic>? ?? {};
   final retail = data['retail'] as Map<String, dynamic>? ?? {};
 
-  // Normal primeiro
   final normal = retail['normal'] as Map<String, dynamic>? ?? {};
   if (normal.isNotEmpty) {
     final price = _getLatestPrice(normal);
     if (price != null) return price;
   }
 
-  // Foil fallback
   final foil = retail['foil'] as Map<String, dynamic>? ?? {};
-  if (foil.isNotEmpty) {
-    return _getLatestPrice(foil);
-  }
+  if (foil.isNotEmpty) return _getLatestPrice(foil);
 
   return null;
 }
 
 double? _getLatestPrice(Map<String, dynamic> pricesByDate) {
   if (pricesByDate.isEmpty) return null;
-  final sorted = pricesByDate.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+  final sorted = pricesByDate.entries.toList()
+    ..sort((a, b) => b.key.compareTo(a.key));
   final value = sorted.first.value;
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value);
   return null;
 }
 
-/// Verifica se deve baixar o arquivo
 bool _shouldDownload(File file, bool forceDownload, int maxAgeHours) {
   if (forceDownload) return true;
   if (!file.existsSync()) return true;
-  
   final age = DateTime.now().difference(file.lastModifiedSync());
   return age.inHours >= maxAgeHours;
 }
@@ -341,8 +466,7 @@ bool _shouldDownload(File file, bool forceDownload, int maxAgeHours) {
 int? _parseIntArg(List<String> args, String prefix) {
   for (final a in args) {
     if (a.startsWith(prefix)) {
-      final v = a.substring(prefix.length).trim();
-      return int.tryParse(v);
+      return int.tryParse(a.substring(prefix.length).trim());
     }
   }
   return null;

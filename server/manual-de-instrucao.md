@@ -3463,3 +3463,86 @@ Helper estático `NotificationService.create(pool, userId, type, title, body?, r
 **Como:**
 - Removidas as classes standalone de ambos os arquivos.
 - Mantidos os widgets compartilhados (`_StatsBar`, `_BinderItemCard`, `_ConditionDropdown`, `_MarketplaceCard`) que eram usados pela versão TabContent.
+
+---
+
+## 26. Fix de Produção — Login 500, Crons, Price History, Cotações Tab (10/Fev/2026)
+
+### 26.1 Login 500 Error — Cascata de 3 Bugs
+
+**Porquê:** O `POST /auth/login` retornava `500 Internal Server Error` (texto puro, não JSON). Eram 3 bugs encadeados:
+
+1. **SSL mismatch:** PostgreSQL no servidor tem `ssl=off`, mas o código forçava `SslMode.require` quando `ENVIRONMENT=production`. A conexão falhava silenciosamente.
+2. **SQL inválido em `_ensureRuntimeSchema`:** `UNIQUE (LEAST(user_a_id, user_b_id), GREATEST(...))` dentro de `CREATE TABLE` é sintaxe inválida no PostgreSQL (erro 42601).
+3. **Middleware sem try-catch:** O Dart Frog retornava texto puro "Internal Server Error" em vez de JSON.
+
+**Como:**
+
+- **`server/lib/database.dart`:**
+  - `late final Pool` → `late Pool` (permitir reassignment no fallback SSL).
+  - Smart SSL fallback: tenta `SslMode.disable` primeiro, depois `SslMode.require`.
+  - Validação com `SELECT 1` após criar pool.
+  - Getter `isConnected` para middleware verificar estado.
+
+- **`server/routes/_middleware.dart`:**
+  - Handler inteiro envolto em `try-catch` → retorna JSON 500 com mensagem.
+  - Verifica `_db.isConnected` antes de marcar `_connected = true`.
+  - Retorna 503 JSON se DB falhar na conexão.
+  - `UNIQUE(LEAST, GREATEST)` movido para `CREATE UNIQUE INDEX IF NOT EXISTS` separado.
+
+### 26.2 Cotações Tab — 4ª aba na CommunityScreen
+
+**Porquê:** O Market Movers (valorizando/desvalorizando) não tinha visibilidade na tela principal de Comunidade.
+
+**Como:**
+- Adicionada 4ª tab "Cotações" ao `CommunityScreen` (Explorar | Seguindo | Usuários | **Cotações**).
+- Widget `_CotacoesTab` com `TickerProviderStateMixin` + `AutomaticKeepAliveClientMixin`.
+- Sub-tabs: Valorizando/Desvalorizando.
+- Cards com: rank badge, imagem, nome, set, raridade (cores ManaLoom), preço, variação % e USD.
+- Pull-to-refresh, loading/error/empty states.
+- `isScrollable: true, tabAlignment: TabAlignment.start` para caber as 4 tabs.
+
+### 26.3 Fix Cron de Preços — Container ID Hardcoded
+
+**Porquê:** O cron `/root/sync_mtg_prices.sh` tinha container ID hardcoded (`evolution_cartinhas.1.aoay2q0k7jvfb5rdq6r2dor1p`) que não existia mais. Todos os syncs de preço desde 1/Fev falharam com "No such container".
+
+**Como:**
+- Script reescrito com lookup dinâmico: `docker ps --filter "name=evolution_cartinhas" --format "{{.Names}}" | head -1`.
+- Pipeline de 3 etapas: (1) Scryfall sync rápido, (2) MTGJSON full sync, (3) Snapshot price_history.
+- Cada etapa com `|| echo "WARN: ... falhou"` para não bloquear as próximas.
+
+### 26.4 Price History Snapshot — sync_prices.dart e snapshot_price_history.dart
+
+**Porquê:** O `sync_prices.dart` (Scryfall) atualizava `cards.price` mas NÃO inseria no `price_history`. O Market Movers/Cotações depende de `price_history` para calcular variações.
+
+**Como:**
+- Adicionado bloco de snapshot ao final do `sync_prices.dart`:
+  ```sql
+  INSERT INTO price_history (card_id, price_date, price_usd)
+  SELECT id, CURRENT_DATE, price
+  FROM cards WHERE price IS NOT NULL AND price > 0
+  ON CONFLICT (card_id, price_date) DO UPDATE SET price_usd = EXCLUDED.price_usd
+  ```
+- Criado `bin/snapshot_price_history.dart` como script standalone para uso manual ou cron fallback.
+- Dados de 5 dias consecutivos (6-10/Fev) com ~30.500 cartas/dia.
+
+### 26.5 MTGJSON Sync v2 — Fix OOM com AllIdentifiers.json
+
+**Porquê:** O `sync_prices_mtgjson_fast.dart` carregava `AllIdentifiers.json` (~400MB) inteiro via `jsonDecode(readAsString())`, consumindo ~1.6GB de RAM. A Dart VM no container era morta pelo OOM killer sem nenhum erro visível.
+
+**Como (v2 do script):**
+- **Tentativa 1 (preferida):** Usa `jq` via `Process.start` para extrair UUID→name+setCode com streaming — não carrega nada na memória Dart.
+  ```bash
+  jq -r '.data | to_entries[] | [.key, .value.name, .value.setCode] | @tsv' cache/AllIdentifiers.json
+  ```
+- **Tentativa 2 (fallback):** Se jq não estiver disponível, carrega em memória com tratamento de erro explícito e mensagem para instalar jq.
+- `jq` instalado no container de produção (`apt-get install -y jq`).
+- Match via tabela temp com `card_id UUID` em vez de `name TEXT + set_code TEXT` (mais eficiente no JOIN).
+- Snapshot `price_history` integrado ao final.
+
+### 26.6 Tabelas Criadas em Produção
+
+Tabelas que existiam no código mas não no banco de produção, criadas manualmente:
+- `conversations` + `CREATE UNIQUE INDEX idx_conversations_pair ON conversations (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))`
+- `direct_messages` + índices
+- `notifications` + índices
