@@ -108,6 +108,17 @@ Future<Response> _postMessage(RequestContext context, String id) async {
       );
     }
 
+    // Validar attachment_type (se fornecido)
+    const validAttachmentTypes = ['receipt', 'tracking', 'photo', 'other'];
+    if (attachmentType != null && !validAttachmentTypes.contains(attachmentType)) {
+      return Response.json(
+        statusCode: HttpStatus.badRequest,
+        body: {
+          'error': 'attachment_type inválido. Use: ${validAttachmentTypes.join(', ')}',
+        },
+      );
+    }
+
     // Verificar trade e participação
     final tradeResult = await pool.execute(Sql.named('''
       SELECT sender_id, receiver_id, status FROM trade_offers WHERE id = @id
