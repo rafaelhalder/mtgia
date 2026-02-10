@@ -50,7 +50,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
     final updated = await pool.runTx((session) async {
       // SELECT FOR UPDATE garante lock exclusivo dentro da transação
       final tradeResult = await session.execute(Sql.named('''
-        SELECT id, sender_id, receiver_id, status
+        SELECT id, sender_id, receiver_id, status, type
         FROM trade_offers WHERE id = @id FOR UPDATE
       '''), parameters: {'id': id});
 
@@ -67,8 +67,27 @@ Future<Response> onRequest(RequestContext context, String id) async {
       if (!allowed.contains(newStatus)) return 'invalid_transition';
 
       // Validar quem pode fazer o quê
-      if (newStatus == 'shipped' && !isSender) return 'only_sender_ship';
-      if (newStatus == 'delivered' && !isReceiver) return 'only_receiver_deliver';
+      // Em vendas (sale): receiver é o vendedor que envia, sender é o comprador que recebe
+      // Em trocas (trade/mixed): ambos enviam e recebem, qualquer participante pode marcar
+      final tradeType = trade['type'] as String? ?? 'trade';
+
+      if (newStatus == 'shipped') {
+        if (tradeType == 'sale') {
+          // Venda: quem envia é o receiver (dono dos itens solicitados)
+          if (!isReceiver) return 'only_receiver_ship_sale';
+        } else {
+          // Troca/Misto: qualquer participante pode marcar envio
+          // (ambos precisam enviar seus itens)
+        }
+      }
+      if (newStatus == 'delivered') {
+        if (tradeType == 'sale') {
+          // Venda: quem confirma recebimento é o sender (comprador)
+          if (!isSender) return 'only_sender_deliver_sale';
+        } else {
+          // Troca/Misto: qualquer participante pode confirmar recebimento
+        }
+      }
 
       final setClauses = <String>['status = @newStatus', 'updated_at = CURRENT_TIMESTAMP'];
       final params = <String, dynamic>{'id': id, 'newStatus': newStatus};
@@ -129,6 +148,16 @@ Future<Response> onRequest(RequestContext context, String id) async {
         return Response.json(
           statusCode: HttpStatus.forbidden,
           body: {'error': 'Apenas o destinatário pode confirmar recebimento'},
+        );
+      case 'only_receiver_ship_sale':
+        return Response.json(
+          statusCode: HttpStatus.forbidden,
+          body: {'error': 'Em vendas, apenas o vendedor (quem recebeu a proposta) pode marcar como enviado'},
+        );
+      case 'only_sender_deliver_sale':
+        return Response.json(
+          statusCode: HttpStatus.forbidden,
+          body: {'error': 'Em vendas, apenas o comprador (quem criou a proposta) pode confirmar recebimento'},
         );
     }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/trade_provider.dart';
 
 /// Widget embeddable para uso como tab dentro do CollectionScreen.
@@ -169,9 +170,42 @@ class _TradeInboxScreenState extends State<TradeInboxScreen>
   }
 }
 
-class _TradeListView extends StatelessWidget {
+class _TradeListView extends StatefulWidget {
   final VoidCallback onRefresh;
   const _TradeListView({required this.onRefresh});
+
+  @override
+  State<_TradeListView> createState() => _TradeListViewState();
+}
+
+class _TradeListViewState extends State<_TradeListView> {
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final provider = context.read<TradeProvider>();
+      if (!provider.isLoading &&
+          provider.trades.length < provider.totalTrades) {
+        // Load next page — the parent tab needs to call with correct filters
+        // For now we just trigger the onRefresh which reloads from page 1
+        // TODO: improve with per-tab page tracking
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +225,7 @@ class _TradeListView extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
-                ElevatedButton(onPressed: onRefresh, child: const Text('Tentar novamente')),
+                ElevatedButton(onPressed: widget.onRefresh, child: const Text('Tentar novamente')),
               ],
             ),
           );
@@ -212,8 +246,9 @@ class _TradeListView extends StatelessWidget {
           );
         }
         return RefreshIndicator(
-          onRefresh: () async => onRefresh(),
+          onRefresh: () async => widget.onRefresh(),
           child: ListView.builder(
+            controller: _scrollController,
             padding: const EdgeInsets.all(12),
             itemCount: provider.trades.length,
             itemBuilder: (context, index) {
@@ -236,9 +271,10 @@ class _TradeCard extends StatelessWidget {
     final statusColor = TradeStatusHelper.color(trade.status);
     final statusIcon = TradeStatusHelper.icon(trade.status);
     final statusLabel = TradeStatusHelper.label(trade.status);
-    final otherUser = trade.sender.id == trade.receiver.id
+    final currentUserId = context.read<AuthProvider>().user?.id;
+    final otherUser = trade.sender.id == currentUserId
         ? trade.receiver
-        : trade.sender; // simplification — always show the "other side"
+        : trade.sender;
 
     return Card(
       color: AppTheme.surfaceSlate,

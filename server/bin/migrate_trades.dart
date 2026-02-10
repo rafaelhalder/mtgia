@@ -39,7 +39,7 @@ void main() async {
           type TEXT NOT NULL DEFAULT 'trade'
               CHECK (type IN ('trade', 'sale', 'mixed')),
           delivery_method TEXT
-              CHECK (delivery_method IS NULL OR delivery_method IN ('mail', 'in_person')),
+              CHECK (delivery_method IS NULL OR delivery_method IN ('correios', 'motoboy', 'pessoalmente', 'outro')),
           payment_method TEXT
               CHECK (payment_method IS NULL OR payment_method IN ('pix', 'cash', 'transfer', 'other')),
           payment_amount DECIMAL(10,2),
