@@ -234,7 +234,7 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
                           color: theme.colorScheme.primary,
                           width: 16,
                           borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4),
+                            top: Radius.circular(AppTheme.radiusXs),
                           ),
                         ),
                       ],
@@ -310,7 +310,7 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
         title: '${percentage.toStringAsFixed(0)}%',
         radius: 50,
         titleStyle: const TextStyle(
-          fontSize: 12,
+          fontSize: AppTheme.fontSm,
           fontWeight: FontWeight.bold,
           color: Colors.black87,
         ),

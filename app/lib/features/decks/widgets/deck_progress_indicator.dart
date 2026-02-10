@@ -109,12 +109,12 @@ class DeckProgressIndicator extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
         child: Column(
@@ -139,13 +139,13 @@ class DeckProgressIndicator extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                     color: AppTheme.success,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     ),
                     child: const Text(
                       'Pronto',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: AppTheme.fontSm,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -155,7 +155,7 @@ class DeckProgressIndicator extends StatelessWidget {
             const SizedBox(height: 8),
             if (maxCards != null) ...[
               ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                 child: LinearProgressIndicator(
                   value: progress,
                   backgroundColor: color.withOpacity(0.2),
@@ -235,7 +235,7 @@ class DeckProgressChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Text(
@@ -243,7 +243,7 @@ class DeckProgressChip extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.bold,
-          fontSize: 12,
+          fontSize: AppTheme.fontSm,
         ),
       ),
     );

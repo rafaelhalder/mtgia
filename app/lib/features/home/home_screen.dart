@@ -124,7 +124,7 @@ class HomeScreen extends StatelessWidget {
                     height: 40,
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                     ),
                     child: Icon(
                       Icons.style,
@@ -157,7 +157,7 @@ class HomeScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
                   border: Border.all(
                     color: theme.colorScheme.outline.withValues(alpha: 0.3),
                   ),
@@ -244,12 +244,12 @@ class _QuickAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
           border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
         child: Column(
@@ -260,7 +260,7 @@ class _QuickAction extends StatelessWidget {
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 12,
+                fontSize: AppTheme.fontSm,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -292,7 +292,7 @@ class _StatTile extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         children: [

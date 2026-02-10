@@ -69,7 +69,7 @@ class CachedCardImage extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: borderRadius ?? BorderRadius.circular(4),
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Center(
         child: SizedBox(
@@ -90,7 +90,7 @@ class CachedCardImage extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: borderRadius ?? BorderRadius.circular(4),
+        borderRadius: borderRadius ?? BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: const Icon(
         Icons.image_not_supported,

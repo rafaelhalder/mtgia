@@ -153,7 +153,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
               style: TextStyle(
                 color: AppTheme.textPrimary,
                 fontWeight: FontWeight.w600,
-                fontSize: 16,
+                fontSize: AppTheme.fontLg,
               ),
             ),
             const SizedBox(height: 8),
@@ -201,7 +201,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
                 style: TextStyle(
                   color: AppTheme.textPrimary,
                   fontWeight: FontWeight.w600,
-                  fontSize: 16,
+                  fontSize: AppTheme.fontLg,
                 ),
               ),
               const SizedBox(height: 8),
@@ -275,13 +275,13 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
               style: const TextStyle(
                 color: AppTheme.textPrimary,
                 fontWeight: FontWeight.w600,
-                fontSize: 16,
+                fontSize: AppTheme.fontLg,
               ),
             ),
             const Spacer(),
             Text(
               '${selectedItems.length} selecionados',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
             ),
           ],
         ),
@@ -293,7 +293,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surfaceSlate,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: const Center(
               child: Text(
@@ -307,7 +307,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
             constraints: const BoxConstraints(maxHeight: 220),
             decoration: BoxDecoration(
               color: AppTheme.surfaceSlate,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: ListView.separated(
               shrinkWrap: true,
@@ -330,15 +330,15 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
                     imageUrl: item.cardImageUrl,
                     width: 36,
                     height: 50,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                   ),
                   title: Text(
                     item.cardName,
-                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: AppTheme.fontMd),
                   ),
                   subtitle: Text(
                     '${item.condition} • x${item.quantity}${item.isFoil ? ' ⭐ Foil' : ''}${item.price != null ? ' • R\$${item.price!.toStringAsFixed(2)}' : ''}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
                   ),
                   trailing: Checkbox(
                     value: isSelected,

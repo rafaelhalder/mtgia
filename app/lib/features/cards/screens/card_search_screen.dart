@@ -226,12 +226,12 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
             if (isCommanderMode)
               const Text(
                 'Modo comandante',
-                style: TextStyle(fontSize: 12, color: Colors.white70),
+                style: TextStyle(fontSize: AppTheme.fontSm, color: Colors.white70),
               ),
             if (widget.isBinderMode)
               const Text(
                 'Modo fichário',
-                style: TextStyle(fontSize: 12, color: Colors.white70),
+                style: TextStyle(fontSize: AppTheme.fontSm, color: Colors.white70),
               ),
           ],
         ),
@@ -290,7 +290,7 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                           : allowedByIdentity);
               return ListTile(
                 leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   child: CachedCardImage(
                     imageUrl: card.imageUrl,
                     width: 40,
@@ -419,7 +419,7 @@ class _AddCardDialogState extends State<_AddCardDialog> {
                               ? () => setState(() => _quantity--)
                               : null,
                     ),
-                    Text('$_quantity', style: const TextStyle(fontSize: 18)),
+                    Text('$_quantity', style: const TextStyle(fontSize: AppTheme.fontXl)),
                     IconButton(
                       icon: const Icon(Icons.add),
                       onPressed:

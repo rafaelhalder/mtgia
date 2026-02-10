@@ -83,7 +83,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   controller: _searchController,
                   onSubmitted: (_) => _doSearch(),
                   style: const TextStyle(
-                      color: AppTheme.textPrimary, fontSize: 14),
+                      color: AppTheme.textPrimary, fontSize: AppTheme.fontMd),
                   decoration: InputDecoration(
                     hintText: 'Buscar carta no marketplace...',
                     hintStyle:
@@ -103,7 +103,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     contentPadding:
                         const EdgeInsets.symmetric(vertical: 0),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                   ),
@@ -140,7 +140,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           color: _onlyTrade
                               ? AppTheme.loomCyan
                               : AppTheme.textSecondary,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                         ),
                         side: BorderSide(
                           color: _onlyTrade
@@ -163,7 +163,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                           color: _onlySale
                               ? AppTheme.mythicGold
                               : AppTheme.textSecondary,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                         ),
                         side: BorderSide(
                           color: _onlySale
@@ -226,7 +226,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               'Nenhuma carta encontrada',
               style: TextStyle(
                 color: AppTheme.textPrimary,
-                fontSize: 16,
+                fontSize: AppTheme.fontLg,
               ),
             ),
             const SizedBox(height: 8),
@@ -283,7 +283,7 @@ class _ConditionDropdown extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(color: AppTheme.outlineMuted),
       ),
       child: DropdownButtonHideUnderline(
@@ -291,12 +291,12 @@ class _ConditionDropdown extends StatelessWidget {
           value: value,
           hint: const Text('Condição',
               style:
-                  TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm)),
           dropdownColor: AppTheme.surfaceSlate,
           icon: const Icon(Icons.arrow_drop_down,
               color: AppTheme.textSecondary, size: 18),
           style: const TextStyle(
-              color: AppTheme.textPrimary, fontSize: 12),
+              color: AppTheme.textPrimary, fontSize: AppTheme.fontSm),
           items: const [
             DropdownMenuItem(
               value: null,
@@ -332,7 +332,7 @@ class _MarketplaceCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: Padding(
@@ -344,7 +344,7 @@ class _MarketplaceCard extends StatelessWidget {
               imageUrl: item.cardImageUrl,
               width: 50,
               height: 70,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
             ),
             const SizedBox(width: 12),
 
@@ -359,7 +359,7 @@ class _MarketplaceCard extends StatelessWidget {
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
                       fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                      fontSize: AppTheme.fontMd,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -397,7 +397,7 @@ class _MarketplaceCard extends StatelessWidget {
                           'R\$ ${item.price!.toStringAsFixed(2)}',
                           style: const TextStyle(
                             color: AppTheme.mythicGold,
-                            fontSize: 13,
+                            fontSize: AppTheme.fontMd,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -424,7 +424,7 @@ class _MarketplaceCard extends StatelessWidget {
                                       ? item.ownerUsername[0].toUpperCase()
                                       : '?',
                                   style: const TextStyle(
-                                    fontSize: 9,
+                                    fontSize: AppTheme.fontXs,
                                     color: AppTheme.manaViolet,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -436,7 +436,7 @@ class _MarketplaceCard extends StatelessWidget {
                           item.ownerDisplayLabel,
                           style: const TextStyle(
                             color: AppTheme.loomCyan,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       ],
@@ -456,12 +456,12 @@ class _MarketplaceCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
         style: TextStyle(
-            color: color, fontSize: 10, fontWeight: FontWeight.w600),
+            color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -471,12 +471,12 @@ class _MarketplaceCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.5)),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
         style: TextStyle(
-            color: color, fontSize: 10, fontWeight: FontWeight.w600),
+            color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }

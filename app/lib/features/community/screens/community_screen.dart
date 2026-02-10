@@ -58,7 +58,7 @@ class _CommunityScreenState extends State<CommunityScreen>
           indicatorColor: AppTheme.manaViolet,
           labelColor: AppTheme.textPrimary,
           unselectedLabelColor: AppTheme.textSecondary,
-          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          labelStyle: const TextStyle(fontSize: AppTheme.fontMd, fontWeight: FontWeight.w600),
           tabs: const [
             Tab(icon: Icon(Icons.public, size: 18), text: 'Explorar'),
             Tab(icon: Icon(Icons.people, size: 18), text: 'Seguindo'),
@@ -166,7 +166,7 @@ class _ExploreTabState extends State<_ExploreTab>
                   filled: true,
                   fillColor: AppTheme.surfaceSlate,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     borderSide: BorderSide.none,
                   ),
                   contentPadding:
@@ -234,7 +234,7 @@ class _ExploreTabState extends State<_ExploreTab>
                       const Text(
                         'Nenhum deck público encontrado',
                         style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 16),
+                            color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -242,7 +242,7 @@ class _ExploreTabState extends State<_ExploreTab>
                         style: TextStyle(
                             color:
                                 AppTheme.textSecondary.withValues(alpha: 0.7),
-                            fontSize: 13),
+                            fontSize: AppTheme.fontMd),
                       ),
                     ],
                   ),
@@ -295,7 +295,7 @@ class _ExploreTabState extends State<_ExploreTab>
               color: isSelected
                   ? AppTheme.backgroundAbyss
                   : AppTheme.textPrimary,
-              fontSize: 12,
+              fontSize: AppTheme.fontSm,
             )),
         selected: isSelected,
         selectedColor: AppTheme.loomCyan,
@@ -381,7 +381,7 @@ class _FollowingFeedTabState extends State<_FollowingFeedTab>
                     'Nenhum deck dos seus seguidos',
                     style: TextStyle(
                       color: AppTheme.textSecondary,
-                      fontSize: 16,
+                      fontSize: AppTheme.fontLg,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -391,7 +391,7 @@ class _FollowingFeedTabState extends State<_FollowingFeedTab>
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppTheme.textSecondary.withValues(alpha: 0.7),
-                      fontSize: 13,
+                      fontSize: AppTheme.fontMd,
                     ),
                   ),
                 ],
@@ -499,7 +499,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
               filled: true,
               fillColor: AppTheme.surfaceSlate,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 borderSide: BorderSide.none,
               ),
               contentPadding:
@@ -544,7 +544,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
                           'Encontre outros jogadores',
                           style: TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 16,
+                            fontSize: AppTheme.fontLg,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -555,7 +555,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
                           style: TextStyle(
                             color:
                                 AppTheme.textSecondary.withValues(alpha: 0.7),
-                            fontSize: 13,
+                            fontSize: AppTheme.fontMd,
                           ),
                         ),
                       ],
@@ -577,7 +577,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
                       const Text(
                         'Nenhum usuário encontrado',
                         style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 15),
+                            color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
                       ),
                     ],
                   ),
@@ -627,11 +627,11 @@ class _CommunityDeckCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -642,7 +642,7 @@ class _CommunityDeckCard extends StatelessWidget {
                 imageUrl: deck.commanderImageUrl,
                 width: 56,
                 height: 78,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               const SizedBox(width: 12),
               // Info
@@ -655,7 +655,7 @@ class _CommunityDeckCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: AppTheme.fontLg,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -687,7 +687,7 @@ class _CommunityDeckCard extends StatelessWidget {
                                   ? AppTheme.loomCyan
                                   : AppTheme.textSecondary.withValues(
                                       alpha: 0.8),
-                              fontSize: 12,
+                              fontSize: AppTheme.fontSm,
                               decoration: deck.ownerId != null
                                   ? TextDecoration.underline
                                   : null,
@@ -702,13 +702,13 @@ class _CommunityDeckCard extends StatelessWidget {
                           decoration: BoxDecoration(
                             color:
                                 AppTheme.manaViolet.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                           ),
                           child: Text(
                             _capitalize(deck.format),
                             style: const TextStyle(
                               color: AppTheme.manaViolet,
-                              fontSize: 10,
+                              fontSize: AppTheme.fontXs,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -722,7 +722,7 @@ class _CommunityDeckCard extends StatelessWidget {
                           '${deck.cardCount} cartas',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                         if (deck.synergyScore != null) ...[
@@ -739,7 +739,7 @@ class _CommunityDeckCard extends StatelessWidget {
                             style: TextStyle(
                               color:
                                   AppTheme.mythicGold.withValues(alpha: 0.8),
-                              fontSize: 12,
+                              fontSize: AppTheme.fontSm,
                             ),
                           ),
                         ],
@@ -753,7 +753,7 @@ class _CommunityDeckCard extends StatelessWidget {
                         style: TextStyle(
                           color:
                               AppTheme.textSecondary.withValues(alpha: 0.7),
-                          fontSize: 11,
+                          fontSize: AppTheme.fontSm,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -787,11 +787,11 @@ class _FollowingDeckCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -801,7 +801,7 @@ class _FollowingDeckCard extends StatelessWidget {
                 imageUrl: deck.commanderImageUrl,
                 width: 56,
                 height: 78,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -813,7 +813,7 @@ class _FollowingDeckCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: AppTheme.fontLg,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -827,13 +827,13 @@ class _FollowingDeckCard extends StatelessWidget {
                           decoration: BoxDecoration(
                             color:
                                 AppTheme.manaViolet.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                           ),
                           child: Text(
                             _capitalize(deck.format),
                             style: const TextStyle(
                               color: AppTheme.manaViolet,
-                              fontSize: 10,
+                              fontSize: AppTheme.fontXs,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -843,7 +843,7 @@ class _FollowingDeckCard extends StatelessWidget {
                           '${deck.cardCount} cartas',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                         if (deck.synergyScore != null) ...[
@@ -858,7 +858,7 @@ class _FollowingDeckCard extends StatelessWidget {
                             style: TextStyle(
                               color:
                                   AppTheme.mythicGold.withValues(alpha: 0.8),
-                              fontSize: 11,
+                              fontSize: AppTheme.fontSm,
                             ),
                           ),
                         ],
@@ -892,11 +892,11 @@ class _UserCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -914,7 +914,7 @@ class _UserCard extends StatelessWidget {
                         style: const TextStyle(
                           color: AppTheme.manaViolet,
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                          fontSize: AppTheme.fontXl,
                         ),
                       )
                     : null,
@@ -929,7 +929,7 @@ class _UserCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: AppTheme.fontLg,
                       ),
                     ),
                     if (user.displayName != null)
@@ -937,7 +937,7 @@ class _UserCard extends StatelessWidget {
                         '@${user.username}',
                         style: const TextStyle(
                           color: AppTheme.textSecondary,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                         ),
                       ),
                     const SizedBox(height: 4),
@@ -951,7 +951,7 @@ class _UserCard extends StatelessWidget {
                           '${user.publicDeckCount} decks',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -964,7 +964,7 @@ class _UserCard extends StatelessWidget {
                           '${user.followerCount} seguidores',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       ],

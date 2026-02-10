@@ -125,7 +125,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                               user.username[0].toUpperCase(),
                               style: const TextStyle(
                                 color: AppTheme.manaViolet,
-                                fontSize: 32,
+                                fontSize: AppTheme.fontDisplay,
                                 fontWeight: FontWeight.bold,
                               ),
                             )
@@ -137,7 +137,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                       user.displayName ?? user.username,
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
-                        fontSize: 20,
+                        fontSize: AppTheme.fontXxl,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -148,7 +148,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                           '@${user.username}',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 14,
+                            fontSize: AppTheme.fontMd,
                           ),
                         ),
                       ),
@@ -198,7 +198,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                                 : AppTheme.manaViolet,
                             foregroundColor: AppTheme.textPrimary,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                               side: provider.isFollowingVisited
                                   ? const BorderSide(
                                       color: AppTheme.outlineMuted)
@@ -224,7 +224,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
                             provider.isFollowingVisited
                                 ? 'Deixar de seguir'
                                 : 'Seguir',
-                            style: const TextStyle(fontSize: 14),
+                            style: const TextStyle(fontSize: AppTheme.fontMd),
                           ),
                         ),
                       ),
@@ -322,14 +322,14 @@ class _StatItem extends StatelessWidget {
             style: const TextStyle(
               color: AppTheme.textPrimary,
               fontWeight: FontWeight.bold,
-              fontSize: 18,
+              fontSize: AppTheme.fontXl,
             ),
           ),
           Text(
             label,
             style: const TextStyle(
               color: AppTheme.textSecondary,
-              fontSize: 11,
+              fontSize: AppTheme.fontSm,
             ),
           ),
         ],
@@ -360,7 +360,7 @@ class _DecksTab extends StatelessWidget {
             const SizedBox(height: 12),
             const Text(
               'Nenhum deck público',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
             ),
           ],
         ),
@@ -376,11 +376,11 @@ class _DecksTab extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           color: AppTheme.surfaceSlate,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             onTap: () {
               Navigator.push(
                 context,
@@ -399,7 +399,7 @@ class _DecksTab extends StatelessWidget {
                     imageUrl: deck.commanderImageUrl,
                     width: 50,
                     height: 70,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -411,7 +411,7 @@ class _DecksTab extends StatelessWidget {
                           style: const TextStyle(
                             color: AppTheme.textPrimary,
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: AppTheme.fontMd,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -425,13 +425,13 @@ class _DecksTab extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: AppTheme.manaViolet.withValues(
                                     alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                               ),
                               child: Text(
                                 _capitalize(deck.format),
                                 style: const TextStyle(
                                   color: AppTheme.manaViolet,
-                                  fontSize: 10,
+                                  fontSize: AppTheme.fontXs,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -441,7 +441,7 @@ class _DecksTab extends StatelessWidget {
                               '${deck.cardCount} cartas',
                               style: const TextStyle(
                                 color: AppTheme.textSecondary,
-                                fontSize: 12,
+                                fontSize: AppTheme.fontSm,
                               ),
                             ),
                             if (deck.synergyScore != null) ...[
@@ -456,7 +456,7 @@ class _DecksTab extends StatelessWidget {
                                 style: TextStyle(
                                   color: AppTheme.mythicGold.withValues(
                                       alpha: 0.8),
-                                  fontSize: 11,
+                                  fontSize: AppTheme.fontSm,
                                 ),
                               ),
                             ],
@@ -548,7 +548,7 @@ class _UsersListTabState extends State<_UsersListTab> {
             Text(
               widget.emptyMessage,
               style:
-                  const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
             ),
           ],
         ),
@@ -573,7 +573,7 @@ class _UsersListTabState extends State<_UsersListTab> {
           margin: const EdgeInsets.only(bottom: 8),
           color: AppTheme.surfaceSlate,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
           ),
           child: ListTile(
@@ -605,7 +605,7 @@ class _UsersListTabState extends State<_UsersListTab> {
               '@${user.username}',
               style: const TextStyle(
                 color: AppTheme.textSecondary,
-                fontSize: 12,
+                fontSize: AppTheme.fontSm,
               ),
             ),
             trailing: const Icon(Icons.chevron_right,
@@ -690,7 +690,7 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
             const SizedBox(height: 12),
             const Text(
               'Nenhuma carta disponível',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
             ),
           ],
         ),
@@ -715,7 +715,7 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
           margin: const EdgeInsets.only(bottom: 8),
           color: AppTheme.surfaceSlate,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
           ),
           child: Padding(
@@ -726,7 +726,7 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
                   imageUrl: item.cardImageUrl,
                   width: 42,
                   height: 58,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -738,7 +738,7 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
                         style: const TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w600,
-                          fontSize: 13,
+                          fontSize: AppTheme.fontMd,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -772,7 +772,7 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
                             'R\$ ${item.price!.toStringAsFixed(2)}',
                             style: const TextStyle(
                               color: AppTheme.mythicGold,
-                              fontSize: 12,
+                              fontSize: AppTheme.fontSm,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -793,11 +793,11 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -807,11 +807,11 @@ class _PublicBinderTabState extends State<_PublicBinderTab> {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.5)),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }

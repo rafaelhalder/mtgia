@@ -203,7 +203,7 @@ class _BinderScreenState extends State<BinderScreen> {
               'Seu fichário está vazio',
               style: TextStyle(
                 color: AppTheme.textPrimary,
-                fontSize: 18,
+                fontSize: AppTheme.fontXl,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -333,7 +333,7 @@ class _StatChip extends StatelessWidget {
             label,
             style: TextStyle(
               color: color,
-              fontSize: 12,
+              fontSize: AppTheme.fontSm,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -379,7 +379,7 @@ class _SearchFilterBar extends StatelessWidget {
           TextField(
             controller: searchController,
             onSubmitted: (_) => onSearch(),
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+            style: const TextStyle(color: AppTheme.textPrimary, fontSize: AppTheme.fontMd),
             decoration: InputDecoration(
               hintText: 'Buscar carta...',
               hintStyle: const TextStyle(color: AppTheme.textSecondary),
@@ -397,7 +397,7 @@ class _SearchFilterBar extends StatelessWidget {
               fillColor: AppTheme.surfaceSlate,
               contentPadding: const EdgeInsets.symmetric(vertical: 0),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 borderSide: BorderSide.none,
               ),
             ),
@@ -429,7 +429,7 @@ class _SearchFilterBar extends StatelessWidget {
                     color: tradeFilter == true
                         ? AppTheme.loomCyan
                         : AppTheme.textSecondary,
-                    fontSize: 12,
+                    fontSize: AppTheme.fontSm,
                   ),
                   side: BorderSide(
                     color: tradeFilter == true
@@ -456,7 +456,7 @@ class _SearchFilterBar extends StatelessWidget {
                     color: saleFilter == true
                         ? AppTheme.mythicGold
                         : AppTheme.textSecondary,
-                    fontSize: 12,
+                    fontSize: AppTheme.fontSm,
                   ),
                   side: BorderSide(
                     color: saleFilter == true
@@ -498,7 +498,7 @@ class _FilterDropdown extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(color: AppTheme.outlineMuted),
       ),
       child: DropdownButtonHideUnderline(
@@ -506,12 +506,12 @@ class _FilterDropdown extends StatelessWidget {
           value: value,
           hint: Text(hint,
               style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 12)),
+                  color: AppTheme.textSecondary, fontSize: AppTheme.fontSm)),
           dropdownColor: AppTheme.surfaceSlate,
           icon: const Icon(Icons.arrow_drop_down,
               color: AppTheme.textSecondary, size: 18),
           style: const TextStyle(
-              color: AppTheme.textPrimary, fontSize: 12),
+              color: AppTheme.textPrimary, fontSize: AppTheme.fontSm),
           items: [
             const DropdownMenuItem(
               value: null,
@@ -545,11 +545,11 @@ class _BinderItemCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(10),
@@ -560,7 +560,7 @@ class _BinderItemCard extends StatelessWidget {
                 imageUrl: item.cardImageUrl,
                 width: 46,
                 height: 64,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               const SizedBox(width: 12),
 
@@ -574,7 +574,7 @@ class _BinderItemCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                        fontSize: AppTheme.fontMd,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -598,7 +598,7 @@ class _BinderItemCard extends StatelessWidget {
                             item.cardSetCode!.toUpperCase(),
                             style: const TextStyle(
                               color: AppTheme.textSecondary,
-                              fontSize: 10,
+                              fontSize: AppTheme.fontXs,
                             ),
                           ),
                         ],
@@ -620,7 +620,7 @@ class _BinderItemCard extends StatelessWidget {
                             'R\$ ${item.price!.toStringAsFixed(2)}',
                             style: const TextStyle(
                               color: AppTheme.mythicGold,
-                              fontSize: 12,
+                              fontSize: AppTheme.fontSm,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -645,11 +645,11 @@ class _BinderItemCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -659,11 +659,11 @@ class _BinderItemCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.5)),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: AppTheme.fontXs, fontWeight: FontWeight.w600),
       ),
     );
   }

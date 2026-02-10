@@ -115,7 +115,7 @@ class _TradeListView extends StatelessWidget {
                 const SizedBox(height: 12),
                 const Text(
                   'Nenhum trade encontrado',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontLg),
                 ),
               ],
             ),
@@ -154,11 +154,11 @@ class _TradeCard extends StatelessWidget {
       color: AppTheme.surfaceSlate,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: BorderSide(color: statusColor.withValues(alpha: 0.4)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: () {
           Navigator.push(
             context,
@@ -199,7 +199,7 @@ class _TradeCard extends StatelessWidget {
                           _typeLabel(trade.type),
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       ],
@@ -209,7 +209,7 @@ class _TradeCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -220,7 +220,7 @@ class _TradeCard extends StatelessWidget {
                           statusLabel,
                           style: TextStyle(
                             color: statusColor,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -256,7 +256,7 @@ class _TradeCard extends StatelessWidget {
                   trade.message!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
                 ),
               ],
             ],
@@ -294,7 +294,7 @@ class _InfoChip extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
         ),
       ],
     );

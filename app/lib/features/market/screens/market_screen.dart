@@ -69,7 +69,7 @@ class _MarketScreenState extends State<MarketScreen>
                       '${provider.moversData!.totalTracked} cartas',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
-                        fontSize: 12,
+                        fontSize: AppTheme.fontSm,
                       ),
                     ),
                   ),
@@ -155,16 +155,16 @@ class _MarketScreenState extends State<MarketScreen>
           const SizedBox(width: 6),
           Text(
             data.date != null ? _formatDate(data.date!) : 'Hoje',
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
           ),
           if (data.previousDate != null) ...[
             const Text(
               '  vs  ',
-              style: TextStyle(color: AppTheme.outlineMuted, fontSize: 12),
+              style: TextStyle(color: AppTheme.outlineMuted, fontSize: AppTheme.fontSm),
             ),
             Text(
               _formatDate(data.previousDate!),
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
             ),
           ],
           const Spacer(),
@@ -172,13 +172,13 @@ class _MarketScreenState extends State<MarketScreen>
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: AppTheme.mythicGold.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
             ),
             child: Text(
               'USD',
               style: TextStyle(
                 color: AppTheme.mythicGold,
-                fontSize: 11,
+                fontSize: AppTheme.fontSm,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -274,13 +274,13 @@ class _MarketScreenState extends State<MarketScreen>
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
             ),
             const SizedBox(height: 8),
             const Text(
               'Os preços são atualizados diariamente.\nAmanhã teremos dados de variação!',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
             ),
           ],
         ),
@@ -336,7 +336,7 @@ class _MoverCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(
           color: rank <= 3
               ? changeColor.withOpacity(0.3)
@@ -355,14 +355,14 @@ class _MoverCard extends StatelessWidget {
                 color: rank <= 3
                     ? changeColor.withOpacity(0.2)
                     : AppTheme.surfaceSlate2,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               alignment: Alignment.center,
               child: Text(
                 '#$rank',
                 style: TextStyle(
                   color: rank <= 3 ? changeColor : AppTheme.textSecondary,
-                  fontSize: 11,
+                  fontSize: AppTheme.fontSm,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -371,7 +371,7 @@ class _MoverCard extends StatelessWidget {
 
             // Card image (thumbnail)
             ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               child: SizedBox(
                 width: 36,
                 height: 50,
@@ -418,7 +418,7 @@ class _MoverCard extends StatelessWidget {
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
                       fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                      fontSize: AppTheme.fontMd,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -431,19 +431,19 @@ class _MoverCard extends StatelessWidget {
                           mover.setCode!.toUpperCase(),
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 11,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       if (mover.rarity != null) ...[
                         const Text(
                           ' • ',
-                          style: TextStyle(color: AppTheme.outlineMuted, fontSize: 11),
+                          style: TextStyle(color: AppTheme.outlineMuted, fontSize: AppTheme.fontSm),
                         ),
                         Text(
                           _rarityLabel(mover.rarity!),
                           style: TextStyle(
                             color: _rarityColor(mover.rarity!),
-                            fontSize: 11,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       ],
@@ -463,7 +463,7 @@ class _MoverCard extends StatelessWidget {
                   style: const TextStyle(
                     color: AppTheme.textPrimary,
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: AppTheme.fontLg,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -472,7 +472,7 @@ class _MoverCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: changeColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -483,7 +483,7 @@ class _MoverCard extends StatelessWidget {
                         '$changePrefix${mover.changePct.toStringAsFixed(1)}%',
                         style: TextStyle(
                           color: changeColor,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -496,7 +496,7 @@ class _MoverCard extends StatelessWidget {
                   '$changePrefix\$${mover.changeUsd.toStringAsFixed(2)}',
                   style: TextStyle(
                     color: changeColor.withOpacity(0.7),
-                    fontSize: 10,
+                    fontSize: AppTheme.fontXs,
                   ),
                 ),
               ],

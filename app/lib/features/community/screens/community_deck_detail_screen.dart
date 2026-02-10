@@ -145,7 +145,7 @@ class _CommunityDeckDetailScreenState
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppTheme.surfaceSlate,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               border: Border.all(color: AppTheme.outlineMuted),
             ),
             child: Column(
@@ -158,7 +158,7 @@ class _CommunityDeckDetailScreenState
                         deck['name'] ?? '',
                         style: const TextStyle(
                           color: AppTheme.textPrimary,
-                          fontSize: 20,
+                          fontSize: AppTheme.fontXxl,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -169,14 +169,14 @@ class _CommunityDeckDetailScreenState
                       decoration: BoxDecoration(
                         color:
                             AppTheme.manaViolet.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                       ),
                       child: Text(
                         _capitalize(deck['format'] ?? ''),
                         style: const TextStyle(
                           color: AppTheme.manaViolet,
                           fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                         ),
                       ),
                     ),
@@ -204,7 +204,7 @@ class _CommunityDeckDetailScreenState
                         deck['owner_username'] ?? 'Anônimo',
                         style: TextStyle(
                           color: AppTheme.loomCyan,
-                          fontSize: 13,
+                          fontSize: AppTheme.fontMd,
                           decoration: deck['owner_id'] != null
                               ? TextDecoration.underline
                               : null,
@@ -217,7 +217,7 @@ class _CommunityDeckDetailScreenState
                       '${stats['total_cards'] ?? 0} cartas',
                       style: const TextStyle(
                         color: AppTheme.textSecondary,
-                        fontSize: 13,
+                        fontSize: AppTheme.fontMd,
                       ),
                     ),
                   ],
@@ -229,7 +229,7 @@ class _CommunityDeckDetailScreenState
                     deck['description'],
                     style: const TextStyle(
                       color: AppTheme.textSecondary,
-                      fontSize: 13,
+                      fontSize: AppTheme.fontMd,
                     ),
                   ),
                 ],
@@ -277,7 +277,7 @@ class _CommunityDeckDetailScreenState
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
               ),
             ),
           ),
@@ -291,7 +291,7 @@ class _CommunityDeckDetailScreenState
               style: TextStyle(
                 color: AppTheme.mythicGold,
                 fontWeight: FontWeight.bold,
-                fontSize: 16,
+                fontSize: AppTheme.fontLg,
               ),
             ),
             const SizedBox(height: 8),
@@ -314,7 +314,7 @@ class _CommunityDeckDetailScreenState
                   style: const TextStyle(
                     color: AppTheme.loomCyan,
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: AppTheme.fontLg,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -340,20 +340,20 @@ class _CommunityDeckDetailScreenState
       color: AppTheme.surfaceSlate2,
       margin: const EdgeInsets.only(bottom: 4),
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8)),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm)),
       child: ListTile(
         dense: true,
         leading: CachedCardImage(
           imageUrl: imageUrl,
           width: 32,
           height: 45,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(AppTheme.radiusXs),
         ),
         title: Text(
           '${qty}x $name',
           style: const TextStyle(
             color: AppTheme.textPrimary,
-            fontSize: 13,
+            fontSize: AppTheme.fontMd,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -361,7 +361,7 @@ class _CommunityDeckDetailScreenState
           typeLine,
           style: const TextStyle(
             color: AppTheme.textSecondary,
-            fontSize: 11,
+            fontSize: AppTheme.fontSm,
           ),
         ),
         trailing: manaCost.isNotEmpty
@@ -369,7 +369,7 @@ class _CommunityDeckDetailScreenState
                 manaCost,
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
-                  fontSize: 11,
+                  fontSize: AppTheme.fontSm,
                 ),
               )
             : null,

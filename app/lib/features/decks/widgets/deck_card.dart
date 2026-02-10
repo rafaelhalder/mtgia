@@ -29,7 +29,7 @@ class DeckCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -44,7 +44,7 @@ class DeckCard extends StatelessWidget {
                       imageUrl: commanderImageUrl,
                       width: 44,
                       height: 62,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                     ),
                     const SizedBox(width: 12),
                   ],
@@ -137,7 +137,7 @@ class DeckCard extends StatelessWidget {
         offset.dx + renderBox.size.width,
         offset.dy + renderBox.size.height,
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
       items: [
         PopupMenuItem(
           value: 'delete',
@@ -179,7 +179,7 @@ class _FormatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXs),
       ),
       child: Text(
         format.toUpperCase(),

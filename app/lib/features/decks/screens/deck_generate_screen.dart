@@ -207,7 +207,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
               initialValue: _selectedFormat,
               decoration: InputDecoration(
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surface,
@@ -236,7 +236,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                 hintText:
                     'Ex: Deck agressivo de goblins vermelhos com muitas criaturas pequenas...',
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surface,
@@ -260,7 +260,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                     return ActionChip(
                       label: Text(
                         example,
-                        style: const TextStyle(fontSize: 12),
+                        style: const TextStyle(fontSize: AppTheme.fontSm),
                       ),
                       onPressed: () {
                         setState(() {
@@ -288,7 +288,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
               label: Text(
                 _isGenerating ? 'Gerando...' : 'Gerar Deck',
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: AppTheme.fontLg,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -325,7 +325,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                   labelText: 'Nome do Deck',
                   hintText: 'Deck Gerado',
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   ),
                   filled: true,
                   fillColor: theme.colorScheme.surface,
@@ -344,7 +344,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                 icon: const Icon(Icons.save),
                 label: const Text(
                   'Salvar Deck',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: AppTheme.fontLg, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -403,7 +403,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: theme.colorScheme.outline),
       ),
       padding: const EdgeInsets.all(16),

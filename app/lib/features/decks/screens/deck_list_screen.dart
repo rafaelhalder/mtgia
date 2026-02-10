@@ -270,7 +270,7 @@ class _DeckListScreenState extends State<DeckListScreen> {
           }
         },
         offset: const Offset(0, -160),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
         itemBuilder: (context) => [
           PopupMenuItem(
             value: 'create',

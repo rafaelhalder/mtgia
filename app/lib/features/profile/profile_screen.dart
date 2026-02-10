@@ -74,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               const Text(
                 'Cole a URL de uma imagem (ex: link do Imgur, Gravatar, etc.)',
-                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: AppTheme.fontMd, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -221,7 +221,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'Seu nick público — é como os outros jogadores vão te encontrar na busca e ver nos seus decks. Se não preencher, será usado o nome de usuário (@${user.username}).',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppTheme.textSecondary,
-                        fontSize: 12,
+                        fontSize: AppTheme.fontSm,
                       ),
                     ),
                   ),

@@ -470,7 +470,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                     horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppTheme.loomCyan.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -488,7 +488,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                       'Detectando: ${scannerProvider.liveDetectedName}',
                       style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
+                          fontSize: AppTheme.fontMd,
                           fontWeight: FontWeight.w500),
                     ),
                   ],
@@ -510,11 +510,11 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                 ),
                 child: const Text(
                   'Aponte para a carta — detecção automática',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                  style: TextStyle(color: Colors.white70, fontSize: AppTheme.fontMd),
                 ),
               ),
             ),
@@ -529,7 +529,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: AppTheme.mythicGold.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
@@ -541,7 +541,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                     style: TextStyle(
                       color: Colors.black,
                       fontWeight: FontWeight.bold,
-                      fontSize: 11,
+                      fontSize: AppTheme.fontSm,
                     ),
                   ),
                 ],
@@ -556,7 +556,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -666,7 +666,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                     'Captura manual',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 10,
+                      fontSize: AppTheme.fontXs,
                     ),
                   ),
                 ],
@@ -692,7 +692,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
             const SizedBox(height: 24),
             Text(
               _permissionError ?? 'Permissão necessária',
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+              style: const TextStyle(color: Colors.white, fontSize: AppTheme.fontLg),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),

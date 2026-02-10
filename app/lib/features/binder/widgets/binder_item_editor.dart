@@ -39,7 +39,7 @@ class BinderItemEditor extends StatefulWidget {
       isScrollControlled: true,
       backgroundColor: AppTheme.surfaceSlate,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
       ),
       builder: (_) => BinderItemEditor(
         item: item,
@@ -201,7 +201,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppTheme.outlineMuted,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                 ),
               ),
             ),
@@ -212,7 +212,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
               isEditing ? 'Editar — $name' : 'Adicionar — $name',
               style: const TextStyle(
                 color: AppTheme.textPrimary,
-                fontSize: 18,
+                fontSize: AppTheme.fontXl,
                 fontWeight: FontWeight.bold,
               ),
               maxLines: 2,
@@ -225,7 +225,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
               children: [
                 const Text('Quantidade',
                     style: TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 14)),
+                        color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
                 const Spacer(),
                 _QuantityButton(
                   icon: Icons.remove,
@@ -239,7 +239,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                     '$_quantity',
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
-                      fontSize: 18,
+                      fontSize: AppTheme.fontXl,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -255,7 +255,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
             // Condição (chips)
             const Text('Condição',
                 style:
-                    TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                    TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -271,7 +271,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                     color: selected
                         ? Colors.white
                         : AppTheme.textSecondary,
-                    fontSize: 12,
+                    fontSize: AppTheme.fontSm,
                   ),
                   side: BorderSide(
                     color:
@@ -337,12 +337,12 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                   prefixStyle:
                       const TextStyle(color: AppTheme.textSecondary),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     borderSide:
                         const BorderSide(color: AppTheme.outlineMuted),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     borderSide:
                         const BorderSide(color: AppTheme.manaViolet),
                   ),
@@ -361,12 +361,12 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                 labelStyle:
                     const TextStyle(color: AppTheme.textSecondary),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   borderSide:
                       const BorderSide(color: AppTheme.outlineMuted),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   borderSide:
                       const BorderSide(color: AppTheme.manaViolet),
                 ),
@@ -386,7 +386,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                         side: const BorderSide(color: AppTheme.error),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                       ),
                       icon: const Icon(Icons.delete_outline, size: 18),
@@ -402,7 +402,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                       ),
                     ),
                     child: _saving
@@ -440,7 +440,7 @@ class _QuantityButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       child: Container(
         width: 36,
         height: 36,
@@ -448,7 +448,7 @@ class _QuantityButton extends StatelessWidget {
           border: Border.all(
             color: onTap != null ? AppTheme.manaViolet : AppTheme.outlineMuted,
           ),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         ),
         child: Icon(
           icon,

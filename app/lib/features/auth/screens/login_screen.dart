@@ -121,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         hintText: 'seu@email.com',
                         prefixIcon: const Icon(Icons.email_outlined),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -159,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -186,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                             ),
                           ),
                           child: auth.status == AuthStatus.loading
@@ -203,7 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               : const Text(
                                   'Entrar',
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: AppTheme.fontLg,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),

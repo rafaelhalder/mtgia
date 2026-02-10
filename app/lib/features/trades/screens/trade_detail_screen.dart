@@ -117,7 +117,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -132,13 +132,13 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   label,
                   style: TextStyle(
                     color: color,
-                    fontSize: 20,
+                    fontSize: AppTheme.fontXxl,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
                   _typeLabel(trade.type),
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
                 ),
               ],
             ),
@@ -177,7 +177,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: AppTheme.surfaceSlate,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
         child: Column(
           children: [
@@ -186,18 +186,18 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
               backgroundColor: AppTheme.outlineMuted,
               child: Text(
                 name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: AppTheme.fontMd),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               name,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: AppTheme.fontMd),
               overflow: TextOverflow.ellipsis,
             ),
             Text(
               role,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
             ),
           ],
         ),
@@ -213,7 +213,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,7 +240,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                       imageUrl: item.card.imageUrl,
                       width: 28,
                       height: 40,
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -251,14 +251,14 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                             item.card.name,
                             style: const TextStyle(
                               color: AppTheme.textPrimary,
-                              fontSize: 13,
+                              fontSize: AppTheme.fontMd,
                             ),
                           ),
                           Text(
                             '${item.condition ?? "?"} • x${item.quantity}${item.isFoil == true ? ' ⭐' : ''}',
                             style: const TextStyle(
                               color: AppTheme.textSecondary,
-                              fontSize: 11,
+                              fontSize: AppTheme.fontSm,
                             ),
                           ),
                         ],
@@ -269,7 +269,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                         'R\$${item.agreedPrice!.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: AppTheme.mythicGold,
-                          fontSize: 13,
+                          fontSize: AppTheme.fontMd,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -287,7 +287,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.mythicGold.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: AppTheme.mythicGold.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -302,14 +302,14 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   'R\$${trade.paymentAmount!.toStringAsFixed(2)}',
                   style: const TextStyle(
                     color: AppTheme.mythicGold,
-                    fontSize: 18,
+                    fontSize: AppTheme.fontXl,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 if (trade.paymentMethod != null)
                   Text(
                     'via ${trade.paymentMethod}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
                   ),
               ],
             ),
@@ -325,7 +325,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Row(
         children: [
@@ -337,7 +337,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
               children: [
                 const Text(
                   'Código de rastreio',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
                 ),
                 SelectableText(
                   trade.trackingCode!,
@@ -353,7 +353,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
             Chip(
               label: Text(
                 trade.deliveryMethod!,
-                style: const TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: AppTheme.fontSm),
               ),
               backgroundColor: AppTheme.outlineMuted,
             ),
@@ -370,7 +370,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +434,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                             style: TextStyle(
                               color: color,
                               fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                              fontSize: AppTheme.fontMd,
                             ),
                           ),
                           if (h.notes != null)
@@ -442,14 +442,14 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                               h.notes!,
                               style: const TextStyle(
                                 color: AppTheme.textSecondary,
-                                fontSize: 12,
-                              ),
+                              fontSize: AppTheme.fontSm,
                             ),
+                          ),
                           Text(
                             _formatDate(h.createdAt),
                             style: const TextStyle(
                               color: AppTheme.textHint,
-                              fontSize: 11,
+                              fontSize: AppTheme.fontSm,
                             ),
                           ),
                         ],
@@ -571,13 +571,13 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       child: ElevatedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 18),
-        label: Text(label, style: const TextStyle(fontSize: 13)),
+        label: Text(label, style: const TextStyle(fontSize: AppTheme.fontMd)),
         style: ElevatedButton.styleFrom(
           backgroundColor: color.withValues(alpha: 0.15),
           foregroundColor: color,
           padding: const EdgeInsets.symmetric(vertical: 10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             side: BorderSide(color: color.withValues(alpha: 0.4)),
           ),
         ),
@@ -676,7 +676,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceSlate,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,7 +715,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                     color: isMe
                         ? AppTheme.manaViolet.withValues(alpha: 0.2)
                         : AppTheme.outlineMuted,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   ),
                   child: Column(
                     crossAxisAlignment: isMe
@@ -727,7 +727,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                           msg.senderUsername ?? '',
                           style: TextStyle(
                             color: AppTheme.loomCyan,
-                            fontSize: 11,
+                            fontSize: AppTheme.fontSm,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -736,7 +736,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                           msg.message!,
                           style: const TextStyle(
                             color: AppTheme.textPrimary,
-                            fontSize: 13,
+                            fontSize: AppTheme.fontMd,
                           ),
                         ),
                       if (msg.attachmentUrl != null)
@@ -746,7 +746,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                             '📎 ${msg.attachmentType ?? "anexo"}',
                             style: const TextStyle(
                               color: AppTheme.textSecondary,
-                              fontSize: 11,
+                              fontSize: AppTheme.fontSm,
                             ),
                           ),
                         ),
@@ -754,7 +754,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                         _formatTime(msg.createdAt),
                         style: const TextStyle(
                           color: AppTheme.textHint,
-                          fontSize: 10,
+                          fontSize: AppTheme.fontXs,
                         ),
                       ),
                     ],
@@ -767,7 +767,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 'Nenhuma mensagem ainda',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
               ),
             ),
         ],
@@ -797,7 +797,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                     vertical: 10,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                     borderSide: BorderSide.none,
                   ),
                 ),

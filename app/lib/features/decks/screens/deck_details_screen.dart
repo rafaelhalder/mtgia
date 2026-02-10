@@ -101,7 +101,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
             onSelected: (value) {
               switch (value) {
                 case 'paste':
@@ -303,7 +303,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 }
                               }
                             },
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -313,7 +313,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 color: _validationResult!['ok'] == true
                                     ? AppTheme.success.withValues(alpha: 0.15)
                                     : theme.colorScheme.error.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                                 border: Border.all(
                                   color: _validationResult!['ok'] == true
                                       ? AppTheme.success
@@ -355,7 +355,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     // Visibility indicator
                     InkWell(
                       onTap: _togglePublic,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
@@ -363,7 +363,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                           color: deck.isPublic
                               ? AppTheme.loomCyan.withValues(alpha: 0.15)
                               : AppTheme.textHint.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                           border: Border.all(
                             color: deck.isPublic
                                 ? AppTheme.loomCyan
@@ -389,7 +389,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                     ? AppTheme.loomCyan
                                     : AppTheme.textSecondary,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                                fontSize: AppTheme.fontSm,
                               ),
                             ),
                           ],
@@ -422,7 +422,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                           color: theme.colorScheme.errorContainer.withValues(
                             alpha: 0.25,
                           ),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                           border: Border.all(
                             color: theme.colorScheme.errorContainer,
                           ),
@@ -491,13 +491,13 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                               context,
                               deck.description,
                             ),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                             border: Border.all(
                               color: theme.colorScheme.outline.withValues(
                                 alpha: 0.3,
@@ -517,13 +517,13 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         onTap:
                             () =>
                                 _showEditDescriptionDialog(context, null),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                             border: Border.all(
                               color: theme.colorScheme.outline.withValues(
                                 alpha: 0.2,
@@ -548,7 +548,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         (c) => Card(
                           shape: _isCardInvalid(c)
                               ? RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                                   side: BorderSide(
                                     color: theme.colorScheme.error,
                                     width: 2,
@@ -562,7 +562,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             children: [
                               ListTile(
                             leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                               child: CachedCardImage(
                                 imageUrl: c.imageUrl,
                                 width: 44,
@@ -584,7 +584,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                     ),
                                     decoration: BoxDecoration(
                                       color: theme.colorScheme.error,
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -600,7 +600,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                           style: theme.textTheme.labelSmall?.copyWith(
                                             color: Colors.white,
                                             fontWeight: FontWeight.bold,
-                                            fontSize: 9,
+                                            fontSize: AppTheme.fontXs,
                                           ),
                                         ),
                                       ],
@@ -648,7 +648,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: () => _showOptimizationOptions(context),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -659,7 +659,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                       .withValues(alpha: 0.5)
                                   : theme.colorScheme.primaryContainer
                                       .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                           border: Border.all(
                             color:
                                 (deck.archetype == null ||
@@ -760,7 +760,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                           border: Border.all(
                             color: theme.colorScheme.error.withValues(alpha: 0.4),
                           ),
@@ -822,7 +822,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   ),
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -846,7 +846,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   ),
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.error,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -935,7 +935,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                   margin: const EdgeInsets.only(bottom: 8),
                                   shape: _isCardInvalid(card)
                                       ? RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                                           side: BorderSide(
                                             color: theme.colorScheme.error,
                                             width: 2,
@@ -950,7 +950,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                       ListTile(
                                     contentPadding: const EdgeInsets.all(8),
                                     leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
+                                      borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                                       child: CachedCardImage(
                                         imageUrl: card.imageUrl,
                                         width: 40,
@@ -970,7 +970,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                     .colorScheme
                                                     .primaryContainer,
                                             borderRadius: BorderRadius.circular(
-                                              12,
+                                              AppTheme.radiusMd,
                                             ),
                                           ),
                                           child: Text(
@@ -1035,7 +1035,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                   color: _conditionColor(card.condition)
                                                       .withOpacity(0.15),
                                                   borderRadius:
-                                                      BorderRadius.circular(4),
+                                                      BorderRadius.circular(AppTheme.radiusXs),
                                                   border: Border.all(
                                                     color: _conditionColor(
                                                       card.condition,
@@ -1048,7 +1048,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                   style: theme
                                                       .textTheme.labelSmall
                                                       ?.copyWith(
-                                                        fontSize: 9,
+                                                        fontSize: AppTheme.fontXs,
                                                         color: _conditionColor(
                                                           card.condition,
                                                         ),
@@ -1076,7 +1076,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                             ),
                                             decoration: BoxDecoration(
                                               color: theme.colorScheme.error,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
@@ -1092,7 +1092,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                                   style: theme.textTheme.labelSmall?.copyWith(
                                                     color: Colors.white,
                                                     fontWeight: FontWeight.bold,
-                                                    fontSize: 9,
+                                                    fontSize: AppTheme.fontXs,
                                                   ),
                                                 ),
                                               ],
@@ -1143,7 +1143,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     'Descreva a estratégia, tema ou objetivo do deck...\n\nEx: Deck focado em tokens e sacrifício com sinergia Orzhov.',
                 hintMaxLines: 5,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surface,
@@ -1210,7 +1210,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
         }
       },
       offset: const Offset(0, -120),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
       itemBuilder: (context) => [
         PopupMenuItem(
           value: 'search',
@@ -1395,7 +1395,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       builder:
           (context) => Dialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -1405,7 +1405,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   if (card.imageUrl != null)
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(12),
+                        top: Radius.circular(AppTheme.radiusMd),
                       ),
                       child: AspectRatio(
                         aspectRatio: 0.714, // MTG card ratio ~ 2.5"x3.5"
@@ -1489,7 +1489,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 style: TextStyle(
                                   color: Theme.of(context).colorScheme.primary,
                                   decoration: TextDecoration.underline,
-                                  fontSize: 12,
+                                  fontSize: AppTheme.fontSm,
                                 ),
                               ),
                             ],
@@ -1589,7 +1589,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
       ),
       builder:
           (context) => DraggableScrollableSheet(
@@ -1614,7 +1614,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -1691,7 +1691,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                               imageUrl: it['image_url'],
                               width: 40,
                               height: 56,
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusXs),
                             ),
                             title: Text(setName),
                             subtitle: Text(
@@ -2050,7 +2050,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
       ),
       builder: (ctx) {
         return SafeArea(
@@ -2157,12 +2157,12 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             children: [
                               Text(
                                 'Importar Lista',
-                                style: TextStyle(fontSize: 18),
+                                style: TextStyle(fontSize: AppTheme.fontXl),
                               ),
                               Text(
                                 'Adicionar cartas de outra fonte',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: AppTheme.fontSm,
                                   fontWeight: FontWeight.normal,
                                 ),
                               ),
@@ -2192,7 +2192,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                           : theme.colorScheme.outline
                                               .withOpacity(0.3),
                                 ),
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                               ),
                               child: CheckboxListTile(
                                 value: replaceAll,
@@ -2219,7 +2219,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                           ? 'Substituir deck'
                                           : 'Adicionar cartas',
                                       style: const TextStyle(
-                                        fontSize: 14,
+                                        fontSize: AppTheme.fontMd,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -2230,7 +2230,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                       ? 'Remove cartas atuais e usa apenas a nova lista'
                                       : 'Mantém cartas existentes e adiciona as novas',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: AppTheme.fontSm,
                                     color: replaceAll ? AppTheme.warning : null,
                                   ),
                                 ),
@@ -2253,7 +2253,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 hintStyle: TextStyle(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.4),
-                                  fontSize: 12,
+                                  fontSize: AppTheme.fontSm,
                                 ),
                                 border: const OutlineInputBorder(),
                                 filled: true,
@@ -2262,7 +2262,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                               maxLines: 10,
                               style: TextStyle(
                                 fontFamily: 'monospace',
-                                fontSize: 12,
+                                fontSize: AppTheme.fontSm,
                                 color: theme.colorScheme.onSurface,
                               ),
                             ),
@@ -2274,7 +2274,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: AppTheme.error.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                                   border: Border.all(
                                     color: AppTheme.error.withOpacity(0.3),
                                   ),
@@ -2292,7 +2292,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                         error!,
                                         style: TextStyle(
                                           color: AppTheme.error,
-                                          fontSize: 12,
+                                          fontSize: AppTheme.fontSm,
                                         ),
                                       ),
                                     ),
@@ -2308,7 +2308,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: AppTheme.warning.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                                   border: Border.all(
                                     color: AppTheme.warning.withOpacity(0.3),
                                   ),
@@ -2321,7 +2321,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: AppTheme.warning,
-                                        fontSize: 12,
+                                        fontSize: AppTheme.fontSm,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -2331,7 +2331,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                           (line) => Text(
                                             '• $line',
                                             style: TextStyle(
-                                              fontSize: 11,
+                                              fontSize: AppTheme.fontSm,
                                               color: AppTheme.warning.withOpacity(0.6),
                                             ),
                                           ),
@@ -2340,7 +2340,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                       Text(
                                         '... e mais ${notFoundLines.length - 5}',
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: AppTheme.fontSm,
                                           fontStyle: FontStyle.italic,
                                           color: AppTheme.warning.withOpacity(0.7),
                                         ),
@@ -2507,7 +2507,7 @@ class _PricingRow extends StatelessWidget {
         color: theme.colorScheme.surfaceContainerHighest.withValues(
           alpha: 0.35,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(
           color: theme.colorScheme.outline.withValues(alpha: 0.35),
         ),
@@ -3091,7 +3091,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
                 color: AppTheme.textHint,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(AppTheme.radiusXs),
               ),
             ),
           ),
@@ -3145,7 +3145,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                 border: Border.all(
                   color: theme.colorScheme.primary.withValues(alpha: 0.3),
                 ),
@@ -3234,7 +3234,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                     return Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         side: BorderSide(
                           color: theme.colorScheme.primary.withValues(
                             alpha: 0.3,
@@ -3242,7 +3242,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                         ),
                       ),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         onTap: () {
                           final title = (option['title'] ?? '').toString();
                           if (title.isEmpty) return;
@@ -3278,7 +3278,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                                             theme
                                                 .colorScheme
                                                 .surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                                       ),
                                       child: Text(
                                         option['difficulty'],

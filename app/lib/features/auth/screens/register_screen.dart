@@ -114,7 +114,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         helperMaxLines: 2,
                         prefixIcon: const Icon(Icons.alternate_email),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -140,7 +140,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         hintText: 'seu@email.com',
                         prefixIcon: const Icon(Icons.email_outlined),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -178,7 +178,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           },
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -216,7 +216,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           },
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
@@ -243,7 +243,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                             ),
                           ),
                           child: auth.status == AuthStatus.loading
@@ -260,7 +260,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               : const Text(
                                   'Criar Conta',
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: AppTheme.fontLg,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),

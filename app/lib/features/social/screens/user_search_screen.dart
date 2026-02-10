@@ -65,7 +65,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                 filled: true,
                 fillColor: AppTheme.surfaceSlate,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -109,7 +109,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                           'Digite para buscar usuários',
                           style: TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 15,
+                            fontSize: AppTheme.fontLg,
                           ),
                         ),
                       ],
@@ -131,7 +131,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                           'Nenhum usuário encontrado',
                           style: TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 15,
+                            fontSize: AppTheme.fontLg,
                           ),
                         ),
                       ],
@@ -179,11 +179,11 @@ class _UserSearchCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       color: AppTheme.surfaceSlate,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         side: const BorderSide(color: AppTheme.outlineMuted, width: 0.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -203,7 +203,7 @@ class _UserSearchCard extends StatelessWidget {
                         style: const TextStyle(
                           color: AppTheme.manaViolet,
                           fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                          fontSize: AppTheme.fontXl,
                         ),
                       )
                     : null,
@@ -219,7 +219,7 @@ class _UserSearchCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: AppTheme.fontLg,
                       ),
                     ),
                     if (user.displayName != null)
@@ -227,7 +227,7 @@ class _UserSearchCard extends StatelessWidget {
                         '@${user.username}',
                         style: const TextStyle(
                           color: AppTheme.textSecondary,
-                          fontSize: 12,
+                          fontSize: AppTheme.fontSm,
                         ),
                       ),
                     const SizedBox(height: 4),
@@ -240,7 +240,7 @@ class _UserSearchCard extends StatelessWidget {
                           '${user.publicDeckCount} decks',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -252,7 +252,7 @@ class _UserSearchCard extends StatelessWidget {
                           '${user.followerCount} seguidores',
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppTheme.fontSm,
                           ),
                         ),
                       ],
