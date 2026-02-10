@@ -94,7 +94,9 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        if (response.data is Map && response.data['message'] != null) {
+        if (response.statusCode >= 500) {
+          _errorMessage = 'Servidor indisponível. Tente novamente em instantes.';
+        } else if (response.data is Map && response.data['message'] != null) {
           _errorMessage = response.data['message'].toString();
         } else {
           _errorMessage = 'Credenciais inválidas';
@@ -142,7 +144,9 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        if (response.data is Map && response.data['message'] != null) {
+        if (response.statusCode >= 500) {
+          _errorMessage = 'Servidor indisponível. Tente novamente em instantes.';
+        } else if (response.data is Map && response.data['message'] != null) {
           _errorMessage = response.data['message'].toString();
         } else {
           _errorMessage = 'Erro ao criar conta';

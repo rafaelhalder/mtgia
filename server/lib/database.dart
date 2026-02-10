@@ -13,6 +13,9 @@ class Database {
   factory Database() => _instance;
   Database._internal();
 
+  /// Verifica se o banco está conectado.
+  bool get isConnected => _connected;
+
   /// Retorna a instância do Pool.
   ///
   /// Se a conexão não estiver ativa, lança uma exceção.
