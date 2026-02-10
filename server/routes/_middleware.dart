@@ -11,8 +11,7 @@ var _schemaReady = false;
 Handler middleware(Handler handler) {
   return (context) async {
     // ── CORS ──────────────────────────────────────────────
-    // Responde preflight (OPTIONS) imediatamente e adiciona
-    // headers CORS em todas as respostas.
+    // Responde preflight (OPTIONS) imediatamente.
     if (context.request.method == HttpMethod.options) {
       return Response(
         statusCode: HttpStatus.noContent,
@@ -36,8 +35,15 @@ Handler middleware(Handler handler) {
     final response = await handler.use(provider<Pool>((_) => _db.connection))(context);
 
     // Adiciona CORS em TODAS as respostas.
-    return response.copyWith(
-      headers: {...response.headers, ..._corsHeaders},
+    // Lê o body original e reconstrói com os headers CORS.
+    final body = await response.body();
+    return Response(
+      statusCode: response.statusCode,
+      body: body,
+      headers: {
+        ...response.headers,
+        ..._corsHeaders,
+      },
     );
   };
 }
