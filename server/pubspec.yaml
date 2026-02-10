@@ -16,7 +16,6 @@ dependencies:
   dart_jsonwebtoken: ^2.12.0
   json_annotation: ^4.8.0
   html: ^0.15.6
-  shelf_cors_headers: ^0.1.5
 
 dev_dependencies:
   test: ^1.14.0

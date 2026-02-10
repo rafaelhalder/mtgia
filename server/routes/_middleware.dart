@@ -1,6 +1,6 @@
+import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
-import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 import '../lib/database.dart';
 
 // Instancia o banco de dados uma vez.
@@ -8,28 +8,43 @@ final _db = Database();
 var _connected = false;
 var _schemaReady = false;
 
-Handler middleware(Handler handler) {
-  // shelf_cors_headers cuida de OPTIONS + headers em todas as respostas,
-  // sem substituir os headers originais (faz merge correto).
-  return handler
-      .use(_dbMiddleware)
-      .use(fromShelfMiddleware(corsHeaders()));
-}
+const _corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
 
-/// Middleware que conecta ao banco, roda DDL e injeta Pool no contexto.
-Middleware _dbMiddleware(Handler handler) {
+Handler middleware(Handler handler) {
   return (context) async {
+    // ── CORS preflight ───────────────────────────────────
+    if (context.request.method == HttpMethod.options) {
+      return Response(statusCode: HttpStatus.noContent, headers: _corsHeaders);
+    }
+
+    // ── DB ────────────────────────────────────────────────
     if (!_connected) {
       await _db.connect();
       _connected = true;
     }
-
     if (!_schemaReady) {
       await _ensureRuntimeSchema(_db.connection);
       _schemaReady = true;
     }
 
-    return handler.use(provider<Pool>((_) => _db.connection))(context);
+    // Executa o handler com Pool injetado.
+    final response =
+        await handler.use(provider<Pool>((_) => _db.connection))(context);
+
+    // ── Adiciona CORS nas respostas ──────────────────────
+    // Lê o body como string e reconstrói a Response com headers merged.
+    final bodyStr = await response.body();
+    final merged = <String, Object>{...response.headers, ..._corsHeaders};
+    return Response(
+      statusCode: response.statusCode,
+      body: bodyStr,
+      headers: merged,
+    );
   };
 }
 
