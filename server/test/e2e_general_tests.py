@@ -23,7 +23,10 @@ DEFAULT_API = "https://evolution-cartinhas.8ktevp.easypanel.host"
 VERBOSE = False
 
 # Rate-limit safe delay between auth requests
-AUTH_DELAY = 2.0
+AUTH_DELAY = 3.0
+# Max retries on 429
+MAX_429_RETRIES = 3
+RETRY_429_WAIT = 15.0
 
 
 @dataclass
@@ -64,19 +67,27 @@ class TestRunner:
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        try:
-            r = requests.request(method, url, json=json_data,
-                                 params=params, headers=headers, timeout=30)
+        for attempt in range(MAX_429_RETRIES + 1):
             try:
-                body = r.json()
-            except Exception:
-                body = {"_raw": r.text[:500]}
-            if VERBOSE:
-                payload = json.dumps(body)[:200]
-                print(f"    📋 {method} {path} → {r.status_code}: {payload}")
-            return r.status_code, body
-        except Exception as e:
-            return 0, {"_error": str(e)}
+                r = requests.request(method, url, json=json_data,
+                                     params=params, headers=headers, timeout=30)
+                if r.status_code == 429 and attempt < MAX_429_RETRIES:
+                    wait = RETRY_429_WAIT
+                    if VERBOSE:
+                        print(f"    ⏳ 429 on {method} {path} — retrying in {wait}s (attempt {attempt+1})")
+                    time.sleep(wait)
+                    continue
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {"_raw": r.text[:500]}
+                if VERBOSE:
+                    payload = json.dumps(body)[:200]
+                    print(f"    📋 {method} {path} → {r.status_code}: {payload}")
+                return r.status_code, body
+            except Exception as e:
+                return 0, {"_error": str(e)}
+        return 429, {"error": "Rate limited after retries"}
 
     def _test(self, cat: str, name: str, passed: bool, detail: str = ""):
         self.results.append(TestResult(cat, name, passed, detail))
@@ -151,6 +162,9 @@ class TestRunner:
     def test_auth(self):
         CAT = "AUTH"
         print(f"\n🔐 {CAT} TESTS")
+        # Wait for rate limit window to expire (setup used 3 auth requests)
+        print("  ⏳ Aguardando rate limit window expirar (30s)...")
+        time.sleep(30)
 
         # ── Register validations ──
         code, body = self._req("POST", "/auth/register", json_data={})
@@ -1166,7 +1180,6 @@ class TestRunner:
             print("\n💀 SETUP FALHOU! Abortando testes.")
             return False
 
-        self.test_auth()
         self.test_deck_crud()
         self.test_deck_cards()
         self.test_community()
@@ -1178,6 +1191,8 @@ class TestRunner:
         self.test_cards()
         self.test_infrastructure()
         self.test_deck_delete()
+        # Auth tests run LAST so the rate-limit window from setup has expired
+        self.test_auth()
 
         return self.print_summary()
 
