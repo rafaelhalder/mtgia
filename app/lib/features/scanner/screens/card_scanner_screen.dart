@@ -16,8 +16,20 @@ import '../../decks/models/deck_card_item.dart';
 /// Tela de scanner de cartas MTG usando câmera
 class CardScannerScreen extends StatefulWidget {
   final String deckId;
+  final String? mode;
 
-  const CardScannerScreen({super.key, required this.deckId});
+  /// Callback para modo binder — ao escanear e confirmar carta,
+  /// chama essa função ao invés de adicionar ao deck.
+  final void Function(Map<String, dynamic> card)? onCardScannedForBinder;
+
+  const CardScannerScreen({
+    super.key,
+    required this.deckId,
+    this.mode,
+    this.onCardScannedForBinder,
+  });
+
+  bool get isBinderMode => mode == 'binder';
 
   @override
   State<CardScannerScreen> createState() => _CardScannerScreenState();
@@ -330,6 +342,21 @@ class _CardScannerScreenState extends State<CardScannerScreen>
   }
 
   void _addCardToDeck(DeckCardItem card) async {
+    // Modo binder: retorna a carta via callback
+    if (widget.isBinderMode) {
+      final cardData = {
+        'id': card.id,
+        'name': card.name,
+        'image_url': card.imageUrl,
+        'set_code': card.setCode,
+        'mana_cost': card.manaCost,
+        'rarity': card.rarity,
+      };
+      Navigator.pop(context);
+      widget.onCardScannedForBinder?.call(cardData);
+      return;
+    }
+
     final deckProvider = context.read<DeckProvider>();
 
     // Adiciona a carta ao deck

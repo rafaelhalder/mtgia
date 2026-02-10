@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/cached_card_image.dart';
+import '../../cards/providers/card_provider.dart';
 import '../providers/binder_provider.dart';
 
 /// Modal (BottomSheet) para editar/ver detalhes de um item do fichário.
 /// Usado tanto para edição (modo update) quanto para adicionar ao binder.
+/// Ao adicionar, busca todas as edições da carta para o usuário escolher.
 class BinderItemEditor extends StatefulWidget {
   /// Se não-nulo, estamos editando um item existente.
   final BinderItem? item;
@@ -72,6 +76,11 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
   late TextEditingController _notesController;
   bool _saving = false;
 
+  /// Edições disponíveis da carta (só para adição)
+  List<Map<String, dynamic>> _printings = [];
+  bool _loadingPrintings = false;
+  int _selectedPrintingIndex = 0;
+
   static const conditions = ['NM', 'LP', 'MP', 'HP', 'DMG'];
   static const conditionLabels = {
     'NM': 'Near Mint',
@@ -95,6 +104,61 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
       text: item?.price?.toStringAsFixed(2) ?? '',
     );
     _notesController = TextEditingController(text: item?.notes ?? '');
+
+    // Buscar edições se estiver adicionando (não editando)
+    if (widget.item == null && widget.cardName != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fetchPrintings();
+      });
+    }
+  }
+
+  Future<void> _fetchPrintings() async {
+    setState(() => _loadingPrintings = true);
+    try {
+      final provider = context.read<CardProvider>();
+      final results = await provider.fetchPrintingsByName(widget.cardName!);
+      if (!mounted) return;
+      setState(() {
+        _printings = results;
+        // Selecionar a edição que corresponde ao cardId passado
+        if (widget.cardId != null) {
+          final idx = _printings.indexWhere(
+            (p) => p['id']?.toString() == widget.cardId,
+          );
+          if (idx >= 0) _selectedPrintingIndex = idx;
+        }
+      });
+    } catch (_) {
+      // Silencioso — funciona sem printings
+    } finally {
+      if (mounted) setState(() => _loadingPrintings = false);
+    }
+  }
+
+  /// Retorna o card_id efetivo (da edição selecionada ou o original)
+  String? get _effectiveCardId {
+    if (_printings.isNotEmpty && _selectedPrintingIndex < _printings.length) {
+      return _printings[_selectedPrintingIndex]['id']?.toString();
+    }
+    return widget.cardId;
+  }
+
+  /// Retorna a image_url da edição selecionada
+  String? get _selectedImageUrl {
+    if (_printings.isNotEmpty && _selectedPrintingIndex < _printings.length) {
+      return _printings[_selectedPrintingIndex]['image_url'] as String?;
+    }
+    return null;
+  }
+
+  /// Retorna o preço de mercado da edição selecionada
+  double? get _selectedMarketPrice {
+    if (_printings.isNotEmpty && _selectedPrintingIndex < _printings.length) {
+      final p = _printings[_selectedPrintingIndex]['price'];
+      if (p is num) return p.toDouble();
+    }
+    return null;
   }
 
   @override
@@ -129,9 +193,9 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
       data['price'] = null;
     }
 
-    // Se adicionando, incluir card_id
+    // Se adicionando, incluir card_id (da edição selecionada)
     if (widget.item == null) {
-      data['card_id'] = widget.cardId;
+      data['card_id'] = _effectiveCardId;
     }
 
     final ok = await widget.onSave?.call(data) ?? false;
@@ -228,7 +292,153 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // ===== Arte da carta + Seletor de edição =====
+            if (!isEditing) ...[
+              // Imagem da carta selecionada
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  child: CachedCardImage(
+                    imageUrl: _selectedImageUrl,
+                    width: 180,
+                    height: 252,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Preço de mercado
+              if (_selectedMarketPrice != null)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.mythicGold.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                      border: Border.all(color: AppTheme.mythicGold.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      'Preço de mercado: US\$ ${_selectedMarketPrice!.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: AppTheme.mythicGold,
+                        fontSize: AppTheme.fontSm,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+
+              // Seletor de edições (horizontal scroll)
+              if (_loadingPrintings)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.manaViolet),
+                    ),
+                  ),
+                )
+              else if (_printings.length > 1) ...[
+                const Text('Edição',
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 52,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _printings.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final p = _printings[index];
+                      final setCode = (p['set_code'] as String? ?? '').toUpperCase();
+                      final setName = p['set_name'] as String? ?? setCode;
+                      final releaseDate = p['set_release_date'] as String? ?? '';
+                      final year = releaseDate.length >= 4 ? releaseDate.substring(0, 4) : '';
+                      final price = p['price'] is num ? (p['price'] as num).toDouble() : null;
+                      final isSelected = index == _selectedPrintingIndex;
+
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedPrintingIndex = index),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.manaViolet.withValues(alpha: 0.2)
+                                : AppTheme.surfaceSlate2,
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppTheme.manaViolet
+                                  : AppTheme.outlineMuted,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    setCode,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? AppTheme.manaViolet
+                                          : AppTheme.textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  if (year.isNotEmpty) ...[
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      year,
+                                      style: const TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                  if (price != null) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '\$${price.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: AppTheme.mythicGold,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (setName != setCode)
+                                Text(
+                                  setName,
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 10,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+            ],
 
             // Lista: Tenho / Quero
             const Text('Lista',

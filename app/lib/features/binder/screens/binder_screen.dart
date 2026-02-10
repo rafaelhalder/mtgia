@@ -6,6 +6,7 @@ import '../../../core/widgets/cached_card_image.dart';
 import '../providers/binder_provider.dart';
 import '../widgets/binder_item_editor.dart';
 import '../../cards/screens/card_search_screen.dart';
+import '../../scanner/screens/card_scanner_screen.dart';
 
 /// Widget embeddable para uso como tab dentro do CollectionScreen.
 /// Não possui Scaffold/AppBar — apenas o body content.
@@ -239,6 +240,47 @@ class _BinderListViewState extends State<_BinderListView>
     );
   }
 
+  void _openScanCard() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CardScannerScreen(
+          deckId: '',
+          mode: 'binder',
+          onCardScannedForBinder: (card) {
+            if (!mounted) return;
+            final provider = context.read<BinderProvider>();
+            BinderItemEditor.show(
+              context,
+              cardId: card['id'] as String,
+              cardName: card['name'] as String?,
+              initialListType: widget.listType,
+              onSave: (data) async {
+                final ok = await provider.addItem(
+                  cardId: data['card_id'] as String,
+                  quantity: data['quantity'] as int? ?? 1,
+                  condition: data['condition'] as String? ?? 'NM',
+                  isFoil: data['is_foil'] as bool? ?? false,
+                  forTrade: data['for_trade'] as bool? ?? false,
+                  forSale: data['for_sale'] as bool? ?? false,
+                  price: data['price'] != null
+                      ? (data['price'] as num).toDouble()
+                      : null,
+                  notes: data['notes'] as String?,
+                  listType: data['list_type'] as String? ?? widget.listType,
+                );
+                if (ok && mounted) {
+                  _fetchItems(reset: true);
+                }
+                return ok;
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   void _editItem(BinderItem item) {
     final provider = context.read<BinderProvider>();
     BinderItemEditor.show(
@@ -275,7 +317,7 @@ class _BinderListViewState extends State<_BinderListView>
           children: [
             // Stats bar
             if (showStats)
-              _StatsBar(stats: stats, onAdd: _openAddCard),
+              _StatsBar(stats: stats, onAdd: _openAddCard, onScan: _openScanCard),
 
             // Search + filters
             _SearchFilterBar(
@@ -367,15 +409,30 @@ class _BinderListViewState extends State<_BinderListView>
                 style: const TextStyle(color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: _openAddCard,
-                icon: const Icon(Icons.add),
-                label: const Text('Adicionar carta'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isHave ? AppTheme.loomCyan : AppTheme.mythicGold,
-                  foregroundColor: Colors.white,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _openAddCard,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Buscar carta'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isHave ? AppTheme.loomCyan : AppTheme.mythicGold,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _openScanCard,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Escanear'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.manaViolet,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -419,7 +476,8 @@ class _BinderListViewState extends State<_BinderListView>
 class _StatsBar extends StatelessWidget {
   final BinderStats stats;
   final VoidCallback? onAdd;
-  const _StatsBar({required this.stats, this.onAdd});
+  final VoidCallback? onScan;
+  const _StatsBar({required this.stats, this.onAdd, this.onScan});
 
   @override
   Widget build(BuildContext context) {
@@ -463,8 +521,18 @@ class _StatsBar extends StatelessWidget {
               ],
             ),
           ),
+          if (onScan != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.camera_alt, color: AppTheme.loomCyan),
+              tooltip: 'Escanear carta',
+              onPressed: onScan,
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(4),
+            ),
+          ],
           if (onAdd != null) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.add, color: AppTheme.manaViolet),
               tooltip: 'Adicionar carta',
