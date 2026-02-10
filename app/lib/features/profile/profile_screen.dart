@@ -17,7 +17,16 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _displayNameController = TextEditingController();
   final _avatarUrlController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _tradeNotesController = TextEditingController();
+  String? _selectedState;
   bool _isSaving = false;
+
+  static const _brazilStates = [
+    'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO',
+    'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR',
+    'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO',
+  ];
 
   @override
   void initState() {
@@ -29,6 +38,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted || user == null) return;
       _displayNameController.text = user.displayName ?? '';
       _avatarUrlController.text = user.avatarUrl ?? '';
+      _cityController.text = user.locationCity ?? '';
+      _tradeNotesController.text = user.tradeNotes ?? '';
+      setState(() {
+        _selectedState = user.locationState;
+      });
     });
   }
 
@@ -36,6 +50,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _displayNameController.dispose();
     _avatarUrlController.dispose();
+    _cityController.dispose();
+    _tradeNotesController.dispose();
     super.dispose();
   }
 
@@ -43,9 +59,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isSaving = true);
     final auth = context.read<AuthProvider>();
     final avatarText = _avatarUrlController.text.trim();
+    final cityText = _cityController.text.trim();
+    final tradeNotesText = _tradeNotesController.text.trim();
     final ok = await auth.updateProfile(
       displayName: _displayNameController.text.trim(),
       avatarUrl: avatarText.isEmpty ? null : avatarText,
+      locationState: _selectedState,
+      locationCity: cityText.isEmpty ? null : cityText,
+      tradeNotes: tradeNotesText.isEmpty ? null : tradeNotesText,
     );
     if (!mounted) return;
     setState(() => _isSaving = false);
@@ -224,6 +245,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppTheme.textSecondary,
                         fontSize: AppTheme.fontSm,
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Localização
+                  Text(
+                    'Localização',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Informe sua localização para facilitar trocas presenciais com outros jogadores.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontSm,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      // Estado dropdown
+                      SizedBox(
+                        width: 100,
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedState,
+                          decoration: const InputDecoration(
+                            labelText: 'Estado',
+                            prefixIcon: Icon(Icons.location_on, size: 20),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          dropdownColor: AppTheme.surfaceSlate,
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('--'),
+                            ),
+                            ..._brazilStates.map((s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(s),
+                            )),
+                          ],
+                          onChanged: (v) => setState(() => _selectedState = v),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Cidade
+                      Expanded(
+                        child: TextField(
+                          controller: _cityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Cidade',
+                            hintText: 'Ex: São Paulo',
+                            prefixIcon: Icon(Icons.location_city, size: 20),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Observação de troca
+                  TextField(
+                    controller: _tradeNotesController,
+                    maxLines: 3,
+                    maxLength: 500,
+                    decoration: const InputDecoration(
+                      labelText: 'Observação para trocas',
+                      hintText: 'Ex: Consigo entregar em mãos em SP, ou deixo na loja X em Curitiba...',
+                      prefixIcon: Icon(Icons.info_outline, size: 20),
+                      alignLabelWithHint: true,
                     ),
                   ),
                   const SizedBox(height: 20),

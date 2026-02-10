@@ -22,6 +22,7 @@ class BinderItem {
   double? price;
   String currency;
   String? notes;
+  String listType; // 'have' or 'want'
 
   BinderItem({
     required this.id,
@@ -40,6 +41,7 @@ class BinderItem {
     this.price,
     this.currency = 'BRL',
     this.notes,
+    this.listType = 'have',
   });
 
   factory BinderItem.fromJson(Map<String, dynamic> json) {
@@ -61,6 +63,7 @@ class BinderItem {
       price: json['price'] != null ? (json['price'] as num).toDouble() : null,
       currency: json['currency'] as String? ?? 'BRL',
       notes: json['notes'] as String?,
+      listType: json['list_type'] as String? ?? 'have',
     );
   }
 }
@@ -106,6 +109,9 @@ class MarketplaceItem extends BinderItem {
   final String ownerUsername;
   final String? ownerDisplayName;
   final String? ownerAvatarUrl;
+  final String? ownerLocationState;
+  final String? ownerLocationCity;
+  final String? ownerTradeNotes;
 
   MarketplaceItem({
     required super.id,
@@ -124,10 +130,14 @@ class MarketplaceItem extends BinderItem {
     super.price,
     super.currency,
     super.notes,
+    super.listType,
     required this.ownerId,
     required this.ownerUsername,
     this.ownerDisplayName,
     this.ownerAvatarUrl,
+    this.ownerLocationState,
+    this.ownerLocationCity,
+    this.ownerTradeNotes,
   });
 
   factory MarketplaceItem.fromJson(Map<String, dynamic> json) {
@@ -150,14 +160,27 @@ class MarketplaceItem extends BinderItem {
       price: json['price'] != null ? (json['price'] as num).toDouble() : null,
       currency: json['currency'] as String? ?? 'BRL',
       notes: json['notes'] as String?,
+      listType: json['list_type'] as String? ?? 'have',
       ownerId: owner?['id'] as String? ?? '',
       ownerUsername: owner?['username'] as String? ?? '',
       ownerDisplayName: owner?['display_name'] as String?,
       ownerAvatarUrl: owner?['avatar_url'] as String?,
+      ownerLocationState: owner?['location_state'] as String?,
+      ownerLocationCity: owner?['location_city'] as String?,
+      ownerTradeNotes: owner?['trade_notes'] as String?,
     );
   }
 
   String get ownerDisplayLabel => ownerDisplayName ?? ownerUsername;
+
+  /// Retorna label de localização formatada
+  String? get ownerLocationLabel {
+    if (ownerLocationCity != null && ownerLocationState != null) {
+      return '$ownerLocationCity, $ownerLocationState';
+    }
+    if (ownerLocationState != null) return ownerLocationState;
+    return null;
+  }
 }
 
 // =====================================================================
@@ -180,6 +203,7 @@ class BinderProvider extends ChangeNotifier {
   String? _currentSearch;
   bool? _filterForTrade;
   bool? _filterForSale;
+  String? _currentListType; // 'have', 'want', or null (all)
 
   List<BinderItem> get items => _items;
   BinderStats? get stats => _stats;
@@ -234,6 +258,7 @@ class BinderProvider extends ChangeNotifier {
 
     try {
       var endpoint = '/binder?page=$_page&limit=20';
+      if (_currentListType != null) endpoint += '&list_type=$_currentListType';
       if (_currentFilter != null) endpoint += '&condition=$_currentFilter';
       if (_currentSearch != null && _currentSearch!.isNotEmpty) {
         endpoint += '&search=${Uri.encodeComponent(_currentSearch!)}';
@@ -269,11 +294,13 @@ class BinderProvider extends ChangeNotifier {
     String? search,
     bool? forTrade,
     bool? forSale,
+    String? listType,
   }) {
     _currentFilter = condition;
     _currentSearch = search;
     _filterForTrade = forTrade;
     _filterForSale = forSale;
+    _currentListType = listType;
     fetchMyBinder(reset: true);
   }
 
@@ -300,6 +327,7 @@ class BinderProvider extends ChangeNotifier {
     bool forSale = false,
     double? price,
     String? notes,
+    String listType = 'have',
   }) async {
     try {
       final body = <String, dynamic>{
@@ -309,6 +337,7 @@ class BinderProvider extends ChangeNotifier {
         'is_foil': isFoil,
         'for_trade': forTrade,
         'for_sale': forSale,
+        'list_type': listType,
         if (price != null) 'price': price,
         if (notes != null) 'notes': notes,
       };
@@ -400,6 +429,76 @@ class BinderProvider extends ChangeNotifier {
       _error = 'Erro de conexão';
       notifyListeners();
       return false;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Direct fetch (for independent list views by list_type)
+  // ---------------------------------------------------------------
+
+  /// Fetches binder items directly without updating shared provider state.
+  /// Returns a list of BinderItem or null on error.
+  /// Used by _BinderListView to manage its own state independently.
+  Future<List<BinderItem>?> fetchBinderDirect({
+    required String listType,
+    int page = 1,
+    int limit = 20,
+    String? condition,
+    String? search,
+    bool? forTrade,
+    bool? forSale,
+  }) async {
+    try {
+      var endpoint = '/binder?page=$page&limit=$limit&list_type=$listType';
+      if (condition != null) endpoint += '&condition=$condition';
+      if (search != null && search.isNotEmpty) {
+        endpoint += '&search=${Uri.encodeComponent(search)}';
+      }
+      if (forTrade == true) endpoint += '&for_trade=true';
+      if (forSale == true) endpoint += '&for_sale=true';
+
+      final res = await _api.get(endpoint);
+      if (res.statusCode == 200 && res.data is Map) {
+        final data = res.data as Map<String, dynamic>;
+        return (data['data'] as List<dynamic>? ?? [])
+            .map((e) => BinderItem.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[❌ BinderProvider] fetchBinderDirect($listType): $e');
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Public Binder Direct (for independent tabs by list_type)
+  // ---------------------------------------------------------------
+
+  /// Fetches a public user's binder items directly without updating shared state.
+  /// Returns a list of BinderItem or null on error.
+  Future<List<BinderItem>?> fetchPublicBinderDirect({
+    required String userId,
+    required String listType,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final res = await _api.get(
+        '/community/binders/$userId?page=$page&limit=$limit&list_type=$listType',
+      );
+      if (res.statusCode == 200 && res.data is Map) {
+        final data = res.data as Map<String, dynamic>;
+        // Update owner if not set yet
+        _publicOwner ??= data['owner'] as Map<String, dynamic>?;
+        return (data['data'] as List<dynamic>? ?? [])
+            .map((e) => BinderItem.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[❌ BinderProvider] fetchPublicBinderDirect($userId, $listType): $e');
+      return null;
     }
   }
 
@@ -513,6 +612,7 @@ class BinderProvider extends ChangeNotifier {
     _currentSearch = null;
     _filterForTrade = null;
     _filterForSale = null;
+    _currentListType = null;
     _marketItems = [];
     _isLoadingMarket = false;
     _marketError = null;

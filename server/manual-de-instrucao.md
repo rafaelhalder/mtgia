@@ -3546,3 +3546,142 @@ Tabelas que existiam no código mas não no banco de produção, criadas manualm
 - `conversations` + `CREATE UNIQUE INDEX idx_conversations_pair ON conversations (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))`
 - `direct_messages` + índices
 - `notifications` + índices
+
+---
+
+## 27. Fichário Have/Want + Localização + Observação de Troca
+
+**Data:** Fevereiro de 2026
+
+### 27.1 Motivação
+
+O fichário (binder) original era uma lista única. Jogadores precisam separar cartas que **possuem** (Have) das que **procuram** (Want), além de informar sua localização e como preferem negociar.
+
+### 27.2 Alterações no Banco de Dados
+
+**Migration:** `bin/migrate_binder_havewant.dart`
+
+1. **`user_binder_items.list_type`** — `VARCHAR(4) NOT NULL DEFAULT 'have'` com CHECK `('have','want')`.
+2. **UNIQUE constraint** atualizada para `(user_id, card_id, condition, is_foil, list_type)` — permite a mesma carta em ambas as listas.
+3. **Index** `idx_binder_list_type ON user_binder_items (user_id, list_type)`.
+4. **`users.location_state`** — `VARCHAR(2)` (sigla UF brasileira).
+5. **`users.location_city`** — `VARCHAR(100)`.
+6. **`users.trade_notes`** — `TEXT` (observação livre, max 500 chars no app).
+
+### 27.3 Endpoints Alterados (Server)
+
+| Endpoint | Mudança |
+|---|---|
+| `GET /binder` | Aceita `?list_type=have\|want` para filtrar por lista |
+| `POST /binder` | Aceita `list_type` no body (default: `'have'`), inclui na UNIQUE check |
+| `PUT /binder/:id` | Aceita `list_type` no body para mudar entre listas |
+| `GET /community/marketplace` | Retorna `list_type`, `owner.location_state`, `owner.location_city`, `owner.trade_notes` |
+| `GET /community/binders/:userId` | Retorna `list_type` nos itens + localização do dono |
+| `GET /users/me` | Retorna `location_state`, `location_city`, `trade_notes` |
+| `PATCH /users/me` | Aceita `location_state` (2 chars), `location_city` (max 100), `trade_notes` (max 500) |
+
+### 27.4 Flutter — Mudanças
+
+- **`BinderItem`**: novo campo `listType` (`'have'` ou `'want'`).
+- **`MarketplaceItem`**: novos campos `ownerLocationState`, `ownerLocationCity`, `ownerTradeNotes` + getter `ownerLocationLabel`.
+- **`BinderProvider`**: novo método `fetchBinderDirect()` para listas independentes por `listType` sem alterar o state compartilhado.
+- **`BinderTabContent`**: redesenhada com 2 sub-tabs ("Tenho" 🔵 / "Quero" 🟡), cada uma com `_BinderListView` independente (scroll, paginação, filtros).
+- **`BinderItemEditor`**: novo seletor de lista (Tenho/Quero) no modal de adição/edição, via `initialListType` param.
+- **`ProfileScreen`**: dropdown de estado BR (27 UFs), campo cidade, textarea de observação para trocas.
+- **`MarketplaceCard`**: exibe localização e observação de troca do dono.
+- **`User` model**: novos campos `locationState`, `locationCity`, `tradeNotes` + getter `locationLabel`.
+
+### 27.5 UX Design
+
+- Tab **Tenho** (inventory_2 icon, cor `loomCyan`): cartas que o jogador possui.
+- Tab **Quero** (favorite_border icon, cor `mythicGold`): cartas que o jogador procura.
+- No editor, seletor visual com duas metades: `[📦 Tenho | ❤️ Quero]`.
+- No perfil, seção "Localização" com dropdown de estado + campo de cidade + textarea "Observação para trocas".
+- No marketplace, localização e observação aparecem junto ao nome do vendedor.
+
+---
+
+## 28. Interação Social no Fichário — Visualização Have/Want Pública + Proposta de Trade
+
+### 28.1 Porquê
+
+Apenas exibir o fichário de outro usuário não é suficiente — o jogador precisa **interagir**: ver separadamente o que o outro jogador **tem** (disponível para troca/venda) e o que ele **quer** (lista de desejos), e então poder **propor uma troca, compra ou venda** diretamente, sem sair do contexto.
+
+### 28.2 Alterações no Backend
+
+**Arquivo:** `routes/community/binders/[userId].dart`
+
+- Adicionado query parameter `list_type` (`have`, `want` ou ausente para todos).
+- Para `want`: exibe **todos** os itens da wish list (sem exigir `for_trade` ou `for_sale`).
+- Para `have`: mantém o filtro existente — só mostra itens com `for_trade=true` OU `for_sale=true`.
+- Para `null` (sem filtro): mostra wants OU itens com flags de troca/venda.
+
+### 28.3 Flutter — Provider
+
+**Arquivo:** `features/binder/providers/binder_provider.dart`
+
+- **Novo método `fetchPublicBinderDirect()`**: busca itens de outro usuário por `list_type` sem alterar o estado compartilhado do provider. Ideal para tabs independentes (Tenho/Quero) no perfil público.
+
+### 28.4 Flutter — UserProfileScreen (Have/Want Público)
+
+**Arquivo:** `features/social/screens/user_profile_screen.dart`
+
+- **`_PublicBinderTabHaveWant`**: substitui o antigo `_PublicBinderTab`. Possui `TabController(length: 2)` com sub-tabs "Tem" e "Quer".
+- **`_PublicBinderListView`**: widget independente com scroll infinito e `AutomaticKeepAliveClientMixin`, buscando itens via `fetchPublicBinderDirect()`.
+- **Interação via Bottom Sheet**: ao tocar num item, abre modal com:
+  - Se item **Have** e `forTrade`: botão "Propor troca" (abre `CreateTradeScreen` tipo `trade`)
+  - Se item **Have** e `forSale`: botão "Quero comprar" (abre `CreateTradeScreen` tipo `sale`)
+  - Se item **Want**: botão "Posso vender / trocar" (abre `CreateTradeScreen` tipo `trade`)
+  - Sempre: botão "Enviar mensagem" (abre chat direto)
+- **`_PublicBinderItemCard`**: card compacto com badges de qty, condição, foil, troca/venda, preço e ícone de interação (carrinho para have, sell para want).
+
+### 28.5 Flutter — CreateTradeScreen (Nova Tela)
+
+**Arquivo:** `features/trades/screens/create_trade_screen.dart`
+
+Tela completa para criação de proposta de troca/compra/venda:
+
+- **Parâmetros**: `receiverId` (obrigatório), `initialType` ('trade'|'sale'|'mixed'), `preselectedItem` (BinderItem opcional pré-selecionado).
+- **Tipo de negociação**: seletor visual com 3 chips — Troca (loomCyan), Compra (mythicGold), Misto (manaViolet).
+- **Itens que você quer**: lista de itens do outro jogador selecionados. Botão "Adicionar item" abre bottom sheet com itens do fichário público do outro jogador (have list).
+- **Itens que você oferece**: (visível apenas para type=trade/mixed) lista de itens do próprio fichário (have list com `for_trade=true`). Carrega via `fetchBinderDirect()`.
+- **Pagamento**: (visível apenas para type=sale/mixed) campo de valor R$ + seletor PIX/Transferência/Outro.
+- **Mensagem**: campo opcional de texto livre.
+- **Quantidade ±**: cada item selecionado tem controles incrementais, limitados ao estoque do item.
+- **Submissão**: via `TradeProvider.createTrade()` com payloads `my_items` e `requested_items` usando `binder_item_id`.
+
+### 28.6 Flutter — MarketplaceScreen (Botão de Interação)
+
+**Arquivo:** `features/binder/screens/marketplace_screen.dart`
+
+- `_MarketplaceCard` agora recebe callback `onTradeTap`.
+- Cada card no marketplace mostra botão "Quero comprar" (se item à venda) ou "Propor troca" (se item para troca).
+- O botão converte o `MarketplaceItem` em `BinderItem` e navega para `CreateTradeScreen` com os parâmetros corretos.
+
+### 28.7 Rota GoRouter
+
+**Arquivo:** `main.dart`
+
+```dart
+GoRoute(
+  path: 'create/:receiverId',
+  builder: (context, state) {
+    final receiverId = state.pathParameters['receiverId']!;
+    return CreateTradeScreen(receiverId: receiverId);
+  },
+),
+```
+
+Adicionada dentro do grupo `/trades`, antes da rota `:tradeId` para evitar conflito de path matching.
+
+### 28.8 Fluxo Completo do Usuário
+
+1. Usuário A abre o perfil do Usuário B → aba Fichário
+2. Vê sub-tabs **Tem** / **Quer**
+3. Toca num item → modal com opções contextuais
+4. Escolhe "Propor troca" ou "Quero comprar"
+5. Abre `CreateTradeScreen` com item pré-selecionado
+6. Pode adicionar mais itens, oferecer itens próprios, definir pagamento
+7. Envia proposta → cria trade via API → aparece na Trade Inbox do Usuário B
+8. Usuário B aceita/recusa → fluxo normal de trade (shipped → delivered → completed)
+

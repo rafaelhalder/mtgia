@@ -134,6 +134,18 @@ Future<Response> _updateBinderItem(RequestContext context, String id) async {
       params['language'] = body['language'] as String? ?? 'en';
     }
 
+    if (body.containsKey('list_type')) {
+      final lt = body['list_type'] as String? ?? 'have';
+      if (lt != 'have' && lt != 'want') {
+        return Response.json(
+          statusCode: HttpStatus.badRequest,
+          body: {'error': 'list_type inválido. Use: have, want'},
+        );
+      }
+      setClauses.add('list_type = @listType');
+      params['listType'] = lt;
+    }
+
     await pool.execute(Sql.named('''
       UPDATE user_binder_items
       SET ${setClauses.join(', ')}

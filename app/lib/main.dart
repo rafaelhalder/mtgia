@@ -32,6 +32,7 @@ import 'features/binder/providers/binder_provider.dart';
 import 'features/trades/providers/trade_provider.dart';
 import 'features/trades/screens/trade_inbox_screen.dart';
 import 'features/trades/screens/trade_detail_screen.dart';
+import 'features/trades/screens/create_trade_screen.dart';
 import 'features/collection/screens/collection_screen.dart';
 import 'features/messages/providers/message_provider.dart';
 import 'features/messages/screens/message_inbox_screen.dart';
@@ -230,6 +231,13 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
               path: '/trades',
               builder: (context, state) => const TradeInboxScreen(),
               routes: [
+                GoRoute(
+                  path: 'create/:receiverId',
+                  builder: (context, state) {
+                    final receiverId = state.pathParameters['receiverId']!;
+                    return CreateTradeScreen(receiverId: receiverId);
+                  },
+                ),
                 GoRoute(
                   path: ':tradeId',
                   builder: (context, state) {

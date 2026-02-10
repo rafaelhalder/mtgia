@@ -71,12 +71,15 @@ Future<Response> onRequest(RequestContext context) async {
     final result = await pool.execute(Sql.named('''
       SELECT bi.id, bi.card_id, bi.quantity, bi.condition, bi.is_foil,
              bi.for_trade, bi.for_sale, bi.price, bi.currency, bi.notes,
-             bi.user_id,
+             bi.user_id, bi.list_type,
              c.name AS card_name, c.image_url AS card_image_url,
              c.set_code AS card_set_code, c.mana_cost AS card_mana_cost,
              c.rarity AS card_rarity, c.type_line AS card_type_line,
              u.username AS owner_username, u.display_name AS owner_display_name,
-             u.avatar_url AS owner_avatar_url
+             u.avatar_url AS owner_avatar_url,
+             u.location_state AS owner_location_state,
+             u.location_city AS owner_location_city,
+             u.trade_notes AS owner_trade_notes
       FROM user_binder_items bi
       JOIN cards c ON c.id = bi.card_id
       JOIN users u ON u.id = bi.user_id
@@ -108,11 +111,15 @@ Future<Response> onRequest(RequestContext context) async {
             : null,
         'currency': cols['currency'],
         'notes': cols['notes'],
+        'list_type': cols['list_type'] ?? 'have',
         'owner': {
           'id': cols['user_id'],
           'username': cols['owner_username'],
           'display_name': cols['owner_display_name'],
           'avatar_url': cols['owner_avatar_url'],
+          'location_state': cols['owner_location_state'],
+          'location_city': cols['owner_location_city'],
+          'trade_notes': cols['owner_trade_notes'],
         },
       };
     }).toList();

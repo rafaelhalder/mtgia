@@ -12,6 +12,9 @@ class BinderItemEditor extends StatefulWidget {
   final String? cardId;
   final String? cardName;
 
+  /// Tipo de lista inicial: 'have' ou 'want' (apenas para adição)
+  final String initialListType;
+
   /// Callbacks
   final Future<bool> Function(Map<String, dynamic> data)? onSave;
   final Future<bool> Function()? onDelete;
@@ -21,6 +24,7 @@ class BinderItemEditor extends StatefulWidget {
     this.item,
     this.cardId,
     this.cardName,
+    this.initialListType = 'have',
     this.onSave,
     this.onDelete,
   });
@@ -31,6 +35,7 @@ class BinderItemEditor extends StatefulWidget {
     BinderItem? item,
     String? cardId,
     String? cardName,
+    String initialListType = 'have',
     Future<bool> Function(Map<String, dynamic> data)? onSave,
     Future<bool> Function()? onDelete,
   }) {
@@ -45,6 +50,7 @@ class BinderItemEditor extends StatefulWidget {
         item: item,
         cardId: cardId,
         cardName: cardName,
+        initialListType: initialListType,
         onSave: onSave,
         onDelete: onDelete,
       ),
@@ -61,6 +67,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
   late bool _isFoil;
   late bool _forTrade;
   late bool _forSale;
+  late String _listType;
   late TextEditingController _priceController;
   late TextEditingController _notesController;
   bool _saving = false;
@@ -83,6 +90,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
     _isFoil = item?.isFoil ?? false;
     _forTrade = item?.forTrade ?? false;
     _forSale = item?.forSale ?? false;
+    _listType = item?.listType ?? widget.initialListType;
     _priceController = TextEditingController(
       text: item?.price?.toStringAsFixed(2) ?? '',
     );
@@ -106,6 +114,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
       'is_foil': _isFoil,
       'for_trade': _forTrade,
       'for_sale': _forSale,
+      'list_type': _listType,
       'notes': _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
@@ -220,6 +229,93 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 20),
+
+            // Lista: Tenho / Quero
+            const Text('Lista',
+                style: TextStyle(
+                    color: AppTheme.textSecondary, fontSize: AppTheme.fontMd)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _listType = 'have'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _listType == 'have'
+                            ? AppTheme.loomCyan.withValues(alpha: 0.15)
+                            : AppTheme.surfaceSlate2,
+                        borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(AppTheme.radiusMd)),
+                        border: Border.all(
+                          color: _listType == 'have'
+                              ? AppTheme.loomCyan
+                              : AppTheme.outlineMuted,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inventory_2,
+                              size: 16,
+                              color: _listType == 'have'
+                                  ? AppTheme.loomCyan
+                                  : AppTheme.textSecondary),
+                          const SizedBox(width: 6),
+                          Text('Tenho',
+                              style: TextStyle(
+                                color: _listType == 'have'
+                                    ? AppTheme.loomCyan
+                                    : AppTheme.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _listType = 'want'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _listType == 'want'
+                            ? AppTheme.mythicGold.withValues(alpha: 0.15)
+                            : AppTheme.surfaceSlate2,
+                        borderRadius: const BorderRadius.horizontal(
+                            right: Radius.circular(AppTheme.radiusMd)),
+                        border: Border.all(
+                          color: _listType == 'want'
+                              ? AppTheme.mythicGold
+                              : AppTheme.outlineMuted,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.favorite_border,
+                              size: 16,
+                              color: _listType == 'want'
+                                  ? AppTheme.mythicGold
+                                  : AppTheme.textSecondary),
+                          const SizedBox(width: 6),
+                          Text('Quero',
+                              style: TextStyle(
+                                color: _listType == 'want'
+                                    ? AppTheme.mythicGold
+                                    : AppTheme.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
 
             // Quantidade
             Row(
