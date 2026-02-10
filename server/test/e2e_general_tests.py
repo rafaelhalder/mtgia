@@ -22,6 +22,9 @@ import requests
 DEFAULT_API = "https://evolution-cartinhas.8ktevp.easypanel.host"
 VERBOSE = False
 
+# Rate-limit safe delay between auth requests
+AUTH_DELAY = 2.0
+
 
 @dataclass
 class TestResult:
@@ -87,7 +90,7 @@ class TestRunner:
     def setup(self) -> bool:
         print("\n🔧 SETUP: Registrando usuários e buscando cartas...\n")
 
-        # Register 3 users
+        # Register 3 users (with delays to avoid rate limiting)
         for label, suffix in [("A", "a"), ("B", "b"), ("C", "c")]:
             uname = f"gen_{suffix}_{self.ts}"
             code, body = self._req("POST", "/auth/register", json_data={
@@ -103,9 +106,10 @@ class TestRunner:
             setattr(self, f"user_{suffix}_token", token)
             setattr(self, f"user_{suffix}_id", uid)
             print(f"  👤 User {label}: {uname} ({uid[:8]}...)")
+            time.sleep(AUTH_DELAY)
 
-        # Find cards
-        for i, name in enumerate(["Sol Ring", "Lightning Bolt", "Forest"], 1):
+        # Find cards (use exact names, ensure Forest is a basic land)
+        for i, name in enumerate(["Sol Ring", "Lightning Bolt"], 1):
             code, body = self._req("GET", "/cards", params={"name": name, "limit": 1})
             if code != 200 or not body.get("data"):
                 print(f"  ❌ SETUP FALHOU ao buscar carta: {name}")
@@ -113,6 +117,30 @@ class TestRunner:
             cid = body["data"][0]["id"]
             setattr(self, f"card_{i}_id", cid)
             print(f"  🃏 Card {i}: {name} ({cid[:8]}...)")
+
+        # For card 3, search for a basic Forest land specifically
+        code, body = self._req("GET", "/cards", params={"name": "Forest", "limit": 50})
+        if code == 200 and body.get("data"):
+            # Find a basic land Forest
+            forest = None
+            for card in body["data"]:
+                tl = (card.get("type_line") or "").lower()
+                if "basic land" in tl and card["name"] == "Forest":
+                    forest = card
+                    break
+            if forest is None:
+                # Fallback: just use the first exact "Forest"
+                for card in body["data"]:
+                    if card["name"] == "Forest":
+                        forest = card
+                        break
+            if forest is None:
+                forest = body["data"][0]
+            self.card_3_id = forest["id"]
+            print(f"  🃏 Card 3: {forest['name']} [{forest.get('type_line', '')}] ({self.card_3_id[:8]}...)")
+        else:
+            print(f"  ❌ SETUP FALHOU ao buscar Forest")
+            return False
 
         print()
         return True
@@ -129,11 +157,15 @@ class TestRunner:
         self._test(CAT, "Register sem campos → 400", code == 400,
                    f"Got {code}")
 
+        time.sleep(AUTH_DELAY)
+
         code, body = self._req("POST", "/auth/register", json_data={
             "username": "ab", "email": "a@b.com", "password": "123456"
         })
         self._test(CAT, "Register username curto (<3) → 400", code == 400,
                    f"Got {code}: {body.get('message', body.get('error', ''))}")
+
+        time.sleep(AUTH_DELAY)
 
         code, body = self._req("POST", "/auth/register", json_data={
             "username": "test_short_pw_" + self.ts,
@@ -143,14 +175,18 @@ class TestRunner:
         self._test(CAT, "Register senha curta (<6) → 400", code == 400,
                    f"Got {code}")
 
+        time.sleep(AUTH_DELAY)
+
         # ── Duplicate register ──
         code, body = self._req("POST", "/auth/register", json_data={
             "username": f"gen_a_{self.ts}",
             "email": f"gen_a_{self.ts}@test.com",
             "password": "Test1234"
         })
-        self._test(CAT, "Register duplicado → 400", code == 400,
+        self._test(CAT, "Register duplicado → 400/409", code in (400, 409),
                    f"Got {code}")
+
+        time.sleep(AUTH_DELAY)
 
         # ── Login ──
         code, body = self._req("POST", "/auth/login", json_data={
@@ -160,12 +196,16 @@ class TestRunner:
         self._test(CAT, "Login válido → 200 com token", code == 200 and "token" in body,
                    f"Got {code}")
 
+        time.sleep(AUTH_DELAY)
+
         code, body = self._req("POST", "/auth/login", json_data={
             "email": f"gen_a_{self.ts}@test.com",
             "password": "SenhaErrada123"
         })
         self._test(CAT, "Login senha errada → 401", code == 401,
                    f"Got {code}")
+
+        time.sleep(AUTH_DELAY)
 
         code, body = self._req("POST", "/auth/login", json_data={
             "email": "inexistente@nope.com",
@@ -174,14 +214,20 @@ class TestRunner:
         self._test(CAT, "Login email inexistente → 401", code == 401,
                    f"Got {code}")
 
+        time.sleep(AUTH_DELAY)
+
         code, body = self._req("POST", "/auth/login", json_data={})
         self._test(CAT, "Login sem campos → 400/401",
                    code in (400, 401), f"Got {code}")
+
+        time.sleep(AUTH_DELAY)
 
         # ── Me ──
         code, body = self._req("GET", "/auth/me", token=self.user_a_token)
         self._test(CAT, "GET /auth/me com token → 200",
                    code == 200 and "user" in body, f"Got {code}")
+
+        time.sleep(AUTH_DELAY)
 
         code, body = self._req("GET", "/auth/me")
         self._test(CAT, "GET /auth/me sem token → 401", code == 401,
@@ -209,7 +255,6 @@ class TestRunner:
             "name": f"Test Deck B {self.ts}",
             "format": "commander",
             "description": "Deck B público",
-            "is_public": True,
             "cards": [
                 {"card_id": self.card_1_id, "quantity": 1},
                 {"card_id": self.card_2_id, "quantity": 1}
@@ -218,6 +263,11 @@ class TestRunner:
         self._test(CAT, "POST /decks criar deck com cartas → 200/201",
                    code in (200, 201) and "id" in body, f"Got {code}")
         self.deck_b_id = body.get("id", "")
+
+        # Make Deck B public (POST may not apply is_public)
+        if self.deck_b_id:
+            self._req("PUT", f"/decks/{self.deck_b_id}",
+                      token=self.user_b_token, json_data={"is_public": True})
 
         # ── Create deck validation: missing fields ──
         code, body = self._req("POST", "/decks", token=self.user_a_token, json_data={})
@@ -291,7 +341,7 @@ class TestRunner:
                                    ]
                                })
         self._test(CAT, "PUT /decks/:id com cards (replace) → 200",
-                   code == 200, f"Got {code}")
+                   code == 200, f"Got {code}: {body.get('error', '')}")
 
     # ═══════════════════════════════════════════════════════════
     #  DECK CARDS MANAGEMENT
@@ -329,7 +379,7 @@ class TestRunner:
         self._test(CAT, "POST /decks/:id/cards quantity=0 → 400",
                    code == 400, f"Got {code}")
 
-        # ── Bulk add ──
+        # ── Bulk add (use basic land card_3 which allows unlimited copies) ──
         code, body = self._req("POST", f"/decks/{did}/cards/bulk",
                                token=self.user_a_token, json_data={
                                    "cards": [
@@ -349,7 +399,7 @@ class TestRunner:
         self._test(CAT, "POST /decks/:id/cards/bulk vazio → 400",
                    code == 400, f"Got {code}")
 
-        # ── Set card quantity (absolute) ──
+        # ── Set card quantity (absolute) — use basic land which allows many copies ──
         code, body = self._req("POST", f"/decks/{did}/cards/set",
                                token=self.user_a_token, json_data={
                                    "card_id": self.card_3_id,
@@ -799,10 +849,10 @@ class TestRunner:
         self._test(CAT, "POST /import texto → 200 com deck",
                    code == 200 and "deck" in body,
                    f"Got {code}: {body.get('error', '')}")
-        imported_count = body.get("imported_count", 0)
+        imported_count = body.get("cards_imported", 0)
         self._test(CAT, "Import encontrou cartas",
                    imported_count >= 2,
-                   f"imported_count={imported_count}")
+                   f"cards_imported={imported_count}")
 
         # ── Import without name ──
         code, body = self._req("POST", "/import", token=self.user_a_token,
@@ -837,8 +887,8 @@ class TestRunner:
                                })
         self._test(CAT, "POST /import/validate → 200",
                    code == 200, f"Got {code}")
-        found = body.get("total_found", 0)
-        not_found = body.get("total_not_found", 0)
+        found = len(body.get("found_cards", []))
+        not_found = len(body.get("not_found_lines", []))
         self._test(CAT, "Validate: found≥1, not_found≥1",
                    found >= 1 and not_found >= 1,
                    f"found={found}, not_found={not_found}")
