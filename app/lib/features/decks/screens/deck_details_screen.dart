@@ -3181,8 +3181,12 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                        SizedBox(height: 12),
                         Text('Analisando estratégias...'),
                       ],
                     ),
