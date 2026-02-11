@@ -78,6 +78,7 @@ Future<Response> onRequest(RequestContext context) async {
 }
 
 /// Faz a query de printings no banco local
+/// Usa DISTINCT ON para retornar apenas uma carta por set_code (deduplica variantes)
 Future<List<Map<String, dynamic>>> _queryPrintings(
   Pool pool,
   String name,
@@ -85,9 +86,14 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
   bool hasSets,
 ) async {
 
-  final sql = hasSets
-      ? '''
-        SELECT
+  // Usamos DISTINCT ON (LOWER(c.set_code)) para deduplicar variantes do mesmo set
+  // Isso garante que cada edição apareça apenas uma vez no seletor
+  final String sql;
+  
+  if (hasSets) {
+    sql = '''
+      SELECT * FROM (
+        SELECT DISTINCT ON (LOWER(c.set_code))
           c.id::text,
           c.scryfall_id::text,
           c.name,
@@ -97,7 +103,7 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
           c.colors,
           c.color_identity,
           c.image_url,
-          c.set_code,
+          LOWER(c.set_code) AS set_code,
           s.name AS set_name,
           s.release_date AS set_release_date,
           c.rarity,
@@ -106,13 +112,17 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
           c.collector_number,
           c.foil
         FROM cards c
-        LEFT JOIN sets s ON s.code = c.set_code
+        LEFT JOIN sets s ON LOWER(s.code) = LOWER(c.set_code)
         WHERE LOWER(c.name) = LOWER(@name)
-        ORDER BY s.release_date DESC NULLS LAST, c.set_code ASC
-        LIMIT @limit
-      '''
-      : '''
-        SELECT
+        ORDER BY LOWER(c.set_code), s.release_date DESC NULLS LAST
+      ) AS deduplicated
+      ORDER BY set_release_date DESC NULLS LAST, set_code ASC
+      LIMIT @limit
+    ''';
+  } else {
+    sql = '''
+      SELECT * FROM (
+        SELECT DISTINCT ON (LOWER(c.set_code))
           c.id::text,
           c.scryfall_id::text,
           c.name,
@@ -122,7 +132,7 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
           c.colors,
           c.color_identity,
           c.image_url,
-          c.set_code,
+          LOWER(c.set_code) AS set_code,
           c.rarity,
           c.price,
           c.price_updated_at,
@@ -130,9 +140,12 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
           c.foil
         FROM cards c
         WHERE LOWER(c.name) = LOWER(@name)
-        ORDER BY c.set_code ASC
-        LIMIT @limit
-      ''';
+        ORDER BY LOWER(c.set_code)
+      ) AS deduplicated
+      ORDER BY set_code ASC
+      LIMIT @limit
+    ''';
+  }
 
   final result = await pool.execute(
     Sql.named(sql),
