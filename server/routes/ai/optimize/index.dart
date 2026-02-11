@@ -1213,12 +1213,12 @@ Future<Response> onRequest(RequestContext context) async {
 
         final additionsData = additionsDataResult
             .map((row) => {
-                  'name': row[0] as String,
-                  'type_line': row[1] as String,
-                  'mana_cost': row[2] as String,
+                  'name': (row[0] as String?) ?? '',
+                  'type_line': (row[1] as String?) ?? '',
+                  'mana_cost': (row[2] as String?) ?? '',
                   'colors': (row[3] as List?)?.cast<String>() ?? [],
                   'cmc': (row[4] as num?)?.toDouble() ?? 0.0,
-                  'oracle_text': row[5] as String,
+                  'oracle_text': (row[5] as String?) ?? '',
                 })
             .toList();
 
@@ -1237,18 +1237,20 @@ Future<Response> onRequest(RequestContext context) async {
         postAnalysis = postAnalyzer.generateAnalysis();
 
         // 4. Comparar Antes vs Depois (Validação Lógica)
-        final preManaIssues = (deckAnalysis['mana_base_assessment'] as String)
-            .contains('Falta mana');
-        final postManaIssues = (postAnalysis['mana_base_assessment'] as String)
-            .contains('Falta mana');
+        final preManaAssessment = deckAnalysis['mana_base_assessment'] as String? ?? '';
+        final postManaAssessment = postAnalysis?['mana_base_assessment'] as String? ?? '';
+        final preManaIssues = preManaAssessment.contains('Falta mana');
+        final postManaIssues = postManaAssessment.contains('Falta mana');
 
         if (!preManaIssues && postManaIssues) {
           validationWarnings.add(
               '⚠️ ATENÇÃO: As sugestões da IA podem piorar sua base de mana.');
         }
 
-        final preCurve = double.parse(deckAnalysis['average_cmc'] as String);
-        final postCurve = double.parse(postAnalysis['average_cmc'] as String);
+        final preAvgCmc = deckAnalysis['average_cmc'] as String? ?? '0';
+        final postAvgCmc = postAnalysis?['average_cmc'] as String? ?? '0';
+        final preCurve = double.tryParse(preAvgCmc) ?? 0.0;
+        final postCurve = double.tryParse(postAvgCmc) ?? 0.0;
 
         if (targetArchetype.toLowerCase() == 'aggro' && postCurve > preCurve) {
           validationWarnings.add(
