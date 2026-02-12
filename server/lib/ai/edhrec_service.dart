@@ -40,7 +40,12 @@ class EdhrecService {
     try {
       final response = await http.get(
         Uri.parse(url),
-        headers: {'User-Agent': 'MTG-DeckBuilder/1.0'},
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://edhrec.com/',
+        },
       ).timeout(const Duration(seconds: 10));
       
       if (response.statusCode == 200) {
@@ -68,8 +73,15 @@ class EdhrecService {
   
   /// Converte nome do commander para slug do EDHREC
   /// Ex: "Jin-Gitaxias, Core Augur" → "jin-gitaxias-core-augur"
+  /// Ex: "Jin-Gitaxias // The Great Synthesis" → "jin-gitaxias"
   String _toSlug(String name) {
-    return name
+    // Para cartas dupla face (flip/transform), usa apenas a primeira parte
+    var cleanName = name;
+    if (name.contains(' // ')) {
+      cleanName = name.split(' // ').first;
+    }
+    
+    return cleanName
         .toLowerCase()
         .replaceAll(RegExp(r'''[,'"]+'''), '') // Remove pontuação
         .replaceAll(RegExp(r'\s+'), '-')       // Espaços → hífens
