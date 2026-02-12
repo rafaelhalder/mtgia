@@ -4,15 +4,18 @@ import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import '../ai_log_service.dart';
 import '../logger.dart';
+import 'edhrec_service.dart';
 import 'sinergia.dart';
 
 class DeckOptimizerService {
   final String openAiKey;
   final SynergyEngine synergyEngine;
+  final EdhrecService edhrecService;
   final AiLogService? _logService;
 
   DeckOptimizerService(this.openAiKey, {Connection? db})
       : synergyEngine = SynergyEngine(),
+        edhrecService = EdhrecService(),
         _logService = db != null ? AiLogService(db) : null;
 
   /// O fluxo principal de otimização
@@ -30,25 +33,49 @@ class DeckOptimizerService {
     final List<dynamic> currentCards = deckData['cards'];
     final List<String> colors = List<String>.from(deckData['colors']);
 
+    // 0. BUSCA DE DADOS EDHREC (co-ocorrência real)
+    // Esta é a fonte mais confiável: dados de milhões de decks reais.
+    // Cartas frequentemente usadas juntas têm sinergia comprovada.
+    final edhrecData = await edhrecService.fetchCommanderData(commanders.first);
+    if (edhrecData != null) {
+      Log.i('EDHREC: ${edhrecData.deckCount} decks analisados, ${edhrecData.topCards.length} cartas, temas: ${edhrecData.themes.join(", ")}');
+    }
+
     // 1. ANÁLISE QUANTITATIVA (O que a IA "acha" vs O que os dados dizem)
     // Classificamos as cartas atuais por "Score de Eficiência"
     // Score = (Popularidade EDHREC) / (CMC + 1) -> Cartas populares e baratas têm score alto
     //
     // CORREÇÃO: Agora considera sinergia com o comandante.
     // Cartas que compartilham keywords mecânicos com o commander recebem bônus.
+    // MELHORIA: Também usa dados reais do EDHREC quando disponíveis.
     final commanderKeywords = _extractMechanicKeywords(commanders, currentCards);
-    final scoredCards = _calculateEfficiencyScores(currentCards, commanderKeywords);
+    final scoredCards = _calculateEfficiencyScoresWithEdhrec(
+      currentCards,
+      commanderKeywords,
+      edhrecData,
+    );
 
     // Identifica as 15 cartas estatisticamente mais fracas (Candidatas a corte)
     // Isso ajuda a IA a não tentar tirar staples
     final weakCandidates = scoredCards.take(15).toList();
 
-    // 2. BUSCA DE SINERGIA CONTEXTUAL (RAG)
-    // Em vez de staples genéricos, buscamos o que comba com o Comandante
-    final synergyCards = await synergyEngine.fetchCommanderSynergies(
-        commanderName: commanders.first,
-        colors: colors,
-        archetype: targetArchetype);
+    // 2. BUSCA DE SINERGIA CONTEXTUAL (RAG + EDHREC)
+    // Prioriza dados EDHREC (co-ocorrência real), com fallback para Scryfall
+    List<String> synergyCards;
+    if (edhrecData != null && edhrecData.topCards.isNotEmpty) {
+      // Usa top cartas do EDHREC com synergy > 0.15 (comprovadamente sinérgicas)
+      synergyCards = edhrecService
+          .getHighSynergyCards(edhrecData, minSynergy: 0.15, limit: 40)
+          .map((c) => c.name)
+          .toList();
+      Log.i('EDHREC synergy pool: ${synergyCards.length} cartas');
+    } else {
+      // Fallback: busca no Scryfall
+      synergyCards = await synergyEngine.fetchCommanderSynergies(
+          commanderName: commanders.first,
+          colors: colors,
+          archetype: targetArchetype);
+    }
 
     // 3. RECUPERAÇÃO DE DADOS DE META (Staples de formato)
     final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
@@ -89,11 +116,25 @@ class DeckOptimizerService {
     final List<dynamic> currentCards = deckData['cards'];
     final List<String> colors = List<String>.from(deckData['colors']);
 
-    final synergyCards = await synergyEngine.fetchCommanderSynergies(
-      commanderName: commanders.first,
-      colors: colors,
-      archetype: targetArchetype,
-    );
+    // Busca dados EDHREC para sugestões mais precisas
+    final edhrecData = await edhrecService.fetchCommanderData(commanders.first);
+    
+    List<String> synergyCards;
+    if (edhrecData != null && edhrecData.topCards.isNotEmpty) {
+      // Prioriza cartas com alta sinergia do EDHREC
+      synergyCards = edhrecService
+          .getHighSynergyCards(edhrecData, minSynergy: 0.1, limit: 60)
+          .map((c) => c.name)
+          .toList();
+      Log.i('EDHREC complete pool: ${synergyCards.length} cartas');
+    } else {
+      // Fallback para Scryfall
+      synergyCards = await synergyEngine.fetchCommanderSynergies(
+        commanderName: commanders.first,
+        colors: colors,
+        archetype: targetArchetype,
+      );
+    }
 
     final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
 
@@ -220,6 +261,103 @@ class DeckOptimizerService {
         .compareTo(a['weakness_score'] as double));
 
     // Remove terrenos básicos da lista de "ruins"
+    scored.removeWhere((c) => (c['weakness_score'] as double) < 0);
+
+    return scored;
+  }
+
+  /// Versão aprimorada que usa dados reais do EDHREC para scoring.
+  /// 
+  /// Se a carta está na lista de co-ocorrência do EDHREC para este commander,
+  /// ela é considerada "comprovadamente sinérgica" e recebe um bônus massivo,
+  /// removendo-a das candidatas a corte.
+  /// 
+  /// Isso evita o erro clássico de a IA cortar cartas "impopulares globalmente"
+  /// mas que são perfeitas para aquele commander específico.
+  List<Map<String, dynamic>> _calculateEfficiencyScoresWithEdhrec(
+    List<dynamic> cards,
+    Set<String> commanderKeywords,
+    EdhrecCommanderData? edhrecData,
+  ) {
+    // Se não temos dados EDHREC, usa o método original
+    if (edhrecData == null) {
+      return _calculateEfficiencyScores(cards, commanderKeywords);
+    }
+
+    // Primeiro, calcula a mediana do EDHREC rank das cartas que têm rank
+    final ranksWithValue = cards
+        .where((c) => c['edhrec_rank'] != null)
+        .map((c) => c['edhrec_rank'] as int)
+        .toList();
+
+    int medianRank = 5000;
+    if (ranksWithValue.isNotEmpty) {
+      ranksWithValue.sort();
+      final mid = ranksWithValue.length ~/ 2;
+      medianRank = ranksWithValue.length.isOdd
+          ? ranksWithValue[mid]
+          : ((ranksWithValue[mid - 1] + ranksWithValue[mid]) ~/ 2);
+    }
+
+    var scored = cards.map((card) {
+      final cardName = card['name'] as String;
+      
+      // Terrenos básicos: sempre protegidos
+      if ((card['type_line'] as String).contains('Basic Land')) {
+        return {'name': cardName, 'weakness_score': -1.0};
+      }
+
+      final rank = (card['edhrec_rank'] as int?) ?? medianRank;
+      final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
+      
+      // Score base: rank alto + CMC alto = ruim
+      var score = rank * (cmc > 4 ? 1.5 : 1.0);
+
+      // VERIFICAÇÃO EDHREC: se a carta está nas top do commander, protege ela
+      final edhrecCard = edhrecData.findCard(cardName);
+      if (edhrecCard != null) {
+        // Carta está na lista do EDHREC para este commander!
+        // Synergy > 0.3 = muito sinérgica → score ÷4
+        // Synergy > 0.15 = sinérgica → score ÷2.5
+        // Synergy > 0 = alguma sinergia → score ÷1.5
+        // Synergy <= 0 = staple genérica (pode ser cortada se necessário)
+        if (edhrecCard.synergy > 0.3) {
+          score /= 4;
+          Log.d('EDHREC: $cardName é muito sinérgica (${edhrecCard.synergy.toStringAsFixed(2)}) - protegida');
+        } else if (edhrecCard.synergy > 0.15) {
+          score /= 2.5;
+        } else if (edhrecCard.synergy > 0) {
+          score /= 1.5;
+        }
+        // Bônus adicional por inclusion alta (muita gente usa)
+        if (edhrecCard.inclusion > 0.5) {
+          score *= 0.8; // Reduz score (protege)
+        }
+      } else {
+        // Carta NÃO está no EDHREC para este commander
+        // Pode ser carta nova, ou carta que não comba bem
+        // Usa o método de keywords como fallback
+        final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+        final typeLine2 = ((card['type_line'] as String?) ?? '').toLowerCase();
+        var synergyHits = 0;
+        for (final kw in commanderKeywords) {
+          if (oracle.contains(kw) || typeLine2.contains(kw)) synergyHits++;
+        }
+        if (synergyHits >= 2) {
+          score /= 2;
+        } else if (synergyHits == 1) {
+          score *= 0.7;
+        }
+      }
+
+      return {'name': cardName, 'weakness_score': score};
+    }).toList();
+
+    // Ordena do maior score (pior carta) para o menor
+    scored.sort((a, b) => (b['weakness_score'] as double)
+        .compareTo(a['weakness_score'] as double));
+
+    // Remove terrenos básicos da lista
     scored.removeWhere((c) => (c['weakness_score'] as double) < 0);
 
     return scored;
