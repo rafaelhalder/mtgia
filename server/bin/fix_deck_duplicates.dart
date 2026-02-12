@@ -1,10 +1,9 @@
-import 'dart:io';
 import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
 
 /// Script para verificar e corrigir duplicatas no deck_cards
 void main(List<String> args) async {
-  load();
+  final env = DotEnv(includePlatformEnvironment: true)..load();
   
   final dbHost = env['DB_HOST'] ?? 'localhost';
   final dbPort = int.tryParse(env['DB_PORT'] ?? '') ?? 5432;
