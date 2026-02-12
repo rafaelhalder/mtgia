@@ -74,9 +74,9 @@ Future<Response> onRequest(RequestContext context) async {
       },
       statusCode: 500,
     );
-  } finally {
-    await conn.close();
   }
+  // Note: Do not close the connection - Database is a singleton and the pool 
+  // should remain open for other requests
 }
 
 Future<bool> _checkTablesExist(dynamic conn) async {
