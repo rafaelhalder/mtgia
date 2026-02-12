@@ -240,6 +240,18 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
         }
         final dedupedList = deduped.values.toList();
         
+        // NORMALIZAÇÃO: Commander deve ter quantity=1
+        for (final card in dedupedList) {
+          final isCommander = card['is_commander'] as bool? ?? false;
+          if (isCommander) {
+            final oldQty = card['quantity'];
+            card['quantity'] = 1;
+            if (oldQty != 1) {
+              print('[FIX] Commander normalizado: qty $oldQty → 1');
+            }
+          }
+        }
+        
         // DEBUG: Log após deduplicação
         print('[DEBUG] PUT /decks/$deckId - Após dedup: ${dedupedList.length} cartas');
         for (final card in dedupedList) {
