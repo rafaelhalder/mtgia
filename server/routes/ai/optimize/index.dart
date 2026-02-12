@@ -1400,8 +1400,9 @@ Future<Response> onRequest(RequestContext context) async {
         // 2. Criar Deck Virtual (Clone do atual - Remoções + Adições)
         final virtualDeck = List<Map<String, dynamic>>.from(allCardData);
 
-        // Remover cartas sugeridas (pelo nome)
-        virtualDeck.removeWhere((c) => validRemovals.contains(c['name']));
+        // Remover cartas sugeridas (pelo nome, case-insensitive)
+        final removalNamesLower = validRemovals.map((n) => n.toLowerCase()).toSet();
+        virtualDeck.removeWhere((c) => removalNamesLower.contains(((c['name'] as String?) ?? '').toLowerCase()));
 
         // Adicionar novas cartas
         virtualDeck.addAll(additionsData);
