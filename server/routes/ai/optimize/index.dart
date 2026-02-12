@@ -1176,18 +1176,47 @@ Future<Response> onRequest(RequestContext context) async {
           additionsDetailed.map((e) => e['name'] as String).toList();
     }
 
-    // Re-aplicar equilíbrio após validação (SEMPRE, não apenas em optimize)
-    {
-      final finalMinCount = validRemovals.length < validAdditions.length
-          ? validRemovals.length
-          : validAdditions.length;
-      if (validRemovals.length != validAdditions.length) {
-        print('[DEBUG] Re-balanceamento pós-filtros:');
-        print('[DEBUG]   Antes: removals=${validRemovals.length}, additions=${validAdditions.length}');
-        validRemovals = validRemovals.take(finalMinCount).toList();
-        validAdditions = validAdditions.take(finalMinCount).toList();
-        print('[DEBUG]   Depois: removals=${validRemovals.length}, additions=${validAdditions.length}');
+    // Re-aplicar equilíbrio após validação
+    // CRÍTICO: Em vez de truncar, preencher com básicos quando additions < removals
+    if (!isComplete && validRemovals.length != validAdditions.length) {
+      print('[DEBUG] Re-balanceamento pós-filtros:');
+      print('[DEBUG]   Antes: removals=${validRemovals.length}, additions=${validAdditions.length}');
+      
+      if (validAdditions.length < validRemovals.length) {
+        // CORREÇÃO: Preencher com básicos em vez de truncar remoções
+        final missingCount = validRemovals.length - validAdditions.length;
+        print('[DEBUG]   Faltam $missingCount adições - preenchendo com básicos');
+        
+        final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+        final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+        
+        if (basicsWithIds.isNotEmpty) {
+          final keys = basicsWithIds.keys.toList();
+          var i = 0;
+          for (var j = 0; j < missingCount; j++) {
+            final name = keys[i % keys.length];
+            validAdditions.add(name);
+            // Adicionar ao validByNameLower para que additions_detailed funcione
+            if (!validByNameLower.containsKey(name.toLowerCase())) {
+              validByNameLower[name.toLowerCase()] = {
+                'id': basicsWithIds[name],
+                'name': name,
+              };
+            }
+            i++;
+          }
+          print('[DEBUG]   Adicionados $missingCount básicos: ${validAdditions.sublist(validAdditions.length - missingCount)}');
+        } else {
+          // Fallback: truncar se não houver básicos disponíveis
+          print('[WARNING] Não foi possível encontrar básicos - truncando remoções');
+          validRemovals = validRemovals.take(validAdditions.length).toList();
+        }
+      } else {
+        // Mais adições que remoções: truncar adições
+        validAdditions = validAdditions.take(validRemovals.length).toList();
       }
+      
+      print('[DEBUG]   Depois: removals=${validRemovals.length}, additions=${validAdditions.length}');
     }
 
     // --- VERIFICAÇÃO PÓS-OTIMIZAÇÃO (Virtual Deck Analysis) ---
@@ -1336,21 +1365,51 @@ Future<Response> onRequest(RequestContext context) async {
       }
     }
     
-    // BALANCEAMENTO - Aplicar em TODOS os modos (não apenas optimize)
-    // Isso garante que removals e additions sempre sejam equilibrados
-    if (addDet.length != remDet.length) {
-      final minLen =
-          addDet.length < remDet.length ? addDet.length : remDet.length;
-      print('[DEBUG]   Aplicando truncamento para minLen=$minLen');
-      responseBody['additions_detailed'] = addDet.take(minLen).toList();
-      responseBody['removals_detailed'] = remDet.take(minLen).toList();
-      // Também ajustar as listas simples para UI consistente
-      validRemovals = validRemovals.take(minLen).toList();
-      validAdditions = validAdditions.take(minLen).toList();
-      responseBody['removals'] = validRemovals;
-      responseBody['additions'] = validAdditions;
-      print('[DEBUG]   Após balanceamento: removals=${validRemovals.length}, additions=${validAdditions.length}');
+    // BALANCEAMENTO FINAL - Preservar quantidades, preencher com básicos se faltar
+    if (addDet.length < remDet.length && !isComplete) {
+      // Faltam adições - adicionar básicos ao additions_detailed
+      final missingDetailed = remDet.length - addDet.length;
+      print('[DEBUG]   Faltam $missingDetailed adições em detailed - adicionando básicos');
+      
+      final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+      final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+      
+      if (basicsWithIds.isNotEmpty) {
+        final keys = basicsWithIds.keys.toList();
+        var i = 0;
+        final newBasics = <Map<String, dynamic>>[];
+        for (var j = 0; j < missingDetailed; j++) {
+          final name = keys[i % keys.length];
+          newBasics.add({
+            'name': name,
+            'card_id': basicsWithIds[name],
+            'quantity': 1,
+          });
+          if (!validAdditions.contains(name)) {
+            validAdditions.add(name);
+          }
+          i++;
+        }
+        responseBody['additions_detailed'] = [...addDet, ...newBasics];
+        responseBody['additions'] = validAdditions;
+        print('[DEBUG]   Adicionados $missingDetailed básicos ao detailed');
+      } else {
+        // Fallback: truncar remoções
+        print('[WARN] Não foi possível encontrar básicos - truncando remoções');
+        responseBody['removals_detailed'] = remDet.take(addDet.length).toList();
+        responseBody['removals'] = validRemovals.take(addDet.length).toList();
+      }
+    } else if (addDet.length > remDet.length && !isComplete) {
+      // Mais adições que remoções: truncar adições
+      print('[DEBUG]   Truncando adições extras');
+      responseBody['additions_detailed'] = addDet.take(remDet.length).toList();
+      responseBody['additions'] = validAdditions.take(remDet.length).toList();
     }
+    
+    // Log final
+    final finalAddDet = responseBody['additions_detailed'] as List;
+    final finalRemDet = responseBody['removals_detailed'] as List;
+    print('[DEBUG]   Final: additions_detailed=${finalAddDet.length}, removals_detailed=${finalRemDet.length}');
 
     final warnings = <String, dynamic>{};
 
