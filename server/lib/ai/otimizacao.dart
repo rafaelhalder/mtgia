@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import '../ai_log_service.dart';
 import '../logger.dart';
+import '../ml_knowledge_service.dart';
 import 'edhrec_service.dart';
 import 'sinergia.dart';
 
@@ -12,11 +13,13 @@ class DeckOptimizerService {
   final SynergyEngine synergyEngine;
   final EdhrecService edhrecService;
   final AiLogService? _logService;
+  final MLKnowledgeService? _mlService;
 
   DeckOptimizerService(this.openAiKey, {Connection? db})
       : synergyEngine = SynergyEngine(),
         edhrecService = EdhrecService(),
-        _logService = db != null ? AiLogService(db) : null;
+        _logService = db != null ? AiLogService(db) : null,
+        _mlService = db != null ? MLKnowledgeService(db) : null;
 
   /// O fluxo principal de otimização
   Future<Map<String, dynamic>> optimizeDeck({
@@ -120,6 +123,24 @@ class DeckOptimizerService {
     // 3. RECUPERAÇÃO DE DADOS DE META (Staples de formato)
     final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
 
+    // 3.5. CONSULTA AO CONHECIMENTO ML (Imitation Learning)
+    // Busca padrões aprendidos dos meta decks e sinergias conhecidas
+    String? mlContext;
+    if (_mlService != null) {
+      try {
+        final mlData = await _mlService!.getContextForDeck(
+          archetype: targetArchetype,
+          format: 'commander',
+          commanderName: commanders.firstOrNull,
+          currentCards: currentCards.map((c) => c['name'].toString()).toList(),
+        );
+        mlContext = _mlService!.generatePromptContext(mlData);
+        Log.i('ML Knowledge: ${mlData.recommendations.length} recomendações, ${mlData.relevantSynergies.length} sinergias (${mlData.queryTimeMs}ms)');
+      } catch (e) {
+        Log.w('ML Knowledge error (continuando sem): $e');
+      }
+    }
+
     // 4. CONSTRUÇÃO DO PROMPT RICO
     // Juntamos tudo para enviar à IA
     final optimizationResult = await _callOpenAI(
@@ -135,6 +156,7 @@ class DeckOptimizerService {
       coreCards: coreCards,
       userId: userId,
       deckId: deckId,
+      mlContext: mlContext,
     );
 
     return optimizationResult;
@@ -218,6 +240,23 @@ class DeckOptimizerService {
 
     final formatStaples = await _fetchFormatStaples(colors, targetArchetype);
 
+    // CONSULTA AO CONHECIMENTO ML (Imitation Learning) para complete
+    String? mlContext;
+    if (_mlService != null) {
+      try {
+        final mlData = await _mlService!.getContextForDeck(
+          archetype: targetArchetype,
+          format: 'commander',
+          commanderName: commanders.firstOrNull,
+          currentCards: currentCards.map((c) => c['name'].toString()).toList(),
+        );
+        mlContext = _mlService!.generatePromptContext(mlData);
+        Log.i('ML Knowledge (complete): ${mlData.recommendations.length} recomendações (${mlData.queryTimeMs}ms)');
+      } catch (e) {
+        Log.w('ML Knowledge error (continuando sem): $e');
+      }
+    }
+
     final completionResult = await _callOpenAIComplete(
       deckList: currentCards.map((c) => c['name'].toString()).toList(),
       commanders: commanders,
@@ -231,6 +270,7 @@ class DeckOptimizerService {
       coreCards: coreCards,
       userId: userId,
       deckId: deckId,
+      mlContext: mlContext,
     );
 
     return completionResult;
@@ -466,6 +506,7 @@ class DeckOptimizerService {
     List<String>? coreCards,
     String? userId,
     String? deckId,
+    String? mlContext,
   }) async {
     final stopwatch = Stopwatch()..start();
 
@@ -485,7 +526,8 @@ class DeckOptimizerService {
             weakCandidates, // A IA vai olhar isso com carinho para cortar
         "high_synergy_options":
             synergyPool, // A IA vai escolher daqui para adicionar
-        "format_staples": staplesPool
+        "format_staples": staplesPool,
+        if (mlContext != null) "ml_knowledge": mlContext,
       },
       "current_decklist": deckList
     });
@@ -602,6 +644,7 @@ class DeckOptimizerService {
     List<String>? coreCards,
     String? userId,
     String? deckId,
+    String? mlContext,
   }) async {
     final stopwatch = Stopwatch()..start();
 
@@ -619,7 +662,8 @@ class DeckOptimizerService {
       },
       "context": {
         "high_synergy_options": synergyPool,
-        "format_staples": staplesPool
+        "format_staples": staplesPool,
+        if (mlContext != null) "ml_knowledge": mlContext,
       },
       "current_decklist": deckList
     });
