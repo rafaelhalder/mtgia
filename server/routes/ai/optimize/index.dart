@@ -1581,7 +1581,7 @@ Future<Response> onRequest(RequestContext context) async {
     if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
       try {
         final edhrecService = optimizer.edhrecService;
-        edhrecValidationData = await edhrecService.fetchCommanderData(commanders.first);
+        edhrecValidationData = await edhrecService.fetchCommanderData(commanders.firstOrNull ?? "");
         
         if (edhrecValidationData != null && edhrecValidationData.topCards.isNotEmpty) {
           for (final addition in validAdditions) {
@@ -1595,7 +1595,7 @@ Future<Response> onRequest(RequestContext context) async {
             final percent = (additionsNotInEdhrec.length / validAdditions.length * 100).toStringAsFixed(0);
             if (additionsNotInEdhrec.length > validAdditions.length * 0.5) {
               validationWarnings.add(
-                '⚠️ ${additionsNotInEdhrec.length} ($percent%) das cartas sugeridas NÃO aparecem nos dados EDHREC de ${commanders.first}. Isso pode indicar baixa sinergia: ${additionsNotInEdhrec.take(3).join(", ")}${additionsNotInEdhrec.length > 3 ? "..." : ""}');
+                '⚠️ ${additionsNotInEdhrec.length} ($percent%) das cartas sugeridas NÃO aparecem nos dados EDHREC de ${commanders.firstOrNull ?? ""}. Isso pode indicar baixa sinergia: ${additionsNotInEdhrec.take(3).join(", ")}${additionsNotInEdhrec.length > 3 ? "..." : ""}');
             } else if (additionsNotInEdhrec.length >= 3) {
               validationWarnings.add(
                 '💡 ${additionsNotInEdhrec.length} carta(s) sugerida(s) não estão nos dados EDHREC - podem ser inovadoras ou de baixa sinergia.');
@@ -1798,7 +1798,7 @@ Future<Response> onRequest(RequestContext context) async {
       'target_additions': jsonResponse['target_additions'],
       // Validação EDHREC
       if (edhrecValidationData != null) 'edhrec_validation': {
-        'commander': commanders.first,
+        'commander': commanders.firstOrNull ?? "",
         'deck_count': edhrecValidationData.deckCount,
         'themes': edhrecValidationData.themes,
         'additions_validated': validAdditions.length - additionsNotInEdhrec.length,

@@ -39,9 +39,13 @@ class DeckOptimizerService {
     // 0. BUSCA DE DADOS EDHREC (co-ocorrência real)
     // Esta é a fonte mais confiável: dados de milhões de decks reais.
     // Cartas frequentemente usadas juntas têm sinergia comprovada.
-    final edhrecData = await edhrecService.fetchCommanderData(commanders.first);
-    if (edhrecData != null) {
-      Log.i('EDHREC: ${edhrecData.deckCount} decks analisados, ${edhrecData.topCards.length} cartas, temas: ${edhrecData.themes.join(", ")}');
+    // NOTA: Pular se não há comandante (Modern, Standard, etc.)
+    EdhrecCommanderData? edhrecData;
+    if (commanders.isNotEmpty) {
+      edhrecData = await edhrecService.fetchCommanderData(commanders.firstOrNull ?? "");
+      if (edhrecData != null) {
+        Log.i('EDHREC: ${edhrecData.deckCount} decks analisados, ${edhrecData.topCards.length} cartas, temas: ${edhrecData.themes.join(", ")}');
+      }
     }
 
     // 1. ANÁLISE QUANTITATIVA (O que a IA "acha" vs O que os dados dizem)
@@ -96,7 +100,7 @@ class DeckOptimizerService {
         
         // Buscar cartas do tema do usuário (Scryfall/archetype)
         final themeCards = await synergyEngine.fetchCommanderSynergies(
-          commanderName: commanders.first,
+          commanderName: commanders.firstOrNull ?? "",
           colors: colors,
           archetype: targetArchetype,
         );
@@ -115,7 +119,7 @@ class DeckOptimizerService {
     } else {
       // Fallback: busca no Scryfall
       synergyCards = await synergyEngine.fetchCommanderSynergies(
-          commanderName: commanders.first,
+          commanderName: commanders.firstOrNull ?? '',
           colors: colors,
           archetype: targetArchetype);
     }
@@ -180,7 +184,7 @@ class DeckOptimizerService {
 
     // Busca dados EDHREC para sugestões mais precisas
     // HÍBRIDO: Se tema detectado não bate com EDHREC, mistura 70% EDHREC + 30% tema
-    final edhrecData = await edhrecService.fetchCommanderData(commanders.first);
+    final edhrecData = await edhrecService.fetchCommanderData(commanders.firstOrNull ?? "");
     
     List<String> synergyCards;
     bool themeMatchesEdhrec = false;
@@ -213,7 +217,7 @@ class DeckOptimizerService {
         
         // Buscar cartas do tema do usuário (Scryfall/archetype)
         final themeCards = await synergyEngine.fetchCommanderSynergies(
-          commanderName: commanders.first,
+          commanderName: commanders.firstOrNull ?? "",
           colors: colors,
           archetype: targetArchetype,
         );
@@ -232,7 +236,7 @@ class DeckOptimizerService {
     } else {
       // Fallback para Scryfall
       synergyCards = await synergyEngine.fetchCommanderSynergies(
-        commanderName: commanders.first,
+        commanderName: commanders.firstOrNull ?? "",
         colors: colors,
         archetype: targetArchetype,
       );
