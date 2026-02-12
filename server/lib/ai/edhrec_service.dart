@@ -76,17 +76,24 @@ class EdhrecService {
   /// Ex: "Jin-Gitaxias // The Great Synthesis" → "jin-gitaxias"
   String _toSlug(String name) {
     // Para cartas dupla face (flip/transform), usa apenas a primeira parte
+    // Suporta vários formatos: " // ", "//", " / "
     var cleanName = name;
-    if (name.contains(' // ')) {
-      cleanName = name.split(' // ').first;
+    for (final separator in [' // ', '//', ' / ']) {
+      if (cleanName.contains(separator)) {
+        cleanName = cleanName.split(separator).first.trim();
+        break;
+      }
     }
     
-    return cleanName
+    final slug = cleanName
         .toLowerCase()
         .replaceAll(RegExp(r'''[,'"]+'''), '') // Remove pontuação
         .replaceAll(RegExp(r'\s+'), '-')       // Espaços → hífens
         .replaceAll(RegExp(r'-+'), '-')        // Remove hífens duplicados
         .replaceAll(RegExp(r'[^a-z0-9-]'), ''); // Só letras, números, hífens
+    
+    Log.d('EDHREC slug: "$name" → "$slug"');
+    return slug;
   }
   
   /// Parse da resposta JSON do EDHREC
