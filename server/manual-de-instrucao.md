@@ -4053,4 +4053,101 @@ List<String> _basicLandNamesForIdentity(Set<String> identity) {
 3. ✅ Adições respeitam identidade de cor
 4. ✅ Adições não são cartas já existentes no deck
 5. ✅ Balanceamento: removals.length == additions.length
-6. ✅ Preenchimento com básicos quando há shortage
+6. ✅ Busca sinérgica quando há shortage (basics como último recurso)
+7. ✅ Validação pós-otimização: total_cards permanece estável
+8. ✅ Comparação case-insensitive de nomes (AI vs DB)
+
+---
+
+## 32. Refatoração Filosófica da Otimização (v2.0)
+
+**Data:** Junho 2025
+**Arquivo:** `routes/ai/optimize/index.dart`
+
+### 32.1 O Problema (Antes)
+
+A otimização tinha 5 falhas filosóficas fundamentais:
+
+1. **"Preencher com land" é preguiçoso** — quando adições < remoções após filtros, o sistema simplesmente
+   jogava terrenos básicos para equilibrar. Isso NÃO é otimização.
+2. **Sistema nunca RE-CONSULTAVA a IA** quando cartas eram filtradas por identidade de cor ou bracket.
+3. **Sem validação de qualidade** — nunca verificava se o deck ficou MELHOR após otimização.
+4. **Categorias ignoradas** — o prompt da IA retorna categorias (Ramp/Draw/Removal) mas o backend
+   as ignorava na hora de substituir uma carta filtrada.
+5. **Modo complete misturava lands com spells** sem calcular proporção ideal.
+
+### 32.2 A Solução
+
+#### `_findSynergyReplacements()` — Busca Sinérgica no DB
+
+Nova função que, quando cartas são filtradas, busca substitutas SINÉRGICAS no banco:
+
+```dart
+Future<List<Map<String, dynamic>>> _findSynergyReplacements({
+  required pool, required optimizer, required commanders,
+  required commanderColorIdentity, required targetArchetype,
+  required bracket, required keepTheme, required detectedTheme,
+  required coreCards, required missingCount,
+  required removedCards, required excludeNames,
+  required allCardData,
+}) async {
+  // 1. Analisa tipos funcionais das cartas removidas
+  //    (draw, removal, ramp, creature, artifact, utility)
+  // 2. Consulta DB: identidade de cor, legal em Commander, EDHREC rank
+  // 3. Prioriza cartas do MESMO tipo funcional
+  // 4. Retorna lista de {id, name}
+}
+```
+
+**Fluxo de decisão:**
+```
+Cartas filtradas → Analisa tipo funcional → Busca no DB por tipo
+→ Encontrou? Usa como substituta
+→ Não encontrou? Fallback com melhor carta genérica do DB
+→ DB vazio? Último recurso: terreno básico
+```
+
+#### Modo Complete — Ratio Inteligente de Lands/Spells
+
+O complete mode agora calcula a quantidade ideal de terrenos baseada no CMC médio:
+- CMC médio < 2.0 → 32 terrenos
+- CMC médio < 3.0 → 35 terrenos
+- CMC médio < 4.0 → 37 terrenos
+- CMC médio >= 4.0 → 39 terrenos
+
+Primeiro preenche com spells sinérgicos via `_findSynergyReplacements()`,
+depois completa com terrenos básicos apenas se necessário.
+
+#### Validação Pós-Otimização (Qualidade Real)
+
+Nova análise compara o deck ANTES e DEPOIS:
+- **Distribuição de tipos**: criaturas, instants, sorceries subiram/desceram?
+- **CMC por arquétipo**: aggro deve ter CMC baixo, control pode ter alto
+- **Mana base**: fontes de mana melhoraram ou pioraram?
+- **Lista de melhorias**: retorna `improvements` com frases como
+  "Curva de mana melhorou de 3.5 para 3.2"
+
+### 32.3 Bugs Corrigidos
+
+1. **Case-sensitivity no removeWhere**: "Engulf The Shore" (IA) vs "Engulf the Shore" (DB)
+   causava mismatch na contagem do virtualDeck (101 ou 99 em vez de 100).
+   **Fix**: `removalNamesLower.contains(name.toLowerCase())`
+
+2. **Case-sensitivity na query PostgreSQL**: `WHERE name = ANY(@names)` é case-sensitive
+   no PostgreSQL. Cartas como "Ugin, The Spirit Dragon" (IA) vs "Ugin, the Spirit Dragon" (DB)
+   não eram encontradas na busca de additionsData.
+   **Fix**: `WHERE LOWER(name) = ANY(@names)` + nomes convertidos para lowercase.
+
+### 32.4 Resultado
+
+**Antes**: Deck com 99 cartas (1 era terreno básico jogado aleatoriamente)
+**Depois**: Deck com 100 cartas, todas sinérgicas, swaps balanceados 1-por-1
+
+Exemplo de swap em deck Jin-Gitaxias (mono-U artifacts/control):
+| Removida | Adicionada | Justificativa |
+|---|---|---|
+| Engulf the Shore | Mystic Sanctuary | Land que recicla instants |
+| Whir of Invention | Reshape | Tutor de artefato mais eficiente |
+| Dramatic Reversal | Snap | Bounce grátis, mana-positive |
+| Forsaken Monument | Vedalken Shackles | Controle de criaturas |
+| Karn's Bastion | Evacuation | Board bounce para boardwipes |
