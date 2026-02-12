@@ -4151,3 +4151,174 @@ Exemplo de swap em deck Jin-Gitaxias (mono-U artifacts/control):
 | Dramatic Reversal | Snap | Bounce grátis, mana-positive |
 | Forsaken Monument | Vedalken Shackles | Controle de criaturas |
 | Karn's Bastion | Evacuation | Board bounce para boardwipes |
+
+---
+
+## 33. Sistema de Validação Automática (OptimizationValidator v1.0)
+
+### 33.1 Filosofia
+"A IA sugere trocas, mas elas precisam ser PROVADAS boas."
+
+Antes deste sistema, a otimização era um fluxo unidirecional: IA sugere → aceitar cegamente. Agora existe uma **segunda opinião automática** com 3 camadas de validação que PROVAM se as trocas realmente melhoraram o deck.
+
+### 33.2 Arquitetura — 3 Camadas
+
+```
+┌─────────────────────────────────────────────┐
+│ POST /ai/optimize                            │
+│                                              │
+│  1. IA sugere swaps                          │
+│  2. Filtros (cor, bracket, tema)             │
+│  3. ═══ VALIDAÇÃO AUTOMÁTICA ═══            │
+│     │                                        │
+│     ├── Camada 1: Monte Carlo + Mulligan    │
+│     │   (1000 mãos ANTES vs DEPOIS)         │
+│     │                                        │
+│     ├── Camada 2: Análise Funcional         │
+│     │   (draw→draw? removal→removal?)       │
+│     │                                        │
+│     └── Camada 3: Critic IA (GPT-4o-mini)  │
+│         (segunda opinião sobre as trocas)    │
+│                                              │
+│  4. Score final 0-100 + Veredito            │
+└─────────────────────────────────────────────┘
+```
+
+### 33.3 Camada 1 — Monte Carlo + London Mulligan
+
+**Arquivo**: `server/lib/ai/optimization_validator.dart` → `_runMonteCarloComparison()`
+
+Usa o `GoldfishSimulator` (já existente em `goldfish_simulator.dart`) para rodar **1000 simulações** de mão inicial no deck ANTES e DEPOIS das trocas. Compara:
+- `consistencyScore` (0-100): Mãos jogáveis, jogada no T2/T3, screw/flood
+- `screwRate`: % de mãos com 0-1 terrenos
+- `floodRate`: % de mãos com 6-7 terrenos
+- `keepableRate`: % de mãos com 2-5 terrenos
+- `turn1-4PlayRate`: Chance de ter jogada em cada turno
+
+**London Mulligan** (500 simulações adicionais):
+- Compra 7 cartas → decide keep/mull
+- Se mull, compra 7 de novo, coloca N no fundo (N = número de mulligans)
+- Heurística de keep: 2-5 lands + pelo menos 1 jogada de CMC ≤ 3
+- Métricas: keepAt7Rate, keepAt6Rate, avgMulligans, keepableAfterMullRate
+
+### 33.4 Camada 2 — Análise Funcional
+
+**Método**: `_analyzeFunctionalSwaps()`
+
+Para CADA troca (out → in), classifica o **papel funcional** da carta:
+- `draw` — "Draw a card", "look at the top"
+- `removal` — "Destroy target", "Exile target", "Counter target"
+- `wipe` — "Destroy all", "Exile all"
+- `ramp` — "Add {", "Search your library for a...land", mana rocks
+- `tutor` — "Search your library" (não-land)
+- `protection` — Hexproof, Indestructible, Shroud, Ward
+- `creature`, `artifact`, `enchantment`, `planeswalker`
+- `utility` — Catch-all
+
+**Vereditos por troca:**
+| Veredito | Condição |
+|---|---|
+| `upgrade` | Mesmo papel + CMC menor/igual |
+| `sidegrade` | Mesmo papel + CMC maior |
+| `tradeoff` | Papel diferente + CMC menor |
+| `questionável` | Papel diferente + CMC maior |
+
+**Role Delta**: Conta quantas cartas de cada papel o deck ganhou/perdeu. Perder `removal` ou `draw` gera warnings.
+
+### 33.5 Camada 3 — Critic IA (Segunda Opinião)
+
+**Modelo**: GPT-4o-mini (mais barato que a chamada principal)
+**Temperature**: 0.3 (mais determinístico que a chamada principal)
+
+Recebe:
+- Lista de trocas com papéis funcionais e vereditos
+- Dados de simulação Monte Carlo (antes/depois)
+- Contagem de upgrades, sidegrades, tradeoffs, questionáveis
+
+Retorna JSON:
+```json
+{
+  "approval_score": 65,      // 0-100
+  "verdict": "aprovado_com_ressalvas",
+  "concerns": ["A troca X pode prejudicar..."],
+  "strong_swaps": ["Polluted Delta por Engulf the Shore é upgrade claro"],
+  "weak_swaps": [{"swap": "...", "justification": "..."}],
+  "overall_assessment": "Resumo de 1-2 linhas"
+}
+```
+
+### 33.6 Score Final (Veredito Composto)
+
+Fórmula (base 50, range 0-100):
+- `+0.5` por ponto de consistencyScore ganho
+- `+20` por ponto percentual de keepAt7Rate ganho
+- `+15` por ponto percentual de screwRate reduzido
+- `+3` por upgrade funcional
+- `+1` por sidegrade
+- `-5` por troca questionável
+- `-8` se perdeu removal
+- `-6` se perdeu draw
+- Mistura 70% score calculado + 30% score do Critic IA
+
+**Vereditos:**
+| Score | Veredito |
+|---|---|
+| ≥ 70 | `aprovado` |
+| 45-69 | `aprovado_com_ressalvas` |
+| < 45 | `reprovado` |
+
+### 33.7 Response JSON (Campo `validation` em `post_analysis`)
+
+```json
+{
+  "post_analysis": {
+    "validation": {
+      "validation_score": 52,
+      "verdict": "aprovado_com_ressalvas",
+      "monte_carlo": {
+        "before": { "consistency_score": 85, "mana_analysis": {...}, "curve_analysis": {...} },
+        "after": { "consistency_score": 85, ... },
+        "mulligan_before": { "keep_at_7": 0.814, "avg_mulligans": 0.21 },
+        "mulligan_after": { "keep_at_7": 0.698, "avg_mulligans": 0.38 },
+        "deltas": {
+          "consistency_score": 0,
+          "screw_rate_delta": 0.111,
+          "mulligan_keep7_delta": -0.116
+        }
+      },
+      "functional_analysis": {
+        "swaps": [
+          { "removed": "Engulf The Shore", "added": "Polluted Delta",
+            "removed_role": "utility", "added_role": "land",
+            "role_preserved": true, "cmc_delta": -4, "verdict": "upgrade" }
+        ],
+        "summary": { "upgrades": 3, "sidegrades": 0, "tradeoffs": 1, "questionable": 1 },
+        "role_delta": { "draw": 1, "removal": 1, "ramp": -1, "land": 2, "utility": -2 }
+      },
+      "critic_ai": {
+        "approval_score": 65,
+        "verdict": "aprovado_com_ressalvas",
+        "concerns": [...],
+        "strong_swaps": [...],
+        "weak_swaps": [...]
+      },
+      "warnings": [
+        "1 troca(s) questionável(is) — mudou função E ficou mais cara.",
+        "Risco de mana screw aumentou significativamente."
+      ]
+    }
+  }
+}
+```
+
+### 33.8 Testes
+
+Arquivo: `server/test/optimization_validator_test.dart` — 4 testes:
+1. **Aprova quando otimização melhora consistência** — Deck com poucos terrenos vs balanceado
+2. **Detecta preservação de papel funcional** — Counterspell→Swan Song = removal→removal = upgrade
+3. **Mulligan rates são razoáveis** — keepAt7 > 30%, avgMulligans < 2.0
+4. **toJson produz estrutura válida** — Todos os campos existem com tipos corretos
+
+### 33.9 Não-bloqueante
+
+A validação é um **enhancement**. Se qualquer camada falhar (timeout, API down, etc.), o erro é capturado e a resposta segue normalmente sem o campo `validation`. Isso garante que o endpoint nunca quebra por causa da validação.
