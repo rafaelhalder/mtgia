@@ -412,7 +412,7 @@ class E2EDebateSuite {
           host: env['DB_HOST'] ?? 'localhost',
           database: env['DB_NAME'] ?? 'mtg_db',
           username: env['DB_USER'] ?? 'postgres',
-          password: env['DB_PASSWORD'] ?? 'postgres',
+          password: env['DB_PASS'] ?? env['DB_PASSWORD'] ?? 'postgres',
           port: int.tryParse(env['DB_PORT'] ?? '5432') ?? 5432,
         ),
       ],
@@ -507,17 +507,51 @@ class E2EDebateSuite {
   }
 
   Future<List<Map<String, dynamic>>> fetchCardsInColors(List<String> colors, int count) async {
-    final colorQuery = colors.join(',');
-    final res = await http.get(
-      Uri.parse('$apiUrl/cards?colors=$colorQuery&limit=$count'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    // Buscar cartas e filtrar manualmente por identidade de cor
+    final colorSet = colors.map((c) => c.toUpperCase()).toSet();
+    final uniqueCards = <String, Map<String, dynamic>>{}; // Map para garantir unicidade por ID
     
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      return (data['data'] as List? ?? []).cast<Map<String, dynamic>>();
+    // Buscar em batches diferentes para ter variedade
+    final queries = [
+      'creature',
+      'instant',
+      'sorcery',
+      'artifact',
+      'enchantment',
+      'land',
+    ];
+    
+    for (final query in queries) {
+      final res = await http.get(
+        Uri.parse('$apiUrl/cards?type=$query&limit=100'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final cards = (data['data'] as List? ?? []).cast<Map<String, dynamic>>();
+        
+        // Filtrar por identidade de cor
+        for (final card in cards) {
+          final cardId = card['id']?.toString();
+          if (cardId == null || uniqueCards.containsKey(cardId)) continue; // Skip duplicates
+          
+          final cardColors = (card['colors'] as List?)?.cast<String>() ?? [];
+          final cardColorSet = cardColors.map((c) => c.toUpperCase()).toSet();
+          
+          // Carta é válida se todas suas cores estão dentro da identidade do commander
+          // OU se é colorless (sem cores)
+          if (cardColorSet.isEmpty || cardColorSet.every((c) => colorSet.contains(c))) {
+            uniqueCards[cardId] = card;
+          }
+        }
+      }
     }
-    return [];
+    
+    // Shuffle e pegar o número necessário
+    final allCards = uniqueCards.values.toList();
+    allCards.shuffle(random);
+    return allCards.take(count).toList();
   }
 
   Future<String> createDeck(String name, String commanderId, List<Map<String, dynamic>> cards) async {
@@ -604,8 +638,8 @@ class E2EDebateSuite {
       );
       print('  Deck criado: $deckId');
       
-      // 4. Arquétipos para teste
-      final archetypes = ['Aggro', 'Control', 'Midrange', 'Combo', null];
+      // 4. Arquétipos para teste (sem null - archetype é obrigatório na API)
+      final archetypes = ['Aggro', 'Control', 'Midrange', 'Combo', 'Tempo', 'Ramp'];
       final archetype = archetypes[random.nextInt(archetypes.length)];
       
       // 5. Otimizar
@@ -717,7 +751,7 @@ class E2EDebateSuite {
               execution_time_ms, effectiveness_score, improvements_achieved,
               potential_issues, alternative_approaches, lessons_learned
             ) VALUES (
-              @test_run_id::uuid, @test_number, @commander_name, @commander_colors,
+              @test_run_id, @test_number, @commander_name, @commander_colors,
               @initial_card_count, @final_card_count, @operation_mode, @target_archetype,
               @detected_theme, @edhrec_themes, @theme_match, @hybrid_mode_used,
               @before_avg_cmc, @before_land_count, @before_creature_count,
@@ -731,7 +765,7 @@ class E2EDebateSuite {
             )
           '''),
           parameters: {
-            'test_run_id': testRunId.replaceAll('test_', '00000000-0000-0000-0000-'),
+            'test_run_id': testRunId,
             'test_number': d.testNumber,
             'commander_name': d.commanderName,
             'commander_colors': d.commanderColors,
@@ -790,11 +824,17 @@ class E2EDebateSuite {
     print('📈 RESUMO FINAL DA BATERIA DE TESTES');
     print('═'*70);
     
+    if (collectedData.isEmpty) {
+      print('\n⚠️ Nenhum teste completou com sucesso.');
+      print('   Verifique os logs de erro acima.');
+      print('═'*70);
+      return;
+    }
+    
     final avgEffectiveness = debates.isEmpty ? 0.0 :
         debates.map((d) => d.effectivenessScore).reduce((a, b) => a + b) / debates.length;
     
-    final avgTime = collectedData.isEmpty ? 0 :
-        collectedData.map((d) => d.executionTimeMs).reduce((a, b) => a + b) ~/ collectedData.length;
+    final avgTime = collectedData.map((d) => d.executionTimeMs).reduce((a, b) => a + b) ~/ collectedData.length;
     
     final hybridCount = collectedData.where((d) => d.hybridModeUsed).length;
     final colorViolations = collectedData.map((d) => d.colorIdentityViolations).reduce((a, b) => a + b);
