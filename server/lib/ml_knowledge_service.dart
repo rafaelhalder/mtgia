@@ -126,7 +126,7 @@ class MLKnowledgeService {
       // Busca sinergias que contêm cartas que o deck já tem
       final result = await _conn.execute(
         Sql.named('''
-          SELECT package_name, package_type, card_names, description,
+          SELECT package_name, package_type, card_names,
                  occurrence_count, confidence_score, primary_archetype
           FROM synergy_packages
           WHERE (
@@ -147,17 +147,19 @@ class MLKnowledgeService {
         },
       );
       
-      return result.map((row) {
+      final synergies = <SynergyPackage>[];
+      for (final row in result) {
         final map = row.toColumnMap();
-        return SynergyPackage(
+        synergies.add(SynergyPackage(
           name: map['package_name']?.toString() ?? '',
           type: map['package_type']?.toString() ?? 'synergy',
           cards: _toStringList(map['card_names']),
-          description: map['description']?.toString(),
+          description: null, // Campo não existe na tabela, sempre null
           occurrenceCount: (map['occurrence_count'] as int?) ?? 0,
           confidenceScore: (map['confidence_score'] as num?)?.toDouble() ?? 0.5,
-        );
-      }).toList();
+        ));
+      }
+      return synergies;
     } catch (e) {
       print('[MLKnowledgeService] Erro ao buscar sinergias: $e');
       return [];
@@ -227,16 +229,18 @@ class MLKnowledgeService {
         },
       );
       
-      return result.map((row) {
+      final recommendations = <CardRecommendation>[];
+      for (final row in result) {
         final map = row.toColumnMap();
-        return CardRecommendation(
+        recommendations.add(CardRecommendation(
           cardName: map['card_name']?.toString() ?? '',
           reason: 'Popular em $archetype (${map['meta_deck_count']} meta decks)',
           metaDeckCount: (map['meta_deck_count'] as int?) ?? 0,
           role: map['learned_role']?.toString(),
           score: (map['versatility_score'] as num?)?.toDouble() ?? 0.0,
-        );
-      }).toList();
+        ));
+      }
+      return recommendations;
     } catch (e) {
       print('[MLKnowledgeService] Erro ao buscar recomendações: $e');
       return [];
