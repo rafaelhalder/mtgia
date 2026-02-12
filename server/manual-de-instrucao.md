@@ -4322,3 +4322,44 @@ Arquivo: `server/test/optimization_validator_test.dart` — 4 testes:
 ### 33.9 Não-bloqueante
 
 A validação é um **enhancement**. Se qualquer camada falhar (timeout, API down, etc.), o erro é capturado e a resposta segue normalmente sem o campo `validation`. Isso garante que o endpoint nunca quebra por causa da validação.
+
+---
+
+## 34. Auditoria e Correção de 13 Falhas (Junho 2025)
+
+### 34.1 Contexto
+Uma auditoria completa do fluxo de otimização identificou 13 falhas potenciais documentadas em `DOCUMENTACAO_OTIMIZACAO_EXCLUSIVA.md`. Todas (exceto Falha 6 — MatchupAnalyzer, escopo futuro) foram corrigidas e deployadas.
+
+### 34.2 Correções de Alta Severidade
+
+**Goldfish mana colorida (Falha 5):** `goldfish_simulator.dart` — Adicionados `_getColorRequirements()` (extrai `{U}`, `{B}` etc. do mana_cost, ignora phyrexian) e `_getLandColors()` (analisa oracle_text/type_line para determinar cores produzidas por lands). A simulação agora verifica tanto mana total quanto requisitos de cor por turno.
+
+**Efficiency scores com sinergia (Falha 7):** `otimizacao.dart` — `_extractMechanicKeywords()` analisa o oracle_text do commander e extrai 30+ patterns mecânicos. Cartas com 2+ matches têm score÷2 (forte sinergia), 1 match → score×0.7. Impede que a IA remova peças sinérgicas.
+
+**sanitizeCardName unicode (Falha 2):** `card_validation_service.dart` — Removido Title Case forçado que destruía "AEther Vial", "Lim-Dûl's Vault". Regex alterada de `[^\w\s',-]` para `[\x00-\x1F\x7F]` (só control chars). Adicionado strip de sufixo "(Set Code)".
+
+### 34.3 Correções de Média Severidade
+
+**Operator precedence (Falha 1):** `optimization_validator.dart` — 5 expressões `&&`/`||` sem parênteses receberam parênteses explícitos em `_classifyFunctionalRole()`.
+
+**Parse resiliente IA (Falha 9):** `index.dart` — 4º fallback de parsing (`suggestions` key), null-safety no formato `changes`, warning log quando resultado é vazio.
+
+**Scryfall rate limiting (Falha 11):** `sinergia.dart` — `Future.wait()` (paralelo) substituído por loop sequencial com 120ms delay entre requests.
+
+**Scryfall fallback queries (Falha 3):** `sinergia.dart` — Se query `function:` retorna vazio, `_buildFallbackQuery()` gera query text-based equivalente (9 mapeamentos).
+
+**Índice DB (Falha 10):** `CREATE INDEX idx_cards_name_lower ON cards (LOWER(name))` criado em produção. Query de exclusão alterada para `LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude)))`.
+
+### 34.4 Correções de Baixa Severidade
+
+**Case-sensitive exclude (Falha 4):** SQL corrigido para comparação case-insensitive.
+
+**Mulligan com mana rocks (Falha 8):** `optimization_validator.dart` — Conta artifact + "add" + CMC≤2 como rocks. `effectiveLands = lands + (rocks × 0.5)`, threshold `1.5-5.5`.
+
+**Novos temas (Falha 12):** `index.dart` `_detectThemeProfile()` — 8 novos temas: tokens, reanimator, aristocrats, voltron, tribal (com subtipo), landfall, wheels, stax. Detecção via oracle_text e type_line em vez de nomes hardcoded.
+
+**Logger (Falha 13):** 31 `print('[DEBUG/WARN/ERROR]...')` substituídos por `Log.d()`/`Log.w()`/`Log.e()`. Em produção, `Log.d()` é suprimido automaticamente.
+
+### 34.5 Bug Encontrado no Deploy
+
+`_extractMechanicKeywords()` usava `List<dynamic>.firstWhere(orElse: () => null)` que causa `type '() => Null' is not a subtype of type '(() => Map<String, dynamic>)?'` em runtime. Corrigido com loop manual `for`/`break`.
