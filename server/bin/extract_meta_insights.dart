@@ -62,16 +62,26 @@ void main(List<String> args) async {
 
     // 6. Salvar no banco
     print('💾 Salvando insights no banco...');
+    stdout.flush();
     
     if (isFullRebuild) {
       print('   Limpando dados antigos (--full)...');
+      stdout.flush();
       await conn.execute('TRUNCATE card_meta_insights CASCADE');
       await conn.execute('TRUNCATE synergy_packages CASCADE');
       await conn.execute('TRUNCATE archetype_patterns CASCADE');
     }
 
+    print('   Salvando ${cardInsights.length} insights de cartas...');
+    stdout.flush();
     await _saveCardInsights(conn, cardInsights);
+    
+    print('   Salvando ${synergies.length} sinergias...');
+    stdout.flush();
     await _saveSynergies(conn, synergies);
+    
+    print('   Salvando ${archetypePatterns.length} padrões...');
+    stdout.flush();
     await _saveArchetypePatterns(conn, archetypePatterns);
 
     // 7. Atualizar estado do modelo
@@ -423,9 +433,15 @@ List<Map<String, dynamic>> _extractArchetypePatterns(
 /// Salva insights de cartas no banco
 Future<void> _saveCardInsights(dynamic conn, Map<String, Map<String, dynamic>> insights) async {
   var saved = 0;
+  var failed = 0;
   
   for (final insight in insights.values) {
     try {
+      // Preparar arrays de forma segura escapando aspas e vírgulas
+      final archetypes = (insight['archetypes'] as List).cast<String>();
+      final formats = (insight['formats'] as List).cast<String>();
+      final pairsJson = jsonEncode(insight['top_pairs']);
+      
       await conn.execute(
         Sql.named('''
           INSERT INTO card_meta_insights (
@@ -440,12 +456,6 @@ Future<void> _saveCardInsights(dynamic conn, Map<String, Map<String, dynamic>> i
           ON CONFLICT (card_name) DO UPDATE SET
             usage_count = card_meta_insights.usage_count + @usage,
             meta_deck_count = card_meta_insights.meta_deck_count + @deck_count,
-            common_archetypes = ARRAY(
-              SELECT DISTINCT unnest(card_meta_insights.common_archetypes || @archetypes::text[])
-            ),
-            common_formats = ARRAY(
-              SELECT DISTINCT unnest(card_meta_insights.common_formats || @formats::text[])
-            ),
             top_pairs = @pairs::jsonb,
             versatility_score = GREATEST(card_meta_insights.versatility_score, @versatility),
             last_updated_at = CURRENT_TIMESTAMP
@@ -454,28 +464,39 @@ Future<void> _saveCardInsights(dynamic conn, Map<String, Map<String, dynamic>> i
           'name': insight['card_name'],
           'usage': insight['usage_count'],
           'deck_count': insight['meta_deck_count'],
-          'archetypes': '{${(insight['archetypes'] as List).join(',')}}',
-          'formats': '{${(insight['formats'] as List).join(',')}}',
-          'pairs': jsonEncode(insight['top_pairs']),
+          'archetypes': archetypes,  // Passar lista direta, driver converte
+          'formats': formats,        // Passar lista direta, driver converte
+          'pairs': pairsJson,
           'role': insight['learned_role'],
           'versatility': insight['versatility_score'],
         },
       );
       saved++;
+      if (saved % 100 == 0) {
+        print('      Progresso: $saved/${insights.length}');
+        stdout.flush();
+      }
     } catch (e) {
-      // Ignora erros individuais
+      failed++;
+      if (failed <= 3) {
+        print('      ⚠️ Erro ao salvar ${insight['card_name']}: $e');
+      }
     }
   }
   
-  print('   ✅ $saved insights de cartas salvos');
+  print('   ✅ $saved insights de cartas salvos ($failed falhas)');
 }
 
 /// Salva sinergias no banco
 Future<void> _saveSynergies(dynamic conn, List<Map<String, dynamic>> synergies) async {
   var saved = 0;
+  var failed = 0;
   
   for (final synergy in synergies) {
     try {
+      final cardNames = (synergy['card_names'] as List).cast<String>();
+      final formats = (synergy['formats'] as List).cast<String>();
+      
       await conn.execute(
         Sql.named('''
           INSERT INTO synergy_packages (
@@ -487,36 +508,44 @@ Future<void> _saveSynergies(dynamic conn, List<Map<String, dynamic>> synergies) 
           )
           ON CONFLICT (package_name) DO UPDATE SET
             occurrence_count = synergy_packages.occurrence_count + @count,
-            confidence_score = GREATEST(synergy_packages.confidence_score, @confidence),
-            supported_formats = ARRAY(
-              SELECT DISTINCT unnest(synergy_packages.supported_formats || @formats::text[])
-            )
+            confidence_score = GREATEST(synergy_packages.confidence_score, @confidence)
         '''),
         parameters: {
           'name': synergy['package_name'],
           'type': synergy['package_type'],
-          'cards': '{${(synergy['card_names'] as List).map((s) => '"$s"').join(',')}}',
+          'cards': cardNames,
           'archetype': synergy['primary_archetype'],
-          'formats': '{${(synergy['formats'] as List).join(',')}}',
+          'formats': formats,
           'count': synergy['occurrence_count'],
           'confidence': synergy['confidence_score'],
         },
       );
       saved++;
+      if (saved % 100 == 0) {
+        print('      Progresso: $saved/${synergies.length}');
+        stdout.flush();
+      }
     } catch (e) {
-      // Ignora erros individuais
+      failed++;
+      if (failed <= 3) {
+        print('      ⚠️ Erro ao salvar sinergia: $e');
+      }
     }
   }
   
-  print('   ✅ $saved sinergias salvas');
+  print('   ✅ $saved sinergias salvas ($failed falhas)');
 }
 
 /// Salva padrões de arquétipo
 Future<void> _saveArchetypePatterns(dynamic conn, List<Map<String, dynamic>> patterns) async {
   var saved = 0;
+  var failed = 0;
   
   for (final pattern in patterns) {
     try {
+      final coreCards = (pattern['core_cards'] as List).cast<String>();
+      final flexJson = jsonEncode(pattern['flex_options']);
+      
       await conn.execute(
         Sql.named('''
           INSERT INTO archetype_patterns (
@@ -526,9 +555,6 @@ Future<void> _saveArchetypePatterns(dynamic conn, List<Map<String, dynamic>> pat
           )
           ON CONFLICT (archetype, format) DO UPDATE SET
             sample_size = archetype_patterns.sample_size + @sample,
-            core_cards = ARRAY(
-              SELECT DISTINCT unnest(archetype_patterns.core_cards || @core::text[])
-            ),
             flex_options = @flex::jsonb,
             last_analyzed_at = CURRENT_TIMESTAMP
         '''),
@@ -536,18 +562,21 @@ Future<void> _saveArchetypePatterns(dynamic conn, List<Map<String, dynamic>> pat
           'archetype': pattern['archetype'],
           'format': pattern['format'],
           'sample': pattern['sample_size'],
-          'core': '{${(pattern['core_cards'] as List).map((s) => '"$s"').join(',')}}',
-          'flex': jsonEncode(pattern['flex_options']),
-          'sources': '{meta_decks}',
+          'core': coreCards,
+          'flex': flexJson,
+          'sources': ['meta_decks'],
         },
       );
       saved++;
     } catch (e) {
-      // Ignora erros individuais
+      failed++;
+      if (failed <= 3) {
+        print('      ⚠️ Erro ao salvar padrão: $e');
+      }
     }
   }
   
-  print('   ✅ $saved padrões de arquétipo salvos');
+  print('   ✅ $saved padrões de arquétipo salvos ($failed falhas)');
 }
 
 /// Atualiza estado do modelo de aprendizado
