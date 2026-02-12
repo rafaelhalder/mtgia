@@ -6,6 +6,7 @@ import '../../../lib/color_identity.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
 import '../../../lib/ai/optimization_validator.dart';
+import '../../../lib/ai/edhrec_service.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/edh_bracket_policy.dart';
 
@@ -1502,6 +1503,69 @@ Future<Response> onRequest(RequestContext context) async {
     Map<String, dynamic>? postAnalysis;
     List<String> validationWarnings = [];
 
+    // ═══════════════════════════════════════════════════════════
+    // VALIDAÇÃO PÓS-PROCESSAMENTO: Color Identity + EDHREC + Tema
+    // ═══════════════════════════════════════════════════════════
+
+    // 1. Color Identity Warning (se IA sugeriu cartas inválidas)
+    if (filteredByColorIdentity.isNotEmpty) {
+      validationWarnings.add(
+        '⚠️ ${filteredByColorIdentity.length} carta(s) sugerida(s) pela IA foram removidas por violar a identidade de cor do commander: ${filteredByColorIdentity.take(3).join(", ")}${filteredByColorIdentity.length > 3 ? "..." : ""}');
+    }
+
+    // 2. Validação EDHREC: verificar se additions têm sinergia comprovada
+    EdhrecCommanderData? edhrecValidationData;
+    List<String> additionsNotInEdhrec = [];
+    if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
+      try {
+        final edhrecService = optimizer.edhrecService;
+        edhrecValidationData = await edhrecService.fetchCommanderData(commanders.first);
+        
+        if (edhrecValidationData != null && edhrecValidationData.topCards.isNotEmpty) {
+          for (final addition in validAdditions) {
+            final card = edhrecValidationData.findCard(addition);
+            if (card == null) {
+              additionsNotInEdhrec.add(addition);
+            }
+          }
+          
+          if (additionsNotInEdhrec.isNotEmpty) {
+            final percent = (additionsNotInEdhrec.length / validAdditions.length * 100).toStringAsFixed(0);
+            if (additionsNotInEdhrec.length > validAdditions.length * 0.5) {
+              validationWarnings.add(
+                '⚠️ ${additionsNotInEdhrec.length} ($percent%) das cartas sugeridas NÃO aparecem nos dados EDHREC de ${commanders.first}. Isso pode indicar baixa sinergia: ${additionsNotInEdhrec.take(3).join(", ")}${additionsNotInEdhrec.length > 3 ? "..." : ""}');
+            } else if (additionsNotInEdhrec.length >= 3) {
+              validationWarnings.add(
+                '💡 ${additionsNotInEdhrec.length} carta(s) sugerida(s) não estão nos dados EDHREC - podem ser inovadoras ou de baixa sinergia.');
+            }
+          }
+        }
+      } catch (e) {
+        Log.w('EDHREC validation failed (non-blocking): $e');
+      }
+    }
+
+    // 3. Comparação de Tema: verificar se tema detectado corresponde aos temas EDHREC
+    if (edhrecValidationData != null && edhrecValidationData.themes.isNotEmpty) {
+      final detectedThemeLower = targetArchetype.toLowerCase();
+      final edhrecThemesLower = edhrecValidationData.themes.map((t) => t.toLowerCase()).toList();
+      
+      // Verificar se o tema detectado tem correspondência nos temas EDHREC
+      bool themeMatch = false;
+      for (final edhrecTheme in edhrecThemesLower) {
+        if (detectedThemeLower.contains(edhrecTheme) || 
+            edhrecTheme.contains(detectedThemeLower)) {
+          themeMatch = true;
+          break;
+        }
+      }
+      
+      if (!themeMatch) {
+        validationWarnings.add(
+          '💡 Tema detectado "$targetArchetype" não corresponde aos temas populares do EDHREC (${edhrecValidationData.themes.take(3).join(", ")}). Considere ajustar a estratégia.');
+      }
+    }
+
     if (validAdditions.isNotEmpty) {
       try {
         // 1. Buscar dados completos das cartas sugeridas (para análise de mana/tipo)
@@ -1670,6 +1734,14 @@ Future<Response> onRequest(RequestContext context) async {
       'validation_warnings': validationWarnings,
       'bracket': bracket,
       'target_additions': jsonResponse['target_additions'],
+      // Validação EDHREC
+      if (edhrecValidationData != null) 'edhrec_validation': {
+        'commander': commanders.first,
+        'deck_count': edhrecValidationData.deckCount,
+        'themes': edhrecValidationData.themes,
+        'additions_validated': validAdditions.length - additionsNotInEdhrec.length,
+        'additions_not_in_edhrec': additionsNotInEdhrec,
+      },
     };
 
     // Gerar additions_detailed apenas para cartas com card_id válido

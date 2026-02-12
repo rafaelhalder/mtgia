@@ -4323,6 +4323,57 @@ Arquivo: `server/test/optimization_validator_test.dart` — 4 testes:
 
 A validação é um **enhancement**. Se qualquer camada falhar (timeout, API down, etc.), o erro é capturado e a resposta segue normalmente sem o campo `validation`. Isso garante que o endpoint nunca quebra por causa da validação.
 
+### 33.10 Validações Pós-Processamento (v1.1)
+
+**Data:** Junho 2025
+
+Após a validação das 3 camadas (Monte Carlo, Funcional, Critic IA), foram adicionadas **3 validações adicionais** que aparecem em `validation_warnings`:
+
+#### 33.10.1 Warning de Color Identity
+
+Quando a IA sugere cartas que violam a identidade de cor do commander, elas são **filtradas automaticamente** (não entram em `additions`), mas agora um **warning é adicionado** para transparência:
+
+```
+⚠️ 3 carta(s) sugerida(s) pela IA foram removidas por violar a identidade de cor do commander: Counterspell, Blue Elemental Blast...
+```
+
+**Implementação:** `routes/ai/optimize/index.dart` — Verifica se `filteredByColorIdentity` não está vazio.
+
+#### 33.10.2 Validação EDHREC para Additions
+
+Cada carta sugerida é verificada contra os dados do EDHREC para o commander. Cartas que **não aparecem** nos dados de sinergia do EDHREC são identificadas com warnings:
+
+```
+⚠️ 6 (50%) das cartas sugeridas NÃO aparecem nos dados EDHREC de Muldrotha, the Gravetide. Isso pode indicar baixa sinergia: Card X, Card Y...
+```
+
+**Níveis:**
+- `>50%` das additions não estão no EDHREC → Warning forte (⚠️)
+- `≥3` cartas não estão no EDHREC → Info leve (💡)
+
+**Resposta inclui:**
+```json
+{
+  "edhrec_validation": {
+    "commander": "Muldrotha, the Gravetide",
+    "deck_count": 15234,
+    "themes": ["Reanimator", "Self-Mill", "Value"],
+    "additions_validated": 4,
+    "additions_not_in_edhrec": ["Card X", "Card Y"]
+  }
+}
+```
+
+#### 33.10.3 Comparação de Tema
+
+O tema detectado automaticamente pelo sistema é comparado com os **temas populares do EDHREC** para o commander. Se não houver correspondência, um warning é emitido:
+
+```
+💡 Tema detectado "Aggro" não corresponde aos temas populares do EDHREC (Reanimator, Self-Mill, Value). Considere ajustar a estratégia.
+```
+
+Isso ajuda o usuário a entender se está construindo um deck "off-meta" ou se o detector de tema errou.
+
 ---
 
 ## 34. Auditoria e Correção de 13 Falhas (Junho 2025)
