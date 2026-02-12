@@ -5,6 +5,7 @@ import 'package:postgres/postgres.dart';
 import '../../../lib/color_identity.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
+import '../../../lib/ai/optimization_validator.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/edh_bracket_policy.dart';
 
@@ -1472,6 +1473,39 @@ Future<Response> onRequest(RequestContext context) async {
         
         if (improvements.isNotEmpty) {
           postAnalysis['improvements'] = improvements;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // 6. VALIDAÇÃO AUTOMÁTICA (Monte Carlo + Funcional + Critic IA)
+        // ═══════════════════════════════════════════════════════════
+        try {
+          final validator = OptimizationValidator(openAiKey: apiKey);
+          final validationReport = await validator.validate(
+            originalDeck: allCardData,
+            optimizedDeck: virtualDeck,
+            removals: validRemovals,
+            additions: validAdditions,
+            commanders: commanders,
+            archetype: targetArchetype,
+          );
+
+          postAnalysis['validation'] = validationReport.toJson();
+
+          // Adicionar warnings do validador
+          for (final w in validationReport.warnings) {
+            validationWarnings.add(w);
+          }
+
+          // Se reprovado, alertar
+          if (validationReport.verdict == 'reprovado') {
+            validationWarnings.insert(0,
+                '🚫 VALIDAÇÃO: As trocas sugeridas NÃO passaram na validação automática (score: ${validationReport.score}/100).');
+          }
+
+          print('[DEBUG] Validation score: ${validationReport.score}/100 verdict: ${validationReport.verdict}');
+        } catch (validationError) {
+          print('[WARN] Validation failed (non-blocking): $validationError');
+          // Validação é enhancement, não deve bloquear a resposta
         }
       } catch (e) {
         print('[ERROR] handler: $e');
