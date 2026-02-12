@@ -1365,6 +1365,13 @@ Future<Response> onRequest(RequestContext context) async {
     if (validAdditions.isNotEmpty) {
       try {
         // 1. Buscar dados completos das cartas sugeridas (para análise de mana/tipo)
+        // Usar nomes corretos do DB (via validByNameLower) para evitar problemas de case
+        final correctedAdditionNames = validAdditions
+            .map((n) {
+              final v = validByNameLower[n.toLowerCase()];
+              return (v?['name'] as String?) ?? n;
+            })
+            .toList();
         final additionsDataResult = await pool.execute(
           Sql.named('''
               SELECT name, type_line, mana_cost, colors, 
@@ -1381,9 +1388,9 @@ Future<Response> onRequest(RequestContext context) async {
                      ) as cmc,
                      oracle_text
               FROM cards 
-              WHERE name = ANY(@names)
+              WHERE LOWER(name) = ANY(@names)
             '''),
-          parameters: {'names': validAdditions},
+          parameters: {'names': correctedAdditionNames.map((n) => n.toLowerCase()).toList()},
         );
 
         final additionsData = additionsDataResult
