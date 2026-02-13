@@ -120,9 +120,23 @@ _QueryBuilder _buildQuery(
   final params = <String, dynamic>{};
   final conditions = <String>[];
   
+  // Para ordenação: prioriza match exato, depois basic lands, depois alfabético
+  String orderExpression = 'c.name ASC';
+  
   if (nameFilter != null && nameFilter.isNotEmpty) {
     conditions.add('c.name ILIKE @name');
     params['name'] = '%$nameFilter%';
+    params['exact_name'] = nameFilter;
+    // Ordem: 1) match exato (case insensitive), 2) basic lands, 3) startsWith, 4) resto
+    orderExpression = '''
+      CASE 
+        WHEN LOWER(c.name) = LOWER(@exact_name) THEN 0
+        WHEN c.type_line ILIKE 'Basic Land%' AND LOWER(c.name) = LOWER(@exact_name) THEN 1
+        WHEN c.type_line ILIKE 'Basic Land%' THEN 2
+        WHEN LOWER(c.name) LIKE LOWER(@exact_name) || '%' THEN 3
+        ELSE 4
+      END, c.name ASC
+    ''';
   }
 
   if (setFilter != null && setFilter.isNotEmpty) {
@@ -139,6 +153,7 @@ _QueryBuilder _buildQuery(
   
   if (deduplicate) {
     // Deduplicar por (name, LOWER(set_code)) para evitar variantes e inconsistências de case
+    // Nota: para dedup com priorização, fazemos ORDER BY com CASE no select externo
     sql = includeSetInfo
         ? '''
           SELECT * FROM (
@@ -153,7 +168,15 @@ _QueryBuilder _buildQuery(
             $whereClause
             ORDER BY c.name, LOWER(c.set_code), s.release_date DESC NULLS LAST
           ) AS deduped
-          ORDER BY name ASC, set_code ASC
+          ORDER BY ${nameFilter != null ? '''
+            CASE 
+              WHEN LOWER(name) = LOWER(@exact_name) THEN 0
+              WHEN type_line ILIKE 'Basic Land%' AND LOWER(name) = LOWER(@exact_name) THEN 1
+              WHEN type_line ILIKE 'Basic Land%' THEN 2
+              WHEN LOWER(name) LIKE LOWER(@exact_name) || '%' THEN 3
+              ELSE 4
+            END, name ASC
+          ''' : 'name ASC, set_code ASC'}
           LIMIT @limit OFFSET @offset
         '''
         : '''
@@ -166,7 +189,15 @@ _QueryBuilder _buildQuery(
             $whereClause
             ORDER BY c.name, LOWER(c.set_code)
           ) AS deduped
-          ORDER BY name ASC, set_code ASC
+          ORDER BY ${nameFilter != null ? '''
+            CASE 
+              WHEN LOWER(name) = LOWER(@exact_name) THEN 0
+              WHEN type_line ILIKE 'Basic Land%' AND LOWER(name) = LOWER(@exact_name) THEN 1
+              WHEN type_line ILIKE 'Basic Land%' THEN 2
+              WHEN LOWER(name) LIKE LOWER(@exact_name) || '%' THEN 3
+              ELSE 4
+            END, name ASC
+          ''' : 'name ASC, set_code ASC'}
           LIMIT @limit OFFSET @offset
         ''';
   } else {
@@ -180,13 +211,13 @@ _QueryBuilder _buildQuery(
           FROM cards c
           LEFT JOIN sets s ON LOWER(s.code) = LOWER(c.set_code)
           $whereClause
-          ORDER BY c.name ASC
+          ORDER BY $orderExpression
           LIMIT @limit OFFSET @offset
         '''
         : '''
           SELECT c.* FROM cards c
           $whereClause
-          ORDER BY c.name ASC
+          ORDER BY $orderExpression
           LIMIT @limit OFFSET @offset
         ''';
   }

@@ -513,10 +513,20 @@ class DeckOptimizerService {
   }) async {
     final stopwatch = Stopwatch()..start();
 
+    // Calcular número dinâmico de trocas baseado na qualidade do deck
+    // Mais cartas fracas = mais trocas sugeridas
+    final weakCount = weakCandidates.length;
+    final suggestedSwaps = weakCount <= 5 ? weakCount.clamp(2, 5)
+        : weakCount <= 10 ? (weakCount * 0.7).round().clamp(4, 8)
+        : (weakCount * 0.5).round().clamp(6, 12);
+    
+    Log.d('Trocas dinâmicas: $suggestedSwaps (baseado em $weakCount cartas fracas)');
+
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
       "archetype": archetype,
       "bracket": bracket,
+      "suggested_swaps": suggestedSwaps,  // Número dinâmico de trocas
       "constraints": {
         "keep_theme": keepTheme,
         if (detectedTheme != null) "deck_theme": detectedTheme,

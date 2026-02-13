@@ -120,7 +120,7 @@ Retorne APENAS um objeto JSON. Sem markdown, sem intro.
       "reasoning": "Explicação técnica e direta. Ex: 'X custa 4 manas e faz o mesmo que Y que custa 2. Y também tem sinergia com o Comandante pois é um Artefato.'",
       "priority": "High" | "Medium" | "Low"
     },
-    ... (Gere entre 5 a 8 trocas sugeridas)
+    ... (Gere exatamente o número de trocas especificado em "suggested_swaps" no payload. Se não especificado, use entre 3 e 10 baseado na quantidade de cartas fracas identificadas.)
   ]
 }
 
