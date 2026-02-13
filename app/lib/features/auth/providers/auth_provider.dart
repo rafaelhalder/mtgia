@@ -94,7 +94,9 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        if (response.data is Map && response.data['message'] != null) {
+        if (response.statusCode >= 500) {
+          _errorMessage = 'Servidor indisponível. Tente novamente em instantes.';
+        } else if (response.data is Map && response.data['message'] != null) {
           _errorMessage = response.data['message'].toString();
         } else {
           _errorMessage = 'Credenciais inválidas';
@@ -142,7 +144,9 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        if (response.data is Map && response.data['message'] != null) {
+        if (response.statusCode >= 500) {
+          _errorMessage = 'Servidor indisponível. Tente novamente em instantes.';
+        } else if (response.data is Map && response.data['message'] != null) {
           _errorMessage = response.data['message'].toString();
         } else {
           _errorMessage = 'Erro ao criar conta';
@@ -220,7 +224,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> updateProfile({String? displayName, String? avatarUrl}) async {
+  Future<bool> updateProfile({
+    String? displayName,
+    String? avatarUrl,
+    String? locationState,
+    String? locationCity,
+    String? tradeNotes,
+  }) async {
     _errorMessage = null;
     notifyListeners();
 
@@ -228,6 +238,9 @@ class AuthProvider extends ChangeNotifier {
       final response = await _apiClient.patch('/users/me', {
         if (displayName != null) 'display_name': displayName,
         if (avatarUrl != null) 'avatar_url': avatarUrl,
+        if (locationState != null) 'location_state': locationState,
+        if (locationCity != null) 'location_city': locationCity,
+        if (tradeNotes != null) 'trade_notes': tradeNotes,
       });
       if (response.statusCode != 200) {
         if (response.data is Map && response.data['error'] != null) {

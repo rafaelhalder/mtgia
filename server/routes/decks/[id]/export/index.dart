@@ -94,9 +94,10 @@ Future<Response> onRequest(RequestContext context, String id) async {
       'card_count': commanders.length + mainCards.length,
     });
   } catch (e) {
+    print('[ERROR] Failed to export deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to export deck: $e'},
+      body: {'error': 'Failed to export deck'},
     );
   }
 }

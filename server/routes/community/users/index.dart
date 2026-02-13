@@ -90,9 +90,10 @@ Future<Response> _searchUsers(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Internal server error: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error', 'details': '$e'},
+      body: {'error': 'Internal server error'},
     );
   }
 }

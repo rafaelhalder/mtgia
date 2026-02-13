@@ -132,14 +132,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
         context.push('/trades/$refId');
         break;
       case 'direct_message':
-        // refId = conversationId, mas precisamos navegar para o chat
-        // Por simplicidade, vai para o inbox de mensagens
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const _MessageRedirectPlaceholder(),
-          ),
-        );
+        // refId = conversationId → navega direto para o inbox de mensagens
+        context.push('/messages');
         break;
     }
   }
@@ -271,23 +265,3 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
-/// Placeholder quando a notificação de DM navega para o inbox
-class _MessageRedirectPlaceholder extends StatelessWidget {
-  const _MessageRedirectPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    // Redirecionar para inbox de mensagens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pop(context);
-      // O inbox de mensagens seria acessível pela rota /messages
-      context.push('/messages');
-    });
-    return const Scaffold(
-      backgroundColor: AppTheme.backgroundAbyss,
-      body: Center(
-        child: CircularProgressIndicator(color: AppTheme.manaViolet),
-      ),
-    );
-  }
-}

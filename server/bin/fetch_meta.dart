@@ -14,9 +14,10 @@ const supportedFormats = {
   'MO': 'Modern',
   'LE': 'Legacy',
   'VI': 'Vintage',
-  'EDH': 'Commander', // Multiplayer/Centurion
+  'EDH': 'Duel Commander',
+  'cEDH': 'Competitive EDH',
   'PAU': 'Pauper',
-  'BL': 'Block', // Às vezes usado
+  'PREM': 'Premodern',
 };
 
 void main(List<String> args) async {
@@ -57,7 +58,7 @@ void main(List<String> args) async {
           .map((e) => e.attributes['href'])
           .where((href) => href != null)
           .toSet()
-          .take(2); // Reduzi para 2 eventos por formato para ser mais rápido no teste
+          .take(6); // 6 eventos por formato = ~300-400 decks no total
 
       print('Encontrados ${eventLinks.length} eventos recentes.');
 

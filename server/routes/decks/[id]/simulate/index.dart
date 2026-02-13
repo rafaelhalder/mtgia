@@ -138,9 +138,10 @@ Future<Response> _simulateDeck(RequestContext context, String deckId) async {
     });
 
   } catch (e) {
+    print('[ERROR] Simulation failed: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Simulation failed: $e'},
+      body: {'error': 'Simulation failed'},
     );
   }
 }

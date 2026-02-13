@@ -250,9 +250,10 @@ class _DeckListScreenState extends State<DeckListScreen> {
                   context.go('/decks/${deck.id}');
                 },
                 onDelete: () async {
+                  final deckProvider = context.read<DeckProvider>();
                   final confirmed = await _showDeleteDialog(context, deck.name);
                   if (confirmed == true) {
-                    await context.read<DeckProvider>().deleteDeck(deck.id);
+                    await deckProvider.deleteDeck(deck.id);
                   }
                 },
               );

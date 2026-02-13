@@ -202,20 +202,20 @@ class CardValidationService {
   }
 
   /// Sanitiza e valida nomes de cartas sugeridos pela IA
-  /// Remove caracteres especiais, corrige capitalização, etc.
+  /// Remove apenas caracteres de controle/perigosos.
+  /// NÃO altera capitalização — a busca no DB usa LOWER() e a IA
+  /// geralmente retorna nomes corretos. Forçar Title Case quebra nomes
+  /// como "AEther Vial", "Lim-Dûl's Vault", "Jötun Grunt".
   static String sanitizeCardName(String name) {
     // Remove espaços extras
     var cleaned = name.trim().replaceAll(RegExp(r'\s+'), ' ');
     
-    // Remove caracteres problemáticos mas mantém aspas e apóstrofos
-    // Regex corrigido: hífen no final para evitar escape
-    cleaned = cleaned.replaceAll(RegExp(r"[^\w\s',-]"), '');
+    // Remove apenas caracteres de controle e zero-width, preserva unicode
+    // (acentos, ligaduras como Æ, tremas, etc. são válidos em nomes de cartas)
+    cleaned = cleaned.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
     
-    // Capitalização: primeira letra de cada palavra em maiúscula
-    cleaned = cleaned.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+    // Remove "(Set Code)" que a IA às vezes inclui: "Sol Ring (CMR)" → "Sol Ring"
+    cleaned = cleaned.replaceAll(RegExp(r'\s*\([A-Za-z0-9]+\)\s*$'), '');
 
     return cleaned;
   }

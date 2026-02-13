@@ -24,7 +24,9 @@ Future<Response> _getMe(RequestContext context) async {
   try {
     final result = await pool.execute(
       Sql.named('''
-        SELECT id, username, email, display_name, avatar_url, created_at, updated_at
+        SELECT id, username, email, display_name, avatar_url,
+               location_state, location_city, trade_notes,
+               created_at, updated_at
         FROM users
         WHERE id = @id
         LIMIT 1
@@ -51,9 +53,10 @@ Future<Response> _getMe(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Falha ao buscar perfil: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Falha ao buscar perfil', 'details': e.toString()},
+      body: {'error': 'Falha ao buscar perfil'},
     );
   }
 }
@@ -100,6 +103,39 @@ Future<Response> _patchMe(RequestContext context) async {
     params['avatar_url'] = (value == null || value.isEmpty) ? null : value;
   }
 
+  // Location state (UF)
+  if (body.containsKey('location_state')) {
+    final raw = body['location_state'];
+    final value = raw == null ? null : raw.toString().trim().toUpperCase();
+    if (value != null && value.isNotEmpty && value.length != 2) {
+      return Response.json(statusCode: HttpStatus.badRequest, body: {'error': 'location_state deve ter 2 caracteres (UF)'});
+    }
+    updateFields.add('location_state = @location_state');
+    params['location_state'] = (value == null || value.isEmpty) ? null : value;
+  }
+
+  // Location city
+  if (body.containsKey('location_city')) {
+    final raw = body['location_city'];
+    final value = raw == null ? null : raw.toString().trim();
+    if (value != null && value.length > 100) {
+      return Response.json(statusCode: HttpStatus.badRequest, body: {'error': 'location_city muito longa (max 100)'});
+    }
+    updateFields.add('location_city = @location_city');
+    params['location_city'] = (value == null || value.isEmpty) ? null : value;
+  }
+
+  // Trade notes
+  if (body.containsKey('trade_notes')) {
+    final raw = body['trade_notes'];
+    final value = raw == null ? null : raw.toString().trim();
+    if (value != null && value.length > 500) {
+      return Response.json(statusCode: HttpStatus.badRequest, body: {'error': 'trade_notes muito longa (max 500)'});
+    }
+    updateFields.add('trade_notes = @trade_notes');
+    params['trade_notes'] = (value == null || value.isEmpty) ? null : value;
+  }
+
   if (updateFields.isEmpty) {
     return Response.json(statusCode: HttpStatus.badRequest, body: {'error': 'Nada para atualizar'});
   }
@@ -111,7 +147,9 @@ Future<Response> _patchMe(RequestContext context) async {
         SET ${updateFields.join(', ')},
             updated_at = CURRENT_TIMESTAMP
         WHERE id = @id
-        RETURNING id, username, email, display_name, avatar_url, created_at, updated_at
+        RETURNING id, username, email, display_name, avatar_url,
+                  location_state, location_city, trade_notes,
+                  created_at, updated_at
       '''),
       parameters: params,
     );
@@ -129,15 +167,19 @@ Future<Response> _patchMe(RequestContext context) async {
           'email': map['email'],
           'display_name': map['display_name'],
           'avatar_url': map['avatar_url'],
+          'location_state': map['location_state'],
+          'location_city': map['location_city'],
+          'trade_notes': map['trade_notes'],
           'created_at': (map['created_at'] as DateTime?)?.toIso8601String(),
           'updated_at': (map['updated_at'] as DateTime?)?.toIso8601String(),
         },
       },
     );
   } catch (e) {
+    print('[ERROR] Falha ao atualizar perfil: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Falha ao atualizar perfil', 'details': e.toString()},
+      body: {'error': 'Falha ao atualizar perfil'},
     );
   }
 }
@@ -146,6 +188,9 @@ Future<void> _ensureUserProfileColumns(Pool pool) async {
   // Idempotente e rápido; evita quebrar deploys onde o schema ainda não foi aplicado.
   await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT'));
   await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT'));
+  await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS location_state VARCHAR(2)'));
+  await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS location_city VARCHAR(100)'));
+  await pool.execute(Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS trade_notes TEXT'));
   await pool.execute(
     Sql.named('ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP'),
   );

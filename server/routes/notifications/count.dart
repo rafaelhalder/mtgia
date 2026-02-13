@@ -23,9 +23,10 @@ Future<Response> onRequest(RequestContext context) async {
 
     return Response.json(body: {'unread': unread});
   } catch (e) {
+    print('[ERROR] Erro ao contar notificações: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao contar notificações: $e'},
+      body: {'error': 'Erro ao contar notificações'},
     );
   }
 }

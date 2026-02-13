@@ -67,9 +67,10 @@ Future<Response> _searchRules(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Failed to search rules: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to search rules: $e'},
+      body: {'error': 'Failed to search rules'},
     );
   }
 }

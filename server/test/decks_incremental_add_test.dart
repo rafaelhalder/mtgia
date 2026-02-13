@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
@@ -9,6 +10,10 @@ import 'package:test/test.dart';
 ///
 /// Requer servidor rodando em http://localhost:8080.
 void main() {
+  final skipIntegration = Platform.environment['RUN_INTEGRATION_TESTS'] == '1'
+      ? null
+      : 'Requer servidor rodando (defina RUN_INTEGRATION_TESTS=1).';
+
   const baseUrl = 'http://localhost:8080';
 
   const testUser = {
@@ -141,8 +146,9 @@ void main() {
     await Future.delayed(const Duration(milliseconds: 200));
   });
 
-  test('POST /decks/:id/cards should add commander and block outside identity',
-      () async {
+  test(
+    'POST /decks/:id/cards should add commander and block outside identity',
+    () async {
     final token = await getAuthToken();
     final deckId = await createDeck(token, format: 'commander');
 
@@ -187,11 +193,11 @@ void main() {
     final addOutsideRes =
         await addCard(token, deckId: deckId, cardId: outsideId, quantity: 1);
     expect(addOutsideRes.statusCode, equals(400), reason: addOutsideRes.body);
-  });
+  }, skip: skipIntegration);
 
   test(
-      'POST /decks/:id/validate should fail when deck is not complete (Commander=100)',
-      () async {
+    'POST /decks/:id/validate should fail when deck is not complete (Commander=100)',
+    () async {
     final token = await getAuthToken();
     final deckId = await createDeck(token, format: 'commander');
 
@@ -218,5 +224,5 @@ void main() {
 
     final validateRes = await validateDeck(token, deckId);
     expect(validateRes.statusCode, equals(400), reason: validateRes.body);
-  });
+  }, skip: skipIntegration);
 }

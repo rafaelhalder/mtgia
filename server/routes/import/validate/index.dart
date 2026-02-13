@@ -230,7 +230,7 @@ Future<Response> _validateList(RequestContext context) async {
         'SELECT c.name, cl.status FROM card_legalities cl JOIN cards c ON c.id = cl.card_id WHERE cl.card_id = ANY(@ids) AND cl.format = @format'
       ),
       parameters: {
-        'ids': TypedValue(Type.textArray, cardIdsToCheck),
+        'ids': TypedValue(Type.uuidArray, cardIdsToCheck),
         'format': format,
       }
     );

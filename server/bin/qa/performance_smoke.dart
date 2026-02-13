@@ -4,14 +4,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
-/// Smoke test de performance para endpoints críticos
+/// Smoke test manual de performance para endpoints críticos
 /// 
 /// Mede tempo de resposta para:
 /// - GET /decks/:id (detalhes do deck)
 /// - POST /decks/:id/cards (adicionar carta)
 /// - GET /cards (busca de cartas)
 /// 
-/// Uso: dart run test/performance_smoke_test.dart
+/// Uso: dart run bin/qa/performance_smoke.dart
 void main() async {
   final baseUrl = Platform.environment['BASE_URL'] ?? 'http://localhost:8080';
   

@@ -56,6 +56,7 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   } on Exception catch (e) {
+    print('[ERROR] handler: $e');
     // Erros de negócio (credenciais inválidas, etc)
     final message = e.toString().replaceFirst('Exception: ', '');
     
@@ -71,6 +72,7 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'message': message},
     );
   } catch (e) {
+    print('[ERROR] handler: $e');
     print('Erro ao fazer login: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,

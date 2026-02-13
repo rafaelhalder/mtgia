@@ -59,8 +59,9 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
   void _onScroll() {
     final provider = context.read<CardProvider>();
-    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore)
+    if (!provider.hasMore || provider.isLoading || provider.isLoadingMore) {
       return;
+    }
     final position = _scrollController.position;
     if (!position.hasPixels) return;
     if (position.pixels >= position.maxScrollExtent - 240) {
@@ -134,7 +135,7 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
         isCommander: false,
       );
 
-      if (!context.mounted) return;
+      if (!mounted) return;
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,13 +156,15 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
     showDialog(
       context: context,
       builder:
-          (context) => _AddCardDialog(
+          (dialogContext) => _AddCardDialog(
             card: card,
             deckFormat: format,
             hasCommanderSelected: (deck?.commander.isNotEmpty ?? false),
             forceCommander: mustPickCommanderFirst || isCommanderMode,
             canAddByCommanderIdentity: canOpenAddDialog,
             onConfirm: (quantity, isCommander) async {
+              Navigator.pop(dialogContext);
+
               final provider = context.read<DeckProvider>();
               final success = await provider.addCardToDeck(
                 widget.deckId,
@@ -170,8 +173,7 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                 isCommander: isCommander,
               );
 
-              if (!context.mounted) return;
-              Navigator.pop(context);
+              if (!mounted) return;
 
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -204,37 +206,29 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText:
-                    widget.isBinderMode
-                        ? 'Buscar carta para o fichário...'
-                        : isCommanderMode
-                            ? 'Buscar comandante...'
-                            : 'Buscar cartas...',
-                border: InputBorder.none,
-                hintStyle: const TextStyle(color: Colors.white70),
-              ),
-              style: const TextStyle(color: Colors.white),
-              cursorColor: Colors.white,
+        titleSpacing: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            autofocus: true,
+            textAlignVertical: TextAlignVertical.center,
+            decoration: InputDecoration(
+              hintText:
+                  widget.isBinderMode
+                      ? 'Buscar carta para o fichário...'
+                      : isCommanderMode
+                          ? 'Buscar comandante...'
+                          : 'Buscar cartas...',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+              hintStyle: const TextStyle(color: Colors.white54, fontSize: 16),
             ),
-            if (isCommanderMode)
-              const Text(
-                'Modo comandante',
-                style: TextStyle(fontSize: AppTheme.fontSm, color: Colors.white70),
-              ),
-            if (widget.isBinderMode)
-              const Text(
-                'Modo fichário',
-                style: TextStyle(fontSize: AppTheme.fontSm, color: Colors.white70),
-              ),
-          ],
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            cursorColor: Colors.white,
+          ),
         ),
       ),
       body: Consumer<CardProvider>(
@@ -299,38 +293,77 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                   ),
                 ),
                 title: Text(card.name),
-                subtitle: Text(
-                  [
-                    card.typeLine,
-                    if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
-                    if ((card.setReleaseDate ?? '').trim().isNotEmpty)
-                      card.setReleaseDate!,
-                    if (!widget.isBinderMode && mustPickCommanderFirst && !isCommanderEligible)
-                      'Selecione um comandante primeiro',
-                    if (!widget.isBinderMode &&
-                        !mustPickCommanderFirst &&
-                        isCommanderFormat &&
-                        commanderIdentity != null &&
-                        !allowedByIdentity)
-                      'Fora da identidade do comandante',
-                  ].join(' • '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                subtitle: widget.isBinderMode
+                    ? Row(
+                        children: [
+                          if (card.setCode.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.manaViolet.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppTheme.manaViolet.withValues(alpha: 0.4)),
+                              ),
+                              child: Text(
+                                card.setCode.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.manaViolet,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          Flexible(
+                            child: Text(
+                              [
+                                if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
+                                if ((card.setReleaseDate ?? '').trim().isNotEmpty)
+                                  card.setReleaseDate!.substring(0, 4),
+                                card.rarity.isNotEmpty
+                                    ? card.rarity[0].toUpperCase() + card.rarity.substring(1)
+                                    : '',
+                              ].where((s) => s.isNotEmpty).join(' • '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        [
+                          card.typeLine,
+                          if ((card.setName ?? '').trim().isNotEmpty) card.setName!,
+                          if ((card.setReleaseDate ?? '').trim().isNotEmpty)
+                            card.setReleaseDate!,
+                          if (mustPickCommanderFirst && !isCommanderEligible)
+                            'Selecione um comandante primeiro',
+                          if (!mustPickCommanderFirst &&
+                              isCommanderFormat &&
+                              commanderIdentity != null &&
+                              !allowedByIdentity)
+                            'Fora da identidade do comandante',
+                        ].join(' • '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                 trailing: IconButton(
                   icon: const Icon(Icons.add_circle_outline),
                   onPressed: canAdd
                       ? () {
                           if (widget.isBinderMode) {
-                            widget.onCardSelectedForBinder?.call({
+                            final cardData = {
                               'id': card.id,
                               'name': card.name,
                               'image_url': card.imageUrl,
                               'set_code': card.setCode,
                               'mana_cost': card.manaCost,
                               'rarity': card.rarity,
-                            });
+                            };
                             Navigator.pop(context);
+                            widget.onCardSelectedForBinder?.call(cardData);
                           } else {
                             _addCardToDeck(card);
                           }

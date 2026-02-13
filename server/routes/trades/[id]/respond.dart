@@ -22,44 +22,21 @@ Future<Response> onRequest(RequestContext context, String id) async {
       );
     }
 
-    // Buscar trade
-    final tradeResult = await pool.execute(Sql.named('''
-      SELECT id, sender_id, receiver_id, status
-      FROM trade_offers WHERE id = @id
-    '''), parameters: {'id': id});
-
-    if (tradeResult.isEmpty) {
-      return Response.json(
-        statusCode: HttpStatus.notFound,
-        body: {'error': 'Trade não encontrado'},
-      );
-    }
-
-    final trade = tradeResult.first.toColumnMap();
-
-    // Só o receiver pode responder
-    if (trade['receiver_id'] != userId) {
-      return Response.json(
-        statusCode: HttpStatus.forbidden,
-        body: {'error': 'Apenas o destinatário pode aceitar/recusar'},
-      );
-    }
-
-    // Só se o status for pending
-    if (trade['status'] != 'pending') {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'Trade não está pendente (status atual: ${trade['status']})'},
-      );
-    }
-
     final newStatus = action == 'accept' ? 'accepted' : 'declined';
 
-    await pool.runTx((session) async {
-      await session.execute(Sql.named('''
-        UPDATE trade_offers SET status = @newStatus, updated_at = CURRENT_TIMESTAMP
-        WHERE id = @id
-      '''), parameters: {'id': id, 'newStatus': newStatus});
+    // Atomic: UPDATE ... WHERE status = 'pending' evita race condition (TOCTOU)
+    late final String senderId;
+    final success = await pool.runTx((session) async {
+      // UPDATE atômico: só altera se status ainda é 'pending' E user é o receiver
+      final updateResult = await session.execute(Sql.named('''
+        UPDATE trade_offers
+        SET status = @newStatus, updated_at = CURRENT_TIMESTAMP
+        WHERE id = @id AND status = 'pending' AND receiver_id = @userId
+        RETURNING sender_id
+      '''), parameters: {'id': id, 'newStatus': newStatus, 'userId': userId});
+
+      if (updateResult.isEmpty) return false;
+      senderId = updateResult.first.toColumnMap()['sender_id'] as String;
 
       await session.execute(Sql.named('''
         INSERT INTO trade_status_history (trade_offer_id, old_status, new_status, changed_by, notes)
@@ -70,7 +47,33 @@ Future<Response> onRequest(RequestContext context, String id) async {
         'userId': userId,
         'notes': action == 'accept' ? 'Proposta aceita' : 'Proposta recusada',
       });
+      return true;
     });
+
+    if (success != true) {
+      // Determinar motivo: trade não existe, user não é receiver, ou status mudou
+      final check = await pool.execute(
+        Sql.named('SELECT receiver_id, status FROM trade_offers WHERE id = @id'),
+        parameters: {'id': id},
+      );
+      if (check.isEmpty) {
+        return Response.json(
+          statusCode: HttpStatus.notFound,
+          body: {'error': 'Trade não encontrado'},
+        );
+      }
+      final row = check.first.toColumnMap();
+      if (row['receiver_id'] != userId) {
+        return Response.json(
+          statusCode: HttpStatus.forbidden,
+          body: {'error': 'Apenas o destinatário pode aceitar/recusar'},
+        );
+      }
+      return Response.json(
+        statusCode: HttpStatus.badRequest,
+        body: {'error': 'Trade não está pendente (status atual: ${row['status']})'},
+      );
+    }
 
     // 🔔 Notificação: trade aceito/recusado → notificar o sender
     final responderInfo = await pool.execute(
@@ -81,7 +84,6 @@ Future<Response> onRequest(RequestContext context, String id) async {
         ? (responderInfo.first.toColumnMap()['display_name'] ??
             responderInfo.first.toColumnMap()['username']) as String
         : 'Alguém';
-    final senderId = trade['sender_id'] as String;
     await NotificationService.create(
       pool: pool,
       userId: senderId,
@@ -98,9 +100,10 @@ Future<Response> onRequest(RequestContext context, String id) async {
       'message': action == 'accept' ? 'Trade aceito!' : 'Trade recusado.',
     });
   } catch (e) {
+    print('[ERROR] Erro ao responder trade $id: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao responder trade: $e'},
+      body: {'error': 'Erro interno ao responder trade'},
     );
   }
 }

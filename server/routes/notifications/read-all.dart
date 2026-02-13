@@ -25,9 +25,10 @@ Future<Response> onRequest(RequestContext context) async {
       'marked_read': result.affectedRows,
     });
   } catch (e) {
+    print('[ERROR] Erro ao marcar todas como lidas: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao marcar todas como lidas: $e'},
+      body: {'error': 'Erro ao marcar todas como lidas'},
     );
   }
 }

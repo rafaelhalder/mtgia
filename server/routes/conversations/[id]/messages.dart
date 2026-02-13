@@ -88,9 +88,10 @@ Future<Response> _getMessages(RequestContext context, String id) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Erro ao buscar mensagens: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao buscar mensagens: $e'},
+      body: {'error': 'Erro ao buscar mensagens'},
     );
   }
 }
@@ -186,9 +187,10 @@ Future<Response> _postMessage(RequestContext context, String id) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Erro ao enviar mensagem: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao enviar mensagem: $e'},
+      body: {'error': 'Erro ao enviar mensagem'},
     );
   }
 }

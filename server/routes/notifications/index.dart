@@ -63,9 +63,10 @@ Future<Response> onRequest(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Erro ao listar notificações: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao listar notificações: $e'},
+      body: {'error': 'Erro ao listar notificações'},
     );
   }
 }

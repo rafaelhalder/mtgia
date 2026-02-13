@@ -182,9 +182,10 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Failed to price deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to price deck: $e'},
+      body: {'error': 'Failed to price deck'},
     );
   }
 }

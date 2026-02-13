@@ -166,4 +166,13 @@ class NotificationProvider extends ChangeNotifier {
       debugPrint('[NotificationProvider] markAllAsRead error: $e');
     }
   }
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    stopPolling();
+    _notifications = [];
+    _unreadCount = 0;
+    _isLoading = false;
+    notifyListeners();
+  }
 }

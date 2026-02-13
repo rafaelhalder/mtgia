@@ -443,7 +443,7 @@ class _DeckImportScreenState extends State<DeckImportScreen> {
 
             // Formato
             DropdownButtonFormField<String>(
-              value: _selectedFormat,
+              initialValue: _selectedFormat,
               decoration: const InputDecoration(
                 labelText: 'Formato *',
                 border: OutlineInputBorder(),

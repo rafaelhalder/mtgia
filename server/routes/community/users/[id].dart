@@ -92,7 +92,7 @@ Future<Response> _getUserProfile(RequestContext context, String userId) async {
           d.created_at,
           COALESCE(SUM(dc.quantity), 0)::int as card_count,
           cmd.commander_name,
-          cmd.commander_image_url
+          COALESCE(cmd.commander_image_url, first_card.first_image_url) as commander_image_url
         FROM decks d
         LEFT JOIN LATERAL (
           SELECT
@@ -104,9 +104,19 @@ Future<Response> _getUserProfile(RequestContext context, String userId) async {
             AND dc_cmd.is_commander = true
           LIMIT 1
         ) cmd ON true
+        LEFT JOIN LATERAL (
+          SELECT c.image_url as first_image_url
+          FROM deck_cards dc_fc
+          JOIN cards c ON c.id = dc_fc.card_id
+          WHERE dc_fc.deck_id = d.id
+            AND c.image_url IS NOT NULL
+            AND c.image_url != ''
+          ORDER BY dc_fc.quantity DESC, c.name
+          LIMIT 1
+        ) first_card ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE d.user_id = @userId AND d.is_public = true
-        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url
+        GROUP BY d.id, cmd.commander_name, cmd.commander_image_url, first_card.first_image_url
         ORDER BY d.created_at DESC
         LIMIT 50
       '''),
@@ -126,9 +136,10 @@ Future<Response> _getUserProfile(RequestContext context, String userId) async {
       'public_decks': decks,
     });
   } catch (e) {
+    print('[ERROR] Internal server error: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error', 'details': '$e'},
+      body: {'error': 'Internal server error'},
     );
   }
 }

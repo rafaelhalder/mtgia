@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' show Offset, Rect, Size;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -69,7 +68,7 @@ class CardRecognitionService {
   };
 
   /// Padrões que indicam linha de crédito do artista.
-  /// Cartas MTG mostram "Ill. by <Artista>" ou "Illus. <Artista>" perto
+  /// Cartas MTG mostram `Ill. by (Artista)` ou `Illus. (Artista)` perto
   /// do texto de tipo/poder. Estes aparecem geralmente em 55-85% da altura.
   static final _artistLinePatterns = <RegExp>[
     // "Ill." "Illus." "Illus" no início
@@ -650,8 +649,25 @@ class CardRecognitionService {
       // Set codes têm 2-5 caracteres e normalmente 3
       if (candidate.length < 2 || candidate.length > 5) continue;
       // Ignora tokens que parecem ser parte de texto de artista/copyright
-      if ({'TM', 'LLC', 'INC', 'CO', 'BY', 'OF', 'II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'XI', 'XII'}
-          .contains(candidate)) continue;
+      if ({
+        'TM',
+        'LLC',
+        'INC',
+        'CO',
+        'BY',
+        'OF',
+        'II',
+        'III',
+        'IV',
+        'VI',
+        'VII',
+        'VIII',
+        'IX',
+        'XI',
+        'XII',
+      }.contains(candidate)) {
+        continue;
+      }
       setCode = candidate;
       break;
     }

@@ -95,9 +95,10 @@ Future<Response> _listConversations(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Erro ao listar conversas: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao listar conversas: $e'},
+      body: {'error': 'Erro ao listar conversas'},
     );
   }
 }
@@ -170,9 +171,10 @@ Future<Response> _createConversation(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Erro ao criar conversa: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao criar conversa: $e'},
+      body: {'error': 'Erro ao criar conversa'},
     );
   }
 }

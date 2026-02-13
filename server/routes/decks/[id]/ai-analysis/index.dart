@@ -165,9 +165,10 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Failed to analyze deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze deck: $e'},
+      body: {'error': 'Failed to analyze deck'},
     );
   }
 }

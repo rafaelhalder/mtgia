@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/cached_card_image.dart';
+import '../../trades/screens/create_trade_screen.dart';
 import '../providers/binder_provider.dart';
 
 /// Widget embeddable para uso como tab dentro do CollectionScreen.
@@ -255,265 +256,38 @@ class _MarketplaceTabContentState extends State<MarketplaceTabContent>
             final ownerId = provider.marketItems[index].ownerId;
             context.push('/community/user/$ownerId');
           },
-        );
-      },
-    );
-  }
-}
-
-/// Tela Marketplace — busca global de cartas para troca/venda (rota standalone)
-class MarketplaceScreen extends StatefulWidget {
-  const MarketplaceScreen({super.key});
-
-  @override
-  State<MarketplaceScreen> createState() => _MarketplaceScreenState();
-}
-
-class _MarketplaceScreenState extends State<MarketplaceScreen> {
-  final _scrollController = ScrollController();
-  final _searchController = TextEditingController();
-  String? _conditionFilter;
-  bool _onlyTrade = false;
-  bool _onlySale = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _doSearch();
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      final provider = context.read<BinderProvider>();
-      if (provider.hasMoreMarket && !provider.isLoadingMarket) {
-        provider.fetchMarketplace(
-          search: _searchController.text.trim(),
-          condition: _conditionFilter,
-          forTrade: _onlyTrade ? true : null,
-          forSale: _onlySale ? true : null,
-        );
-      }
-    }
-  }
-
-  void _doSearch() {
-    context.read<BinderProvider>().fetchMarketplace(
-          search: _searchController.text.trim(),
-          condition: _conditionFilter,
-          forTrade: _onlyTrade ? true : null,
-          forSale: _onlySale ? true : null,
-          reset: true,
-        );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundAbyss,
-      appBar: AppBar(
-        title: const Text('Marketplace'),
-        backgroundColor: AppTheme.surfaceSlate2,
-      ),
-      body: Consumer<BinderProvider>(
-        builder: (context, provider, _) {
-          return Column(
-            children: [
-              // Search bar
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: TextField(
-                  controller: _searchController,
-                  onSubmitted: (_) => _doSearch(),
-                  style: const TextStyle(
-                      color: AppTheme.textPrimary, fontSize: AppTheme.fontMd),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar carta no marketplace...',
-                    hintStyle:
-                        const TextStyle(color: AppTheme.textSecondary),
-                    prefixIcon: const Icon(Icons.search,
-                        color: AppTheme.textSecondary),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.clear,
-                          color: AppTheme.textSecondary),
-                      onPressed: () {
-                        _searchController.clear();
-                        _doSearch();
-                      },
-                    ),
-                    filled: true,
-                    fillColor: AppTheme.surfaceSlate,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 0),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+          onTradeTap: () {
+            final mktItem = provider.marketItems[index];
+            // Convert to BinderItem for CreateTradeScreen
+            final binderItem = BinderItem(
+              id: mktItem.id,
+              cardId: mktItem.cardId,
+              cardName: mktItem.cardName,
+              cardImageUrl: mktItem.cardImageUrl,
+              cardSetCode: mktItem.cardSetCode,
+              quantity: mktItem.quantity,
+              condition: mktItem.condition,
+              isFoil: mktItem.isFoil,
+              forTrade: mktItem.forTrade,
+              forSale: mktItem.forSale,
+              price: mktItem.price,
+              listType: 'have',
+            );
+            final type = mktItem.forSale && !mktItem.forTrade
+                ? 'sale'
+                : mktItem.forTrade && !mktItem.forSale
+                    ? 'trade'
+                    : 'mixed';
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CreateTradeScreen(
+                  receiverId: mktItem.ownerId,
+                  initialType: type,
+                  preselectedItem: binderItem,
                 ),
               ),
-
-              // Filter chips
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      // Condition
-                      _ConditionDropdown(
-                        value: _conditionFilter,
-                        onChanged: (v) {
-                          setState(() => _conditionFilter = v);
-                          _doSearch();
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Troca'),
-                        selected: _onlyTrade,
-                        onSelected: (v) {
-                          setState(() => _onlyTrade = v);
-                          _doSearch();
-                        },
-                        selectedColor:
-                            AppTheme.loomCyan.withValues(alpha: 0.3),
-                        backgroundColor: AppTheme.surfaceSlate,
-                        labelStyle: TextStyle(
-                          color: _onlyTrade
-                              ? AppTheme.loomCyan
-                              : AppTheme.textSecondary,
-                          fontSize: AppTheme.fontSm,
-                        ),
-                        side: BorderSide(
-                          color: _onlyTrade
-                              ? AppTheme.loomCyan
-                              : AppTheme.outlineMuted,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Venda'),
-                        selected: _onlySale,
-                        onSelected: (v) {
-                          setState(() => _onlySale = v);
-                          _doSearch();
-                        },
-                        selectedColor:
-                            AppTheme.mythicGold.withValues(alpha: 0.3),
-                        backgroundColor: AppTheme.surfaceSlate,
-                        labelStyle: TextStyle(
-                          color: _onlySale
-                              ? AppTheme.mythicGold
-                              : AppTheme.textSecondary,
-                          fontSize: AppTheme.fontSm,
-                        ),
-                        side: BorderSide(
-                          color: _onlySale
-                              ? AppTheme.mythicGold
-                              : AppTheme.outlineMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-
-              // List
-              Expanded(child: _buildList(provider)),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildList(BinderProvider provider) {
-    if (provider.isLoadingMarket && provider.marketItems.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.manaViolet),
-      );
-    }
-
-    if (provider.marketError != null && provider.marketItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline,
-                size: 48, color: AppTheme.textSecondary),
-            const SizedBox(height: 12),
-            Text(provider.marketError!,
-                style: const TextStyle(color: AppTheme.textSecondary)),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _doSearch,
-              child: const Text('Tentar novamente'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (provider.marketItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.store,
-                size: 64,
-                color: AppTheme.textSecondary.withValues(alpha: 0.4)),
-            const SizedBox(height: 16),
-            const Text(
-              'Nenhuma carta encontrada',
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: AppTheme.fontLg,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tente outra busca ou filtro',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(12),
-      itemCount:
-          provider.marketItems.length + (provider.hasMoreMarket ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= provider.marketItems.length) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child:
-                  CircularProgressIndicator(color: AppTheme.manaViolet),
-            ),
-          );
-        }
-        return _MarketplaceCard(
-          item: provider.marketItems[index],
-          onOwnerTap: () {
-            final ownerId = provider.marketItems[index].ownerId;
-            context.push('/community/user/$ownerId');
+            );
           },
         );
       },
@@ -521,9 +295,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 }
 
-// =====================================================================
-// Condition dropdown (reusable)
-// =====================================================================
 
 class _ConditionDropdown extends StatelessWidget {
   final String? value;
@@ -578,8 +349,9 @@ class _ConditionDropdown extends StatelessWidget {
 class _MarketplaceCard extends StatelessWidget {
   final MarketplaceItem item;
   final VoidCallback? onOwnerTap;
+  final VoidCallback? onTradeTap;
 
-  const _MarketplaceCard({required this.item, this.onOwnerTap});
+  const _MarketplaceCard({required this.item, this.onOwnerTap, this.onTradeTap});
 
   @override
   Widget build(BuildContext context) {
@@ -661,7 +433,7 @@ class _MarketplaceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
 
-                  // Owner
+                  // Owner + location
                   GestureDetector(
                     onTap: onOwnerTap,
                     child: Row(
@@ -687,16 +459,101 @@ class _MarketplaceCard extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(width: 6),
-                        Text(
-                          item.ownerDisplayLabel,
-                          style: const TextStyle(
-                            color: AppTheme.loomCyan,
-                            fontSize: AppTheme.fontSm,
+                        Flexible(
+                          child: Text(
+                            item.ownerDisplayLabel,
+                            style: const TextStyle(
+                              color: AppTheme.loomCyan,
+                              fontSize: AppTheme.fontSm,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (item.ownerLocationLabel != null) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.location_on,
+                              size: 12, color: AppTheme.textSecondary.withValues(alpha: 0.6)),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              item.ownerLocationLabel!,
+                              style: TextStyle(
+                                color: AppTheme.textSecondary.withValues(alpha: 0.8),
+                                fontSize: AppTheme.fontXs,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // Trade notes
+                  if (item.ownerTradeNotes != null &&
+                      item.ownerTradeNotes!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 12,
+                            color: AppTheme.textSecondary.withValues(alpha: 0.6)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            item.ownerTradeNotes!,
+                            style: TextStyle(
+                              color: AppTheme.textSecondary.withValues(alpha: 0.7),
+                              fontSize: AppTheme.fontXs,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
+
+                  // ── Interaction button ──
+                  if (onTradeTap != null) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 32,
+                      child: OutlinedButton.icon(
+                        onPressed: onTradeTap,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: item.forSale
+                              ? AppTheme.mythicGold
+                              : AppTheme.loomCyan,
+                          side: BorderSide(
+                            color: (item.forSale
+                                    ? AppTheme.mythicGold
+                                    : AppTheme.loomCyan)
+                                .withValues(alpha: 0.5),
+                          ),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppTheme.radiusSm),
+                          ),
+                        ),
+                        icon: Icon(
+                          item.forSale
+                              ? Icons.shopping_cart_outlined
+                              : Icons.swap_horiz,
+                          size: 14,
+                        ),
+                        label: Text(
+                          item.forSale ? 'Quero comprar' : 'Propor troca',
+                          style:
+                              const TextStyle(fontSize: AppTheme.fontSm),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

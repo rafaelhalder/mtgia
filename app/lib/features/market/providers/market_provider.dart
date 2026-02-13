@@ -18,10 +18,26 @@ class MarketProvider extends ChangeNotifier {
 
   MarketProvider({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
+  /// Cache TTL de 5 minutos para evitar refetch a cada troca de tab
+  static const _cacheTtl = Duration(minutes: 5);
+
+  /// Retorna true se o cache ainda é válido
+  bool get _isCacheValid =>
+      _lastFetch != null &&
+      _moversData != null &&
+      DateTime.now().difference(_lastFetch!) < _cacheTtl;
+
   /// Busca os market movers (gainers/losers do dia).
+  /// Retorna do cache se ainda válido (use [force] para ignorar cache).
   /// [minPrice] filtra penny stocks (default: 1.00 USD)
   /// [limit] quantidade por categoria (default: 20)
-  Future<void> fetchMovers({double minPrice = 1.0, int limit = 20}) async {
+  Future<void> fetchMovers({
+    double minPrice = 1.0,
+    int limit = 20,
+    bool force = false,
+  }) async {
+    // Retornar do cache se válido e não forçado
+    if (!force && _isCacheValid) return;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -47,8 +63,17 @@ class MarketProvider extends ChangeNotifier {
     }
   }
 
-  /// Força atualização dos dados
+  /// Força atualização dos dados (ignora cache)
   Future<void> refresh() async {
-    await fetchMovers();
+    await fetchMovers(force: true);
+  }
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    _moversData = null;
+    _isLoading = false;
+    _errorMessage = null;
+    _lastFetch = null;
+    notifyListeners();
   }
 }

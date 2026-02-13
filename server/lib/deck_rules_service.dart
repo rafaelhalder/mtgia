@@ -54,10 +54,12 @@ class DeckRulesService {
         (normalizedFormat == 'commander' || normalizedFormat == 'brawl')
             ? 1
             : 4;
+    print('[DEBUG] DeckRulesService: Validando limite de cópias (limit=$limit, format=$normalizedFormat)');
     for (final entry in copiesByName.entries) {
       final value = entry.value;
       final name = value['name'] as String? ?? entry.key;
       final qty = value['qty'] as int? ?? 0;
+      print('[DEBUG]   "$name" = $qty cópias (commander ignorado)');
       if (qty > limit) {
         throw DeckRulesException(
           'Regra violada: "$name" excede o limite de $limit cópia(s) para o formato $normalizedFormat.',
@@ -91,7 +93,10 @@ class DeckRulesService {
           (normalizedFormat == 'commander' || normalizedFormat == 'brawl')
               ? 1
               : 4;
-      if (!isBasicLand && quantity > limit) {
+      
+      // Commanders são validados separadamente pela regra quantity == 1
+      // Aqui só validamos cartas normais
+      if (!isBasicLand && !isCommander && quantity > limit) {
         throw DeckRulesException(
           'Regra violada: "${info.name}" excede o limite de $limit cópia(s) para o formato $normalizedFormat.',
           cardName: info.name,

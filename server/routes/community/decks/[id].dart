@@ -181,9 +181,10 @@ Future<Response> _getPublicDeck(RequestContext context, String deckId) async {
       'all_cards_flat': cardsList,
     });
   } catch (e) {
+    print('[ERROR] Failed to get public deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to get public deck: $e'},
+      body: {'error': 'Failed to get public deck'},
     );
   }
 }
@@ -272,13 +273,14 @@ Future<Response> _copyPublicDeck(RequestContext context, String deckId) async {
       body: {'success': true, 'deck': newDeck},
     );
   } on Exception catch (e) {
+    print('[ERROR] Failed to copy deck: $e');
     final msg = e.toString();
     if (msg.contains('not found') || msg.contains('not public')) {
       return Response.json(statusCode: 404, body: {'error': msg});
     }
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to copy deck: $e'},
+      body: {'error': 'Failed to copy deck'},
     );
   }
 }
@@ -345,7 +347,7 @@ Future<Response> _getFollowingFeed(RequestContext context) async {
           u.username as owner_username,
           u.id as owner_id,
           cmd.commander_name,
-          cmd.commander_image_url,
+          COALESCE(cmd.commander_image_url, first_card.first_image_url) as commander_image_url,
           COALESCE(SUM(dc.quantity), 0)::int as card_count
         FROM decks d
         JOIN users u ON u.id = d.user_id
@@ -360,10 +362,20 @@ Future<Response> _getFollowingFeed(RequestContext context) async {
             AND dc_cmd.is_commander = true
           LIMIT 1
         ) cmd ON true
+        LEFT JOIN LATERAL (
+          SELECT c.image_url as first_image_url
+          FROM deck_cards dc_fc
+          JOIN cards c ON c.id = dc_fc.card_id
+          WHERE dc_fc.deck_id = d.id
+            AND c.image_url IS NOT NULL
+            AND c.image_url != ''
+          ORDER BY dc_fc.quantity DESC, c.name
+          LIMIT 1
+        ) first_card ON true
         LEFT JOIN deck_cards dc ON d.id = dc.deck_id
         WHERE uf.follower_id = @userId
           AND d.is_public = true
-        GROUP BY d.id, u.username, u.id, cmd.commander_name, cmd.commander_image_url
+        GROUP BY d.id, u.username, u.id, cmd.commander_name, cmd.commander_image_url, first_card.first_image_url
         ORDER BY d.created_at DESC
         LIMIT @lim OFFSET @off
       '''),
@@ -391,9 +403,10 @@ Future<Response> _getFollowingFeed(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Internal server error: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error', 'details': '$e'},
+      body: {'error': 'Internal server error'},
     );
   }
 }

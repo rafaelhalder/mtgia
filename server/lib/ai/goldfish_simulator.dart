@@ -106,7 +106,7 @@ class GoldfishResult {
           'turn_2_play': double.parse(turn2PlayRate.toStringAsFixed(3)),
           'turn_3_play': double.parse(turn3PlayRate.toStringAsFixed(3)),
           'turn_4_play': double.parse(turn4PlayRate.toStringAsFixed(3)),
-          'cmc_distribution': cmcDistribution,
+          'cmc_distribution': cmcDistribution.map((k, v) => MapEntry(k.toString(), v)),
         },
         'recommendations': recommendations,
       };
@@ -158,27 +158,28 @@ class GoldfishSimulator {
       // Simula jogabilidade por turno
       var cardsAvailable = List<Map<String, dynamic>>.from(hand);
       var landsPlayed = 0;
+      final colorSources = <String, int>{}; // Rastreia fontes de mana colorida
 
       // Turno 1
-      if (_canPlayOnTurn(cardsAvailable, 1, landsPlayed)) {
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 1, landsPlayed, colorSources: colorSources)) {
         turn1Plays++;
-        landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed);
       }
 
       // Turno 2
       if (draws.isNotEmpty) cardsAvailable.add(draws[0]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed);
-      if (_canPlayOnTurn(cardsAvailable, 2, landsPlayed)) turn2Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 2, landsPlayed, colorSources: colorSources)) turn2Plays++;
 
       // Turno 3
       if (draws.length > 1) cardsAvailable.add(draws[1]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed);
-      if (_canPlayOnTurn(cardsAvailable, 3, landsPlayed)) turn3Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 3, landsPlayed, colorSources: colorSources)) turn3Plays++;
 
       // Turno 4
       if (draws.length > 2) cardsAvailable.add(draws[2]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed);
-      if (_canPlayOnTurn(cardsAvailable, 4, landsPlayed)) turn4Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 4, landsPlayed, colorSources: colorSources)) turn4Plays++;
     }
 
     return GoldfishResult(
@@ -223,22 +224,97 @@ class GoldfishSimulator {
     return int.tryParse(cmc.toString()) ?? 0;
   }
 
-  /// Verifica se há jogada válida no turno
-  bool _canPlayOnTurn(
-      List<Map<String, dynamic>> cards, int turn, int landsPlayed) {
-    // Mana disponível = terrenos jogados (simplificado)
-    // No turno 1, ainda não jogou terreno, então considera 1 se tiver terreno
-    final manaAvailable = turn == 1 ? 1 : landsPlayed;
-
-    // Verifica se há carta não-terreno jogável
-    return cards.any((c) => !_isLand(c) && _getCmc(c) <= manaAvailable);
+  /// Extrai requisitos de mana colorida do mana_cost (ex: "{2}{U}{U}" → {U: 2})
+  Map<String, int> _getColorRequirements(Map<String, dynamic> card) {
+    final manaCost = (card['mana_cost'] ?? '').toString();
+    if (manaCost.isEmpty) return const {};
+    final colorCounts = <String, int>{};
+    final matches = RegExp(r'\{([^}]+)\}').allMatches(manaCost);
+    for (final m in matches) {
+      final symbol = m.group(1)!.toUpperCase();
+      if ({'W', 'U', 'B', 'R', 'G'}.contains(symbol)) {
+        colorCounts[symbol] = (colorCounts[symbol] ?? 0) + 1;
+      }
+      // Phyrexian mana (W/P, U/P, etc.) — counts as the color
+      if (symbol.contains('/P') && symbol.length >= 3) {
+        final color = symbol.substring(0, 1);
+        if ({'W', 'U', 'B', 'R', 'G'}.contains(color)) {
+          colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+        }
+      }
+      // Hybrid mana (W/U) — requires EITHER, pick the one we have more of.
+      // For simulation simplicity, treat as generic (no strict color req).
+    }
+    return colorCounts;
   }
 
-  /// Simula jogar um terreno se possível
-  int _playLandIfPossible(List<Map<String, dynamic>> cards, int landsPlayed) {
+  /// Determina quais cores um terreno pode produzir (heurística via oracle/type/name)
+  Set<String> _getLandColors(Map<String, dynamic> card) {
+    final oracle = (card['oracle_text'] ?? '').toString().toLowerCase();
+    final typeLine = (card['type_line'] ?? '').toString().toLowerCase();
+    final producedColors = <String>{};
+
+    // Basic land types in type_line (Dual lands, Shocks, etc.)
+    if (typeLine.contains('plains')) producedColors.add('W');
+    if (typeLine.contains('island')) producedColors.add('U');
+    if (typeLine.contains('swamp')) producedColors.add('B');
+    if (typeLine.contains('mountain')) producedColors.add('R');
+    if (typeLine.contains('forest')) producedColors.add('G');
+
+    // "Add {X}" patterns in oracle text
+    if (oracle.contains('{w}') || oracle.contains('add {w')) producedColors.add('W');
+    if (oracle.contains('{u}') || oracle.contains('add {u')) producedColors.add('U');
+    if (oracle.contains('{b}') || oracle.contains('add {b')) producedColors.add('B');
+    if (oracle.contains('{r}') || oracle.contains('add {r')) producedColors.add('R');
+    if (oracle.contains('{g}') || oracle.contains('add {g')) producedColors.add('G');
+
+    // "Mana of any color" / "mana of any type"
+    if (oracle.contains('any color') || oracle.contains('any type')) {
+      producedColors.addAll(['W', 'U', 'B', 'R', 'G']);
+    }
+
+    // Wastes / colorless lands: produce no color (just generic mana)
+    // If we couldn't detect any color, it's a colorless source
+    return producedColors;
+  }
+
+  /// Verifica se há jogada válida no turno, considerando mana colorida
+  bool _canPlayOnTurn(
+      List<Map<String, dynamic>> cards, int turn, int landsPlayed,
+      {Map<String, int> colorSources = const {}}) {
+    // Mana total disponível = terrenos jogados
+    final manaAvailable = turn == 1 ? 1 : landsPlayed;
+
+    return cards.any((c) {
+      if (_isLand(c)) return false;
+      final cmc = _getCmc(c);
+      if (cmc > manaAvailable) return false;
+
+      // Verificar requisitos de mana colorida
+      final colorReqs = _getColorRequirements(c);
+      if (colorReqs.isEmpty) return true; // Carta genérica/colorless: ok
+
+      for (final entry in colorReqs.entries) {
+        final available = colorSources[entry.key] ?? 0;
+        if (available < entry.value) return false;
+      }
+      return true;
+    });
+  }
+
+  /// Simula jogar um terreno se possível, rastreando cores produzidas
+  int _playLandIfPossible(List<Map<String, dynamic>> cards, int landsPlayed,
+      {Map<String, int>? colorSources}) {
     final landIndex = cards.indexWhere(_isLand);
     if (landIndex != -1) {
-      cards.removeAt(landIndex);
+      final land = cards.removeAt(landIndex);
+      // Rastrear que cores este terreno produz
+      if (colorSources != null) {
+        final colors = _getLandColors(land);
+        for (final color in colors) {
+          colorSources[color] = (colorSources[color] ?? 0) + 1;
+        }
+      }
       return landsPlayed + 1;
     }
     return landsPlayed;

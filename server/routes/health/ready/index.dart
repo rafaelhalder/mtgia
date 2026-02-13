@@ -30,6 +30,7 @@ Future<Response> onRequest(RequestContext context) async {
       allHealthy = false;
     }
   } catch (e) {
+    print('[ERROR] handler: $e');
     checks['database'] = {'status': 'unhealthy', 'error': e.toString()};
     allHealthy = false;
   }
@@ -51,6 +52,7 @@ Future<Response> onRequest(RequestContext context) async {
       checks['cards_data']['message'] = 'No cards in database - run sync_cards';
     }
   } catch (e) {
+    print('[ERROR] handler: $e');
     checks['cards_data'] = {'status': 'unhealthy', 'error': e.toString()};
     allHealthy = false;
   }

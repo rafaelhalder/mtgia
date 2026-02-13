@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 /// Teste de integração completo para os endpoints do Épico 3 (Trades)
 ///
-/// Uso: dart run test/integration_trades_test.dart
+/// Uso: dart run bin/qa/integration_trades.dart
 void main() async {
   const baseUrl = 'http://localhost:8080';
   const email = 'rafaelhalder@gmail.com';

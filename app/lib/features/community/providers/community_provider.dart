@@ -150,4 +150,17 @@ class CommunityProvider extends ChangeNotifier {
       return null;
     }
   }
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    _decks = [];
+    _isLoading = false;
+    _errorMessage = null;
+    _page = 1;
+    _total = 0;
+    _hasMore = true;
+    _searchQuery = null;
+    _formatFilter = null;
+    notifyListeners();
+  }
 }

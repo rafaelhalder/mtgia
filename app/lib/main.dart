@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'core/api/api_client.dart';
+import 'core/services/push_notification_service.dart';
+import 'core/services/performance_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 import 'features/decks/screens/deck_list_screen.dart';
@@ -32,13 +34,32 @@ import 'features/binder/providers/binder_provider.dart';
 import 'features/trades/providers/trade_provider.dart';
 import 'features/trades/screens/trade_inbox_screen.dart';
 import 'features/trades/screens/trade_detail_screen.dart';
+import 'features/trades/screens/create_trade_screen.dart';
 import 'features/collection/screens/collection_screen.dart';
 import 'features/messages/providers/message_provider.dart';
 import 'features/messages/screens/message_inbox_screen.dart';
 import 'features/notifications/providers/notification_provider.dart';
 import 'features/notifications/screens/notification_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa Firebase para push notifications.
+  // Se Firebase não estiver configurado (sem google-services.json),
+  // o app continua funcionando normalmente sem push.
+  try {
+    await PushNotificationService().init();
+  } catch (e) {
+    debugPrint('[Main] Firebase não configurado, push desabilitado: $e');
+  }
+
+  // Inicializa Firebase Performance Monitoring
+  try {
+    await PerformanceService.instance.init();
+  } catch (e) {
+    debugPrint('[Main] Performance monitoring não disponível: $e');
+  }
+
   runApp(const ManaLoomApp());
 }
 
@@ -85,6 +106,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
     _router = GoRouter(
       initialLocation: '/',
       refreshListenable: _authProvider,
+      observers: [PerformanceNavigatorObserver()],
       redirect: (context, state) {
         final location = state.matchedLocation;
         final status = _authProvider.status;
@@ -231,6 +253,13 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
               builder: (context, state) => const TradeInboxScreen(),
               routes: [
                 GoRoute(
+                  path: 'create/:receiverId',
+                  builder: (context, state) {
+                    final receiverId = state.pathParameters['receiverId']!;
+                    return CreateTradeScreen(receiverId: receiverId);
+                  },
+                ),
+                GoRoute(
                   path: ':tradeId',
                   builder: (context, state) {
                     final tradeId = state.pathParameters['tradeId']!;
@@ -248,9 +277,40 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   void _onAuthChanged() {
     if (_authProvider.isAuthenticated) {
       _notificationProvider.startPolling();
+      _messageProvider.startPolling();
+
+      // Registra FCM token para push notifications
+      PushNotificationService().requestPermissionAndRegister();
     } else {
+      // Parar polling e limpar todo o estado dos providers ao deslogar
       _notificationProvider.stopPolling();
+      _messageProvider.stopPolling();
+
+      // Remove FCM token do server (para de receber push)
+      PushNotificationService().unregister();
+
+      _clearAllProvidersState();
     }
+  }
+
+  /// Limpa o estado de todos os providers ao deslogar, evitando dados stale
+  /// entre sessões de diferentes usuários.
+  void _clearAllProvidersState() {
+    _deckProvider.clearAllState();
+    _cardProvider.clearSearch();
+    _marketProvider.clearAllState();
+    _communityProvider.clearAllState();
+    _socialProvider.clearAllState();
+    _binderProvider.clearAllState();
+    _tradeProvider.clearAllState();
+    _messageProvider.clearAllState();
+    _notificationProvider.clearAllState();
+  }
+
+  @override
+  void dispose() {
+    _authProvider.removeListener(_onAuthChanged);
+    super.dispose();
   }
 
   @override

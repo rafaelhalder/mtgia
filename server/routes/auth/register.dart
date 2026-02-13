@@ -78,6 +78,7 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   } on Exception catch (e) {
+    print('[ERROR] handler: $e');
     // Erros de negócio (username/email duplicado, etc)
     final message = e.toString().replaceFirst('Exception: ', '');
     return Response.json(
@@ -85,6 +86,7 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'message': message},
     );
   } catch (e) {
+    print('[ERROR] handler: $e');
     print('Erro ao criar conta: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,

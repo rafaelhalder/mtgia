@@ -1305,8 +1305,8 @@ Marque `[x]` conforme cada task for concluída.
 - [x] 2.9 Flutter: Tela de marketplace
 
 ## Épico 3 — Trades
-- [ ] 3.1 DB: tabelas de trades
-- [ ] 3.2 Server: Criar proposta
+- [x] 3.1 DB: tabelas de trades
+- [x] 3.2 Server: Criar proposta
 - [x] 3.3 Server: Listar trades
 - [x] 3.4 Server: Detalhe do trade
 - [x] 3.5 Server: Aceitar/Recusar

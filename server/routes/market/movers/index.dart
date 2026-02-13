@@ -222,9 +222,10 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Erro ao buscar market movers: $e');
     return Response.json(
       statusCode: 500,
-      body: {'error': 'Erro ao buscar market movers', 'details': e.toString()},
+      body: {'error': 'Erro ao buscar market movers'},
     );
   }
 }

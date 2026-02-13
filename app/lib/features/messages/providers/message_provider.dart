@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/api/api_client.dart';
 
@@ -126,6 +127,54 @@ class MessageProvider extends ChangeNotifier {
   int _totalMessages = 0;
   int get totalMessages => _totalMessages;
 
+  /// Contagem global de mensagens não-lidas (para badge no AppBar)
+  int _unreadCount = 0;
+  int get unreadCount => _unreadCount;
+
+  Timer? _pollTimer;
+
+  /// Inicia polling global de unread count a cada 30s (chamado no login)
+  void startPolling() {
+    _pollTimer?.cancel();
+    fetchUnreadCount();
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      fetchUnreadCount();
+    });
+  }
+
+  /// Para o polling (chamado no logout)
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  @override
+  void dispose() {
+    stopPolling();
+    super.dispose();
+  }
+
+  /// Busca contagem de mensagens não-lidas (leve — só GET /conversations com limit pequeno)
+  Future<void> fetchUnreadCount() async {
+    try {
+      final resp = await _api.get('/conversations?page=1&limit=50');
+      if (resp.statusCode == 200 && resp.data is Map) {
+        final data = resp.data as Map<String, dynamic>;
+        final list = (data['data'] as List?) ?? [];
+        int count = 0;
+        for (final item in list) {
+          count += (item['unread_count'] as int? ?? 0);
+        }
+        if (count != _unreadCount) {
+          _unreadCount = count;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[MessageProvider] fetchUnreadCount error: $e');
+    }
+  }
+
   /// Busca lista de conversas do usuário
   Future<void> fetchConversations({int page = 1, int limit = 20}) async {
     _isLoading = true;
@@ -141,6 +190,8 @@ class MessageProvider extends ChangeNotifier {
             .map((e) => Conversation.fromJson(e as Map<String, dynamic>))
             .toList();
         _totalConversations = data['total'] as int? ?? list.length;
+        // Sincronizar badge de unread
+        _unreadCount = _conversations.fold(0, (sum, c) => sum + c.unreadCount);
       }
     } catch (e) {
       _error = '$e';
@@ -241,6 +292,8 @@ class MessageProvider extends ChangeNotifier {
           lastMessageAt: old.lastMessageAt,
           createdAt: old.createdAt,
         );
+        // Recalcular badge global
+        _unreadCount = _conversations.fold(0, (sum, c) => sum + c.unreadCount);
         notifyListeners();
       }
     } catch (e) {
@@ -251,4 +304,19 @@ class MessageProvider extends ChangeNotifier {
   /// Total de mensagens não lidas em todas as conversas
   int get totalUnread =>
       _conversations.fold(0, (sum, c) => sum + c.unreadCount);
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    stopPolling();
+    _conversations = [];
+    _messages = [];
+    _isLoading = false;
+    _isLoadingMessages = false;
+    _isSending = false;
+    _error = null;
+    _totalConversations = 0;
+    _totalMessages = 0;
+    _unreadCount = 0;
+    notifyListeners();
+  }
 }

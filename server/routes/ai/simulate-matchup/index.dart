@@ -79,7 +79,7 @@ Future<Response> onRequest(RequestContext context) async {
     print('Erro em simulate-matchup: $e\n$stack');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to simulate matchup: $e'},
+      body: {'error': 'Failed to simulate matchup'},
     );
   }
 }
@@ -180,6 +180,7 @@ Future<Map<String, dynamic>?> _getDeckData(Pool pool, String deckId) async {
       },
     };
   } catch (e) {
+    print('[ERROR] handler: $e');
     print('Erro ao buscar deck $deckId: $e');
     return null;
   }
@@ -208,6 +209,7 @@ Future<Map<String, dynamic>?> _getMetaDeckData(Pool pool, String metaDeckId) asy
       'is_meta_deck': true,
     };
   } catch (e) {
+    print('[ERROR] handler: $e');
     print('Erro ao buscar meta deck $metaDeckId: $e');
     return null;
   }
@@ -362,6 +364,7 @@ Future<Response> _analyzeMatchup({
       },
     );
   } catch (e) {
+    print('[ERROR] handler: $e');
     print('Aviso: Não foi possível salvar matchup: $e');
   }
 

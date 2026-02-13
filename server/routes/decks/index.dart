@@ -277,7 +277,7 @@ Future<Response> _listDecks(RequestContext context) async {
     Log.e('Stack trace: $stackTrace');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to list decks: $e'},
+      body: {'error': 'Failed to list decks'},
     );
   }
 }
@@ -405,12 +405,14 @@ Future<Response> _createDeck(RequestContext context) async {
 
     return Response.json(body: newDeck);
   } on DeckRulesException catch (e) {
+    print('[ERROR] Failed to create deck: $e');
     return Response.json(
         statusCode: HttpStatus.badRequest, body: {'error': e.message});
   } catch (e) {
+    print('[ERROR] Failed to create deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to create deck: $e'},
+      body: {'error': 'Failed to create deck'},
     );
   }
 }

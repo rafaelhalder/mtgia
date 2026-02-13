@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../../features/messages/providers/message_provider.dart';
 import '../../features/notifications/providers/notification_provider.dart';
 
 class MainScaffold extends StatelessWidget {
@@ -32,14 +33,27 @@ class MainScaffold extends StatelessWidget {
         toolbarHeight: 40,
         automaticallyImplyLeading: false,
         actions: [
-          // Ícone de mensagens
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline,
-                color: AppTheme.textSecondary, size: 22),
-            onPressed: () => context.push('/messages'),
-            tooltip: 'Mensagens',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          // Ícone de mensagens com badge de não-lidas
+          Selector<MessageProvider, int>(
+            selector: (_, p) => p.unreadCount,
+            builder: (context, msgUnread, child) {
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: msgUnread > 0,
+                  label: Text(
+                    msgUnread > 99 ? '99+' : '$msgUnread',
+                    style: const TextStyle(fontSize: 9),
+                  ),
+                  backgroundColor: AppTheme.loomCyan,
+                  child: const Icon(Icons.chat_bubble_outline,
+                      color: AppTheme.textSecondary, size: 22),
+                ),
+                onPressed: () => context.push('/messages'),
+                tooltip: 'Mensagens',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              );
+            },
           ),
           // Ícone de notificações com badge
           Selector<NotificationProvider, int>(

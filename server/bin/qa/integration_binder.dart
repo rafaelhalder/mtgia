@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 /// Teste de integração completo para TODOS os endpoints do Épico 2 (Binder)
 /// e rotas refatoradas (stats, following).
 ///
-/// Uso: dart run test/integration_binder_test.dart
+/// Uso: dart run bin/qa/integration_binder.dart
 void main() async {
   const baseUrl = 'http://localhost:8080';
   const email = 'rafaelhalder@gmail.com';

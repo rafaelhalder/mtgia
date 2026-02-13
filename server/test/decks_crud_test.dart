@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:test/test.dart';
 import 'package:http/http.dart' as http;
 
@@ -18,6 +19,10 @@ import 'package:http/http.dart' as http;
 /// 3. Em outro terminal: dart test test/decks_crud_test.dart
 
 void main() {
+  final skipIntegration = Platform.environment['RUN_INTEGRATION_TESTS'] == '1'
+      ? null
+      : 'Requer servidor rodando (defina RUN_INTEGRATION_TESTS=1).';
+
   // URL base do servidor (ajustar conforme necessário)
   const baseUrl = 'http://localhost:8080';
   
@@ -310,10 +315,8 @@ void main() {
         }),
       );
       
-      // Assert: Deve rejeitar com erro
-      // NOTA: Implementação atual retorna 500 (Internal Server Error)
-      // O ideal seria 400 (Bad Request) mas estamos testando comportamento atual
-      expect(response.statusCode, equals(500)); // TODO: Deveria ser 400
+      // Assert: Deve rejeitar com erro de validação (400)
+      expect(response.statusCode, equals(400));
       final data = jsonDecode(response.body);
       expect(data['error'], contains('limite'));
     });
@@ -328,7 +331,7 @@ void main() {
       
       expect(true, isTrue); // Placeholder - teste manual necessário
     }, skip: 'Requer terreno básico específico no banco');
-  });
+  }, skip: skipIntegration);
   
   group('DELETE /decks/:id - Delete Deck', () {
     test('should delete deck successfully', () async {
@@ -428,7 +431,7 @@ void main() {
       
       expect(true, isTrue); // Placeholder
     }, skip: 'Requer setup de múltiplos usuários');
-  });
+  }, skip: skipIntegration);
   
   group('PUT /decks/:id - Update Cards with Validation', () {
     test('should replace deck cards list', () async {
@@ -505,7 +508,7 @@ void main() {
       final data = jsonDecode(response.body);
       expect(data['deck']['name'], equals('Name Only Update'));
     });
-  });
+  }, skip: skipIntegration);
   
   group('Integration - Full Lifecycle', () {
     test('CREATE -> UPDATE -> DELETE lifecycle', () async {
@@ -539,5 +542,5 @@ void main() {
       
       testDeckId = null;
     });
-  });
+  }, skip: skipIntegration);
 }

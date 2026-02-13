@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "140352349568",
+    "project_id": "manaloom-79d32",
+    "storage_bucket": "manaloom-79d32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140352349568:android:5922e9482891a6a2740d65",
+        "android_client_info": {
+          "package_name": "com.mtgia.mtg_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkmRe0Rm94kSAHzJCsmP20GgigjSiD5aU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

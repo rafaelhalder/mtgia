@@ -30,9 +30,10 @@ Future<Response> onRequest(RequestContext context, String id) async {
 
     return Response.json(body: {'ok': true});
   } catch (e) {
+    print('[ERROR] Erro ao marcar como lida: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao marcar como lida: $e'},
+      body: {'error': 'Erro ao marcar como lida'},
     );
   }
 }

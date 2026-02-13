@@ -63,22 +63,23 @@ Future<Response> onRequest(RequestContext context, String cardId) async {
         'name': card[0],
         'set_code': card[1],
         'image_url': card[2],
-        'current_price': (card[3] as num?)?.toDouble(),
+        'current_price': card[3] != null ? (card[3] is num ? (card[3] as num).toDouble() : double.tryParse(card[3].toString())) : null,
         'rarity': card[4],
         'type_line': card[5],
         'history': historyResult.map((row) {
           return {
             'date': row[0].toString().substring(0, 10),
-            'price_usd': (row[1] as num?)?.toDouble(),
-            'price_usd_foil': (row[2] as num?)?.toDouble(),
+            'price_usd': row[1] != null ? (row[1] is num ? (row[1] as num).toDouble() : double.tryParse(row[1].toString())) : null,
+            'price_usd_foil': row[2] != null ? (row[2] is num ? (row[2] as num).toDouble() : double.tryParse(row[2].toString())) : null,
           };
         }).toList(),
       },
     );
   } catch (e) {
+    print('[ERROR] Erro ao buscar histórico: $e');
     return Response.json(
       statusCode: 500,
-      body: {'error': 'Erro ao buscar histórico', 'details': e.toString()},
+      body: {'error': 'Erro ao buscar histórico'},
     );
   }
 }

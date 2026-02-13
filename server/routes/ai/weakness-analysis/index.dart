@@ -303,6 +303,7 @@ Future<Response> onRequest(RequestContext context) async {
         );
       }
     } catch (e) {
+      print('[ERROR] handler: $e');
       // Não falha se não conseguir salvar
       print('Aviso: Não foi possível salvar relatório de fraquezas: $e');
     }
@@ -336,7 +337,7 @@ Future<Response> onRequest(RequestContext context) async {
     print('Erro em weakness-analysis: $e\n$stack');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze deck weaknesses: $e'},
+      body: {'error': 'Failed to analyze deck weaknesses'},
     );
   }
 }

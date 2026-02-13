@@ -43,6 +43,7 @@ Future<Response> onRequest(RequestContext context) async {
           }
         }
       } catch (e) {
+        print('[ERROR] handler: $e');
         print('Error checking cache: $e');
       }
     }
@@ -97,6 +98,7 @@ Future<Response> onRequest(RequestContext context) async {
             parameters: {'desc': content, 'id': cardId},
           );
         } catch (e) {
+          print('[ERROR] Failed to call AI provider: ${response.body}: $e');
           print('Failed to cache AI description: $e');
         }
       }
@@ -110,9 +112,10 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
   } catch (e) {
+    print('[ERROR] Internal server error: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error: $e'},
+      body: {'error': 'Internal server error'},
     );
   }
 }

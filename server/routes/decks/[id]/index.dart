@@ -122,12 +122,13 @@ Future<Response> _deleteDeck(RequestContext context, String deckId) async {
         statusCode: HttpStatus
             .noContent); // 204 No Content é a resposta padrão para sucesso em DELETE
   } on Exception catch (e) {
+    print('[ERROR] Failed to delete deck: $e');
     if (e.toString().contains('permission denied')) {
       return Response.json(statusCode: 404, body: {'error': e.toString()});
     }
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to delete deck: $e'},
+      body: {'error': 'Failed to delete deck'},
     );
   }
 }
@@ -210,9 +211,56 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             .whereType<Map>()
             .map((m) => m.cast<String, dynamic>())
             .toList();
+        
+        // DEBUG: Log cartas recebidas
+        print('[DEBUG] PUT /decks/$deckId - Cartas recebidas: ${normalized.length}');
+        for (final card in normalized) {
+          print('[DEBUG]   card_id=${card['card_id']}, qty=${card['quantity']}, is_commander=${card['is_commander']}');
+        }
+        
+        // Deduplicar por card_id (evita duplicatas acidentais do cliente)
+        // Prioriza is_commander: true se houver conflito
+        final deduped = <String, Map<String, dynamic>>{};
+        for (final card in normalized) {
+          final cardId = card['card_id'] as String?;
+          if (cardId == null || cardId.isEmpty) continue;
+          
+          final existing = deduped[cardId];
+          if (existing == null) {
+            deduped[cardId] = card;
+          } else {
+            // Se já existe, mantém o que tem is_commander: true
+            final existingIsCmd = existing['is_commander'] as bool? ?? false;
+            final newIsCmd = card['is_commander'] as bool? ?? false;
+            if (newIsCmd && !existingIsCmd) {
+              deduped[cardId] = card;
+            }
+            // Caso contrário, mantém o existente
+          }
+        }
+        final dedupedList = deduped.values.toList();
+        
+        // NORMALIZAÇÃO: Commander deve ter quantity=1
+        for (final card in dedupedList) {
+          final isCommander = card['is_commander'] as bool? ?? false;
+          if (isCommander) {
+            final oldQty = card['quantity'];
+            card['quantity'] = 1;
+            if (oldQty != 1) {
+              print('[FIX] Commander normalizado: qty $oldQty → 1');
+            }
+          }
+        }
+        
+        // DEBUG: Log após deduplicação
+        print('[DEBUG] PUT /decks/$deckId - Após dedup: ${dedupedList.length} cartas');
+        for (final card in dedupedList) {
+          print('[DEBUG]   dedup: card_id=${card['card_id']}, qty=${card['quantity']}, is_commander=${card['is_commander']}');
+        }
+        
         await DeckRulesService(session).validateAndThrow(
           format: currentFormat,
-          cards: normalized,
+          cards: dedupedList,
           strict: false,
         );
 
@@ -223,14 +271,14 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
         );
 
         // Insere as novas cartas usando Batch Insert (MUITO MAIS RÁPIDO)
-        if (cards.isNotEmpty) {
+        if (dedupedList.isNotEmpty) {
           // Construir query dinâmica para inserção em lote
           // INSERT INTO deck_cards (...) VALUES ($1, $2...), ($5, $6...), ...
           final values = <String>[];
           final params = <String, dynamic>{'deckId': deckId};
 
-          for (var i = 0; i < cards.length; i++) {
-            final card = cards[i];
+          for (var i = 0; i < dedupedList.length; i++) {
+            final card = dedupedList[i];
             final pId = 'c$i';
             final pQty = 'q$i';
             final pCmdr = 'cmd$i';
@@ -270,14 +318,16 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 
     return Response.json(body: {'success': true, 'deck': updatedDeck});
   } on DeckRulesException catch (e) {
+    print('[ERROR] Failed to update deck: $e');
     return Response.json(
         statusCode: HttpStatus.badRequest, body: {'error': e.message});
   } on Exception catch (e) {
+    print('[ERROR] Failed to update deck: $e');
     if (e.toString().contains('permission denied')) {
       return Response.json(statusCode: 404, body: {'error': e.toString()});
     }
     return Response.json(
-        statusCode: 500, body: {'error': 'Failed to update deck: $e'});
+        statusCode: 500, body: {'error': 'Failed to update deck'});
   }
 }
 
@@ -477,9 +527,10 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
 
     return Response.json(body: responseBody);
   } catch (e) {
+    print('[ERROR] Failed to retrieve deck details: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to retrieve deck details: $e'},
+      body: {'error': 'Failed to retrieve deck details'},
     );
   }
 }

@@ -5,7 +5,7 @@ import 'package:postgres/postgres.dart';
 /// Permite observabilidade das chamadas sem expor dados sensíveis.
 /// Útil para debugging, auditoria de custos e análise de performance.
 class AiLogService {
-  final Connection _db;
+  final dynamic _db;  // Accepts both Connection and Pool
 
   AiLogService(this._db);
 

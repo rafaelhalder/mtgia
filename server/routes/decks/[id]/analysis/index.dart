@@ -319,6 +319,7 @@ Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
         }
       }
     } catch (e) {
+      print('[ERROR] handler: $e');
       print('Erro na análise de meta: $e');
       // Não falha a requisição inteira se o meta falhar
     }
@@ -348,9 +349,10 @@ Future<Response> _analyzeDeck(RequestContext context, String deckId) async {
     });
 
   } catch (e) {
+    print('[ERROR] Failed to analyze deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze deck: $e'},
+      body: {'error': 'Failed to analyze deck'},
     );
   }
 }

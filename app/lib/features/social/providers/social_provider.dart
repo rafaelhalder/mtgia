@@ -433,4 +433,36 @@ class SocialProvider extends ChangeNotifier {
     _isLoadingFeed = false;
     notifyListeners();
   }
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    _searchResults = [];
+    _isSearching = false;
+    _searchError = null;
+    _searchTotal = 0;
+    _visitedUser = null;
+    _visitedUserDecks = [];
+    _isLoadingProfile = false;
+    _profileError = null;
+    _isFollowingVisited = false;
+    _isOwnProfile = null;
+    _followers = [];
+    _following = [];
+    _isLoadingFollowers = false;
+    _isLoadingFollowing = false;
+    _followersTotal = 0;
+    _followingTotal = 0;
+    _followersPage = 1;
+    _followingPage = 1;
+    _hasMoreFollowers = true;
+    _hasMoreFollowing = true;
+    _currentFollowersUserId = null;
+    _currentFollowingUserId = null;
+    _followingFeed = [];
+    _isLoadingFeed = false;
+    _hasMoreFeed = true;
+    _feedPage = 1;
+    _feedTotal = 0;
+    notifyListeners();
+  }
 }

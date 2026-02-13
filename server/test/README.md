@@ -8,11 +8,21 @@ Este diretório contém os testes automatizados do servidor MTG Deck Builder. A 
 
 ```
 test/
+├── fixtures/                  # Arquivos de apoio (ex: listas/import)
 ├── auth_service_test.dart      # Testes unitários do AuthService
 ├── import_parser_test.dart      # Testes unitários do parser de importação
 ├── deck_validation_test.dart    # Testes unitários de validações de deck (NOVO)
 └── decks_crud_test.dart         # Testes de integração PUT/DELETE (NOVO)
 ```
+
+## Scripts QA (manuais)
+
+Alguns checks end-to-end e smoke tests são **scripts manuais** e ficam em `bin/qa/`:
+- `bin/qa/performance_smoke.dart`
+- `bin/qa/integration_binder.dart`
+- `bin/qa/integration_trades.dart`
+- `bin/qa/integration_messages_notifications.dart`
+- `bin/qa/debug_community_decks.dart`
 
 ## Testes Implementados
 
@@ -94,12 +104,13 @@ dart test test/decks_crud_test.dart
 
 ### Apenas testes unitários (rápido, sem dependências):
 ```bash
-dart test --exclude-tags integration
+dart test
 ```
 
-### Todos os testes (requer servidor rodando):
+### Testes de integração (requer servidor rodando):
 ```bash
-dart test
+RUN_INTEGRATION_TESTS=1 dart test test/decks_crud_test.dart
+RUN_INTEGRATION_TESTS=1 dart test test/decks_incremental_add_test.dart
 ```
 
 ### Com relatório detalhado:

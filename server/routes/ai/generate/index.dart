@@ -87,6 +87,7 @@ Future<Response> onRequest(RequestContext context) async {
         }
       }
     } catch (e) {
+      print('[ERROR] handler: $e');
       Log.w('Erro ao buscar contexto do meta: $e');
       // Segue sem contexto
     }
@@ -227,9 +228,10 @@ Rules:
 
     return Response.json(body: responseBody);
   } catch (e) {
+    print('[ERROR] Failed to generate deck: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to generate deck: $e'},
+      body: {'error': 'Failed to generate deck'},
     );
   }
 }

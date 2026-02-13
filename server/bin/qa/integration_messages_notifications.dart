@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 /// Teste de integração completo para Épico 4 (Mensagens) e Épico 5 (Notificações)
 ///
-/// Uso: dart run test/integration_messages_notifications_test.dart
+/// Uso: dart run bin/qa/integration_messages_notifications.dart
 ///
 /// Pré-requisitos:
 ///   - dart_frog dev rodando em localhost:8080

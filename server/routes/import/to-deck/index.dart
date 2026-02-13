@@ -313,9 +313,10 @@ DO UPDATE SET
       'warnings': warnings,
     });
   } catch (e) {
+    print('[ERROR] Failed to import cards: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to import cards: $e'},
+      body: {'error': 'Failed to import cards'},
     );
   }
 }

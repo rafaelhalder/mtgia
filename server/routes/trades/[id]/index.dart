@@ -192,9 +192,10 @@ Future<Response> _getTradeDetail(RequestContext context, String id) async {
       'updated_at': trade['updated_at'],
     });
   } catch (e) {
+    print('[ERROR] Erro ao buscar trade: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao buscar trade: $e'},
+      body: {'error': 'Erro ao buscar trade'},
     );
   }
 }

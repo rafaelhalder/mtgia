@@ -73,9 +73,10 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Erro interno ao buscar sets: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro interno ao buscar sets', 'details': e.toString()},
+      body: {'error': 'Erro interno ao buscar sets'},
     );
   }
 }

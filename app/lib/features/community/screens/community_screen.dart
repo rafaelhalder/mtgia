@@ -3,9 +3,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:cached_network_image/cached_network_image.dart' show CachedNetworkImage;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/cached_card_image.dart';
 import '../providers/community_provider.dart';
+import '../../market/models/card_mover.dart';
+import '../../market/providers/market_provider.dart';
 import '../../social/providers/social_provider.dart';
 import '../../social/screens/user_profile_screen.dart';
 import 'community_deck_detail_screen.dart';
@@ -24,7 +27,7 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -44,6 +47,9 @@ class _CommunityScreenState extends State<CommunityScreen>
     if (_tabController.index == 1) {
       // Aba "Seguindo": carregar feed
       context.read<SocialProvider>().fetchFollowingFeed(reset: true);
+    } else if (_tabController.index == 3) {
+      // Aba "Cotações": carregar market movers
+      context.read<MarketProvider>().fetchMovers();
     }
   }
 
@@ -60,10 +66,13 @@ class _CommunityScreenState extends State<CommunityScreen>
           labelColor: AppTheme.textPrimary,
           unselectedLabelColor: AppTheme.textSecondary,
           labelStyle: const TextStyle(fontSize: AppTheme.fontMd, fontWeight: FontWeight.w600),
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
             Tab(icon: Icon(Icons.public, size: 18), text: 'Explorar'),
             Tab(icon: Icon(Icons.people, size: 18), text: 'Seguindo'),
             Tab(icon: Icon(Icons.person_search, size: 18), text: 'Usuários'),
+            Tab(icon: Icon(Icons.trending_up, size: 18), text: 'Cotações'),
           ],
         ),
       ),
@@ -73,6 +82,7 @@ class _CommunityScreenState extends State<CommunityScreen>
           _ExploreTab(),
           _FollowingFeedTab(),
           _UserSearchTab(),
+          _CotacoesTab(),
         ],
       ),
     );
@@ -984,3 +994,350 @@ class _UserCard extends StatelessWidget {
     );
   }
 }
+
+// =====================================================================
+// TAB 4: Cotações (Market Movers — variações de preço diárias)
+// =====================================================================
+class _CotacoesTab extends StatefulWidget {
+  const _CotacoesTab();
+
+  @override
+  State<_CotacoesTab> createState() => _CotacoesTabState();
+}
+
+class _CotacoesTabState extends State<_CotacoesTab>
+    with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  late final TabController _subTabController;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _subTabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<MarketProvider>().fetchMovers();
+    });
+  }
+
+  @override
+  void dispose() {
+    _subTabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Consumer<MarketProvider>(
+      builder: (context, provider, _) {
+        if (provider.isLoading && provider.moversData == null) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: AppTheme.mythicGold),
+                SizedBox(height: 16),
+                Text('Carregando cotações...', style: TextStyle(color: AppTheme.textSecondary)),
+              ],
+            ),
+          );
+        }
+
+        if (provider.errorMessage != null && provider.moversData == null) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.cloud_off, size: 48, color: AppTheme.textSecondary),
+                  const SizedBox(height: 16),
+                  Text(
+                    provider.errorMessage ?? 'Erro desconhecido',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => provider.refresh(),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Tentar novamente'),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.manaViolet),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final data = provider.moversData;
+        if (data == null) {
+          return const Center(
+            child: Text('Sem dados de mercado', style: TextStyle(color: AppTheme.textSecondary)),
+          );
+        }
+
+        if (data.needsMoreData) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.hourglass_top, size: 48, color: AppTheme.mythicGold),
+                  const SizedBox(height: 16),
+                  Text(
+                    data.message ?? 'Aguardando dados...',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Os preços são atualizados diariamente.\nAmanhã teremos dados de variação!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            // Header com datas + info
+            _buildDateHeader(data, provider),
+            // Sub-tabs Valorizando / Desvalorizando
+            Container(
+              color: AppTheme.surfaceSlate2,
+              child: TabBar(
+                controller: _subTabController,
+                indicatorColor: AppTheme.mythicGold,
+                labelColor: AppTheme.mythicGold,
+                unselectedLabelColor: AppTheme.textSecondary,
+                tabs: const [
+                  Tab(icon: Icon(Icons.arrow_upward, size: 16), text: 'Valorizando'),
+                  Tab(icon: Icon(Icons.arrow_downward, size: 16), text: 'Desvalorizando'),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _subTabController,
+                children: [
+                  data.gainers.isEmpty
+                      ? const Center(child: Text('Nenhuma carta valorizou hoje', style: TextStyle(color: AppTheme.textSecondary)))
+                      : _buildMoversList(data.gainers, isGainer: true, provider: provider),
+                  data.losers.isEmpty
+                      ? const Center(child: Text('Nenhuma carta desvalorizou hoje', style: TextStyle(color: AppTheme.textSecondary)))
+                      : _buildMoversList(data.losers, isGainer: false, provider: provider),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDateHeader(MarketMoversData data, MarketProvider provider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: AppTheme.surfaceSlate2.withValues(alpha: 0.5),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_today, size: 14, color: AppTheme.textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            data.date != null ? _formatDate(data.date!) : 'Hoje',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
+          ),
+          if (data.previousDate != null) ...[
+            const Text(' vs ', style: TextStyle(color: AppTheme.outlineMuted, fontSize: AppTheme.fontSm)),
+            Text(
+              _formatDate(data.previousDate!),
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontMd),
+            ),
+          ],
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.mythicGold.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            ),
+            child: Text(
+              '${data.totalTracked} cartas',
+              style: const TextStyle(color: AppTheme.mythicGold, fontSize: AppTheme.fontSm, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: provider.isLoading ? null : () => provider.refresh(),
+            child: Icon(
+              Icons.refresh,
+              size: 20,
+              color: provider.isLoading ? AppTheme.outlineMuted : AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoversList(List<CardMover> movers, {required bool isGainer, required MarketProvider provider}) {
+    return RefreshIndicator(
+      color: AppTheme.mythicGold,
+      backgroundColor: AppTheme.surfaceSlate,
+      onRefresh: () => provider.refresh(),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: movers.length,
+        itemBuilder: (context, index) {
+          final mover = movers[index];
+          final changeColor = isGainer ? AppTheme.success : AppTheme.error;
+          final changeIcon = isGainer ? Icons.arrow_upward : Icons.arrow_downward;
+          final changePrefix = isGainer ? '+' : '';
+
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceSlate,
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              border: Border.all(
+                color: index < 3
+                    ? changeColor.withValues(alpha: 0.3)
+                    : AppTheme.outlineMuted.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  // Rank badge
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: index < 3 ? changeColor.withValues(alpha: 0.2) : AppTheme.surfaceSlate2,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '#${index + 1}',
+                      style: TextStyle(
+                        color: index < 3 ? changeColor : AppTheme.textSecondary,
+                        fontSize: AppTheme.fontSm,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Card image
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                    child: SizedBox(
+                      width: 36,
+                      height: 50,
+                      child: mover.imageUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: mover.imageUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                              errorWidget: (_, __, ___) => Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                            )
+                          : Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Name + details
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mover.name,
+                          style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: AppTheme.fontMd),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          if (mover.setCode != null)
+                            Text(mover.setCode!.toUpperCase(), style: const TextStyle(color: AppTheme.textSecondary, fontSize: AppTheme.fontSm)),
+                          if (mover.rarity != null) ...[
+                            const Text(' • ', style: TextStyle(color: AppTheme.outlineMuted, fontSize: AppTheme.fontSm)),
+                            Text(_rarityLabel(mover.rarity!), style: TextStyle(color: _rarityColor(mover.rarity!), fontSize: AppTheme.fontSm)),
+                          ],
+                        ]),
+                      ],
+                    ),
+                  ),
+                  // Price + change
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '\$${mover.priceToday.toStringAsFixed(2)}',
+                        style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: AppTheme.fontLg),
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: changeColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(changeIcon, size: 12, color: changeColor),
+                          const SizedBox(width: 2),
+                          Text('$changePrefix${mover.changePct.toStringAsFixed(1)}%', style: TextStyle(color: changeColor, fontSize: AppTheme.fontSm, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '$changePrefix\$${mover.changeUsd.toStringAsFixed(2)}',
+                        style: TextStyle(color: changeColor.withValues(alpha: 0.7), fontSize: AppTheme.fontXs),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDate(String isoDate) {
+    try {
+      final parts = isoDate.split('-');
+      return '${parts[2]}/${parts[1]}/${parts[0]}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
+  String _rarityLabel(String rarity) {
+    return switch (rarity.toLowerCase()) {
+      'mythic' => 'Mítica',
+      'rare' => 'Rara',
+      'uncommon' => 'Incomum',
+      'common' => 'Comum',
+      _ => rarity,
+    };
+  }
+
+  Color _rarityColor(String rarity) {
+    return switch (rarity.toLowerCase()) {
+      'mythic' => AppTheme.mythicGold,
+      'rare' => AppTheme.mythicGold.withValues(alpha: 0.7),
+      'uncommon' => AppTheme.loomCyan,
+      _ => AppTheme.textSecondary,
+    };
+  }
+}
+

@@ -1,0 +1,22 @@
+# Dart/Frog build outputs
+.dart_tool/
+build/
+pubspec.lock
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+*.iml
+
+# Firebase Service Account (NUNCA commitar!)
+firebase-service-account.json
+
+# Logs
+*.log
+
+# AtomicCards.json é muito grande
+AtomicCards.json

@@ -157,9 +157,10 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
   } catch (e) {
+    print('[ERROR] Failed to analyze archetypes: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze archetypes: $e'},
+      body: {'error': 'Failed to analyze archetypes'},
     );
   }
 }

@@ -25,10 +25,16 @@ Future<Response> _listBinder(RequestContext context) async {
     final forTrade = params['for_trade'];
     final forSale = params['for_sale'];
     final search = params['search'];
+    final listType = params['list_type']; // 'have' or 'want'
 
     // Build dynamic WHERE
     final whereClauses = <String>['bi.user_id = @userId'];
     final sqlParams = <String, dynamic>{'userId': userId};
+
+    if (listType != null && (listType == 'have' || listType == 'want')) {
+      whereClauses.add('bi.list_type = @listType');
+      sqlParams['listType'] = listType;
+    }
 
     if (condition != null && condition.isNotEmpty) {
       whereClauses.add('bi.condition = @condition');
@@ -60,7 +66,7 @@ Future<Response> _listBinder(RequestContext context) async {
     final result = await pool.execute(Sql.named('''
       SELECT bi.id, bi.card_id, bi.quantity, bi.condition, bi.is_foil,
              bi.for_trade, bi.for_sale, bi.price, bi.currency,
-             bi.notes, bi.language, bi.created_at, bi.updated_at,
+             bi.notes, bi.language, bi.list_type, bi.created_at, bi.updated_at,
              c.name AS card_name, c.image_url AS card_image_url,
              c.set_code AS card_set_code, c.mana_cost AS card_mana_cost,
              c.type_line AS card_type_line, c.rarity AS card_rarity
@@ -93,6 +99,7 @@ Future<Response> _listBinder(RequestContext context) async {
         'currency': cols['currency'],
         'notes': cols['notes'],
         'language': cols['language'],
+        'list_type': cols['list_type'] ?? 'have',
         'created_at': cols['created_at']?.toString(),
         'updated_at': cols['updated_at']?.toString(),
       };
@@ -105,9 +112,10 @@ Future<Response> _listBinder(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] Erro ao listar binder: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao listar binder: $e'},
+      body: {'error': 'Erro ao listar binder'},
     );
   }
 }
@@ -147,6 +155,15 @@ Future<Response> _addToBinder(RequestContext context) async {
     final price = body['price'];
     final notes = body['notes'] as String?;
     final language = body['language'] as String? ?? 'en';
+    final listType = body['list_type'] as String? ?? 'have';
+
+    // Valida list_type
+    if (listType != 'have' && listType != 'want') {
+      return Response.json(
+        statusCode: HttpStatus.badRequest,
+        body: {'error': 'list_type inválido. Use: have, want'},
+      );
+    }
 
     // Valida condition
     if (!['NM', 'LP', 'MP', 'HP', 'DMG'].contains(condition)) {
@@ -168,9 +185,11 @@ Future<Response> _addToBinder(RequestContext context) async {
       SELECT id FROM user_binder_items
       WHERE user_id = @userId AND card_id = @cardId
         AND condition = @condition AND is_foil = @isFoil
+        AND list_type = @listType
     '''), parameters: {
       'userId': userId, 'cardId': cardId,
       'condition': condition, 'isFoil': isFoil,
+      'listType': listType,
     });
 
     if (dupCheck.isNotEmpty) {
@@ -186,16 +205,16 @@ Future<Response> _addToBinder(RequestContext context) async {
     // Insere
     final insertResult = await pool.execute(Sql.named('''
       INSERT INTO user_binder_items
-        (user_id, card_id, quantity, condition, is_foil, for_trade, for_sale, price, notes, language)
+        (user_id, card_id, quantity, condition, is_foil, for_trade, for_sale, price, notes, language, list_type)
       VALUES
-        (@userId, @cardId, @quantity, @condition, @isFoil, @forTrade, @forSale, @price, @notes, @language)
+        (@userId, @cardId, @quantity, @condition, @isFoil, @forTrade, @forSale, @price, @notes, @language, @listType)
       RETURNING id
     '''), parameters: {
       'userId': userId, 'cardId': cardId, 'quantity': quantity,
       'condition': condition, 'isFoil': isFoil,
       'forTrade': forTrade, 'forSale': forSale,
       'price': price != null ? double.tryParse(price.toString()) : null,
-      'notes': notes, 'language': language,
+      'notes': notes, 'language': language, 'listType': listType,
     });
 
     final newId = insertResult.first[0];
@@ -214,9 +233,10 @@ Future<Response> _addToBinder(RequestContext context) async {
       },
     );
   } catch (e) {
+    print('[ERROR] Erro ao adicionar ao binder: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao adicionar ao binder: $e'},
+      body: {'error': 'Erro ao adicionar ao binder'},
     );
   }
 }

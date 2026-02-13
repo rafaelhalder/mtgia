@@ -71,65 +71,93 @@ Future<Response> _createTrade(RequestContext context) async {
       );
     }
 
-    // Validar my_items (pertence ao sender, for_trade ou for_sale)
-    for (final item in myItems) {
-      final biId = item['binder_item_id'] as String?;
-      if (biId == null) {
-        return Response.json(
-          statusCode: HttpStatus.badRequest,
-          body: {'error': 'binder_item_id obrigatório em my_items'},
-        );
+    // Validar my_items em batch (pertence ao sender, for_trade ou for_sale)
+    {
+      final myBinderIds = <String>[];
+      for (final item in myItems) {
+        final biId = item['binder_item_id'] as String?;
+        if (biId == null) {
+          return Response.json(
+            statusCode: HttpStatus.badRequest,
+            body: {'error': 'binder_item_id obrigatório em my_items'},
+          );
+        }
+        myBinderIds.add(biId);
       }
-      final check = await pool.execute(
-        Sql.named('''
-          SELECT id, for_trade, for_sale FROM user_binder_items
-          WHERE id = @id AND user_id = @userId
-        '''),
-        parameters: {'id': biId, 'userId': userId},
-      );
-      if (check.isEmpty) {
-        return Response.json(
-          statusCode: HttpStatus.forbidden,
-          body: {'error': 'Item $biId não pertence a você ou não existe'},
+
+      if (myBinderIds.isNotEmpty) {
+        final check = await pool.execute(
+          Sql.named('''
+            SELECT id, for_trade, for_sale FROM user_binder_items
+            WHERE id = ANY(@ids::uuid[]) AND user_id = @userId
+          '''),
+          parameters: {'ids': myBinderIds, 'userId': userId},
         );
-      }
-      final row = check.first.toColumnMap();
-      if (row['for_trade'] != true && row['for_sale'] != true) {
-        return Response.json(
-          statusCode: HttpStatus.badRequest,
-          body: {'error': 'Item $biId não está marcado para troca/venda'},
-        );
+        final foundMap = <String, Map<String, dynamic>>{};
+        for (final row in check) {
+          final m = row.toColumnMap();
+          foundMap[m['id'] as String] = m;
+        }
+        for (final biId in myBinderIds) {
+          if (!foundMap.containsKey(biId)) {
+            return Response.json(
+              statusCode: HttpStatus.forbidden,
+              body: {'error': 'Item $biId não pertence a você ou não existe'},
+            );
+          }
+          final row = foundMap[biId]!;
+          if (row['for_trade'] != true && row['for_sale'] != true) {
+            return Response.json(
+              statusCode: HttpStatus.badRequest,
+              body: {'error': 'Item $biId não está marcado para troca/venda'},
+            );
+          }
+        }
       }
     }
 
-    // Validar requested_items (pertence ao receiver, for_trade ou for_sale)
-    for (final item in requestedItems) {
-      final biId = item['binder_item_id'] as String?;
-      if (biId == null) {
-        return Response.json(
-          statusCode: HttpStatus.badRequest,
-          body: {'error': 'binder_item_id obrigatório em requested_items'},
-        );
+    // Validar requested_items em batch (pertence ao receiver, for_trade ou for_sale)
+    {
+      final reqBinderIds = <String>[];
+      for (final item in requestedItems) {
+        final biId = item['binder_item_id'] as String?;
+        if (biId == null) {
+          return Response.json(
+            statusCode: HttpStatus.badRequest,
+            body: {'error': 'binder_item_id obrigatório em requested_items'},
+          );
+        }
+        reqBinderIds.add(biId);
       }
-      final check = await pool.execute(
-        Sql.named('''
-          SELECT id, for_trade, for_sale FROM user_binder_items
-          WHERE id = @id AND user_id = @receiverId
-        '''),
-        parameters: {'id': biId, 'receiverId': receiverId},
-      );
-      if (check.isEmpty) {
-        return Response.json(
-          statusCode: HttpStatus.badRequest,
-          body: {'error': 'Item $biId não pertence ao destinatário ou não existe'},
+
+      if (reqBinderIds.isNotEmpty) {
+        final check = await pool.execute(
+          Sql.named('''
+            SELECT id, for_trade, for_sale FROM user_binder_items
+            WHERE id = ANY(@ids::uuid[]) AND user_id = @receiverId
+          '''),
+          parameters: {'ids': reqBinderIds, 'receiverId': receiverId},
         );
-      }
-      final row = check.first.toColumnMap();
-      if (row['for_trade'] != true && row['for_sale'] != true) {
-        return Response.json(
-          statusCode: HttpStatus.badRequest,
-          body: {'error': 'Item $biId do destinatário não está disponível para troca/venda'},
-        );
+        final foundMap = <String, Map<String, dynamic>>{};
+        for (final row in check) {
+          final m = row.toColumnMap();
+          foundMap[m['id'] as String] = m;
+        }
+        for (final biId in reqBinderIds) {
+          if (!foundMap.containsKey(biId)) {
+            return Response.json(
+              statusCode: HttpStatus.badRequest,
+              body: {'error': 'Item $biId não pertence ao destinatário ou não existe'},
+            );
+          }
+          final row = foundMap[biId]!;
+          if (row['for_trade'] != true && row['for_sale'] != true) {
+            return Response.json(
+              statusCode: HttpStatus.badRequest,
+              body: {'error': 'Item $biId do destinatário não está disponível para troca/venda'},
+            );
+          }
+        }
       }
     }
 
@@ -224,9 +252,10 @@ Future<Response> _createTrade(RequestContext context) async {
 
     return Response.json(statusCode: HttpStatus.created, body: tradeResult);
   } catch (e) {
+    print('[ERROR] _createTrade: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao criar trade: $e'},
+      body: {'error': 'Erro interno ao criar trade'},
     );
   }
 }
@@ -333,9 +362,10 @@ Future<Response> _listTrades(RequestContext context) async {
       'total': total,
     });
   } catch (e) {
+    print('[ERROR] _listTrades: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao listar trades: $e'},
+      body: {'error': 'Erro interno ao listar trades'},
     );
   }
 }

@@ -4,19 +4,25 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/ai/battle_simulator.dart';
 import '../../../lib/ai/goldfish_simulator.dart';
 import '../../../lib/logger.dart';
 
 /// POST /ai/simulate
-/// Simula performance de um deck usando Monte Carlo
+/// Simula performance de um deck
 ///
 /// Body:
 /// {
 ///   "deck_id": "uuid",           // Deck para simular
-///   "opponent_deck_id": "uuid",  // Opcional: para matchup
-///   "simulations": 1000,         // Opcional: número de simulações
-///   "type": "goldfish"           // "goldfish" ou "matchup"
+///   "opponent_deck_id": "uuid",  // Opcional: para matchup ou battle
+///   "simulations": 1000,         // Opcional: número de simulações (goldfish)
+///   "type": "goldfish"           // "goldfish", "matchup" ou "battle"
 /// }
+///
+/// Types:
+/// - goldfish: Monte Carlo de mãos iniciais (rápido, 1000 simulações)
+/// - matchup: Análise heurística de matchup entre dois decks
+/// - battle: Simulação turno-a-turno completa (lento, 1 partida detalhada)
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
     return Response.json(
@@ -51,8 +57,50 @@ Future<Response> onRequest(RequestContext context) async {
       );
     }
 
-    if (simType == 'matchup') {
-      // Simulação de matchup
+    if (simType == 'battle') {
+      // Simulação turno-a-turno completa
+      final opponentId = data['opponent_deck_id'] as String?;
+      if (opponentId == null || opponentId.isEmpty) {
+        return Response.json(
+          body: {'error': 'opponent_deck_id is required for battle simulation'},
+          statusCode: HttpStatus.badRequest,
+        );
+      }
+
+      final opponentCards = await _fetchDeckCards(pool, opponentId);
+      if (opponentCards.isEmpty) {
+        return Response.json(
+          body: {'error': 'Opponent deck not found or empty'},
+          statusCode: HttpStatus.notFound,
+        );
+      }
+
+      final simulator = BattleSimulator(
+        deckACards: deckCards,
+        deckBCards: opponentCards,
+        maxTurns: (data['max_turns'] as int?) ?? 30,
+      );
+      final result = simulator.simulate();
+
+      // Salva resultado para treinamento futuro
+      await _saveSimulation(
+        pool: pool,
+        deckAId: deckId,
+        deckBId: opponentId,
+        type: 'battle',
+        result: result.toJson(),
+      );
+
+      return Response.json(
+        body: {
+          'type': 'battle',
+          'deck_a_id': deckId,
+          'deck_b_id': opponentId,
+          ...result.toJson(),
+        },
+      );
+    } else if (simType == 'matchup') {
+      // Análise heurística de matchup
       final opponentId = data['opponent_deck_id'] as String?;
       if (opponentId == null || opponentId.isEmpty) {
         return Response.json(
@@ -110,6 +158,7 @@ Future<Response> onRequest(RequestContext context) async {
       );
     }
   } on FormatException catch (e) {
+    print('[ERROR] Invalid JSON: ${e.message}: $e');
     return Response.json(
       body: {'error': 'Invalid JSON: ${e.message}'},
       statusCode: HttpStatus.badRequest,
@@ -181,18 +230,18 @@ Future<void> _saveSimulation({
     if (tableExists.isNotEmpty && tableExists.first[0] == true) {
       await pool.execute(
         Sql.named('''
-          INSERT INTO battle_simulations (deck_a_id, deck_b_id, simulation_type, metrics)
-          VALUES (@deckAId, @deckBId, @type, @metrics)
+          INSERT INTO battle_simulations (deck_a_id, deck_b_id, game_log)
+          VALUES (@deckAId, @deckBId, @gameLog::jsonb)
         '''),
         parameters: {
           'deckAId': deckAId,
           'deckBId': deckBId,
-          'type': type,
-          'metrics': jsonEncode(result),
+          'gameLog': jsonEncode({'type': type, ...result}),
         },
       );
     }
   } catch (e) {
+    print('[ERROR] handler: $e');
     // Não falha a request se não conseguir salvar
     Log.w('Could not save simulation: $e');
   }

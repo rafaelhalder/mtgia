@@ -430,6 +430,48 @@ class TradeProvider extends ChangeNotifier {
     }
   }
 
+  /// Carrega próxima página de trades (append, para scroll infinito)
+  Future<void> fetchMoreTrades({
+    String? status,
+    String role = 'all',
+    int limit = 20,
+  }) async {
+    if (_isLoading) return;
+    final nextPage = _currentPage + 1;
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final queryParts = <String>[
+        'page=$nextPage',
+        'limit=$limit',
+        'role=$role',
+      ];
+      if (status != null && status.isNotEmpty) {
+        queryParts.add('status=$status');
+      }
+      final query = queryParts.join('&');
+      final res = await _api.get('/trades?$query');
+
+      if (res.statusCode == 200) {
+        final data = res.data as Map<String, dynamic>;
+        final list = (data['data'] as List<dynamic>?) ?? [];
+        final newTrades = list
+            .map((e) => TradeOffer.fromListJson(e as Map<String, dynamic>))
+            .toList();
+        _trades.addAll(newTrades);
+        _totalTrades = data['total'] as int? ?? _trades.length;
+        _currentPage = data['page'] as int? ?? nextPage;
+      }
+    } catch (e) {
+      debugPrint('[TradeProvider] fetchMoreTrades error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   // ─── Fetch trade detail ─────────────────────────────────────
   Future<void> fetchTradeDetail(String tradeId) async {
     _isLoading = true;
@@ -635,6 +677,19 @@ class TradeProvider extends ChangeNotifier {
 
   void clearSelectedTrade() {
     _selectedTrade = null;
+    _chatMessages = [];
+    _chatTotal = 0;
+    notifyListeners();
+  }
+
+  /// Limpa todo o estado do provider (chamado no logout)
+  void clearAllState() {
+    _trades = [];
+    _selectedTrade = null;
+    _isLoading = false;
+    _errorMessage = null;
+    _totalTrades = 0;
+    _currentPage = 1;
     _chatMessages = [];
     _chatTotal = 0;
     notifyListeners();

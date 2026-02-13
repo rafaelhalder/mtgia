@@ -148,6 +148,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 
     return Response.json(body: result.cast<String, dynamic>());
   } catch (e) {
+    print('[ERROR] handler: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
       body: {'error': e.toString()},

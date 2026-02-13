@@ -156,11 +156,13 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 
     return Response.json(body: {'ok': true, ...result});
   } on DeckRulesException catch (e) {
+    print('[ERROR] handler: $e');
     return Response.json(
       statusCode: HttpStatus.badRequest,
       body: {'error': e.message},
     );
   } catch (e) {
+    print('[ERROR] handler: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
       body: {'error': e.toString()},

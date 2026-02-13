@@ -47,9 +47,10 @@ Future<Response> onRequest(RequestContext context, String id) async {
       'marked_read': result.affectedRows,
     });
   } catch (e) {
+    print('[ERROR] Erro ao marcar como lidas: $e');
     return Response.json(
       statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Erro ao marcar como lidas: $e'},
+      body: {'error': 'Erro ao marcar como lidas'},
     );
   }
 }

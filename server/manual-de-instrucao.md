@@ -3402,3 +3402,1142 @@ Helper estático `NotificationService.create(pool, userId, type, title, body?, r
 - `app/lib/features/notifications/screens/notification_screen.dart` — tela
 - `app/lib/core/widgets/main_scaffold.dart` — badge no sino + ícone chat
 - `app/lib/main.dart` — NotificationProvider + rota /notifications + auth listener
+
+---
+
+## 25. Auditoria de Qualidade — Correções (Junho 2025)
+
+### 25.1 Race Conditions (TOCTOU → Atomic)
+
+**Porquê:** Os endpoints `PUT /trades/:id/respond` e `PUT /trades/:id/status` tinham vulnerabilidade TOCTOU (Time-of-Check-Time-of-Use). Dois requests simultâneos podiam ambos passar a validação de status e corromper dados.
+
+**Como:**
+- **respond.dart** — `UPDATE ... WHERE status = 'pending' AND receiver_id = @userId RETURNING sender_id` (atomic, sem SELECT prévio).
+- **status.dart** — `SELECT ... FOR UPDATE` dentro de `pool.runTx()` para lock exclusivo na row.
+
+### 25.2 Memory Leak & Stale State (Flutter)
+
+**Porquê:** `_authProvider.addListener(_onAuthChanged)` nunca era removido. Após logout, dados de outro usuário persistiam em todos os providers.
+
+**Como:**
+- Adicionado `dispose()` em `_ManaLoomAppState` com `removeListener`.
+- Adicionado `clearAllState()` em **todos 8 providers** (Deck, Market, Community, Social, Binder, Trade, Message, Notification). Chamado automaticamente em `_onAuthChanged` quando `!isAuthenticated`.
+
+### 25.3 Info Leak — Error Responses
+
+**Porquê:** 58 endpoints expunham `$e` (stack traces, queries SQL, paths internos) no body da resposta HTTP.
+
+**Como:**
+- Todas as 58 ocorrências convertidas para: `print('[ERROR] handler: $e')` (server log) + mensagem genérica no body (ex: `'Erro interno ao criar trade'`).
+- Padrões removidos: `'details': '$e'`, `'details': e.toString()`, `': $e'` no fim de strings.
+
+### 25.4 N+1 Queries — Trade Creation
+
+**Porquê:** `POST /trades` fazia 1 query por item na validação (até 20 queries em loop).
+
+**Como:**
+- Substituído por query batch: `SELECT ... WHERE id = ANY(@ids::uuid[]) AND user_id = @userId`.
+- Resultado mapeado por ID para validação individual client-side (qual item falhou).
+
+### 25.5 Navigation (Flutter)
+
+**Porquê:** `_TradeCard.onTap` usava `Navigator.push(MaterialPageRoute(...))` em vez de `context.push('/trades/${trade.id}')`, perdendo o ShellRoute scaffold. Notificação DM usava `_MessageRedirectPlaceholder` que fazia `Navigator.pop` + `context.push` no mesmo frame (race condition).
+
+**Como:**
+- Trade inbox: `context.push('/trades/${trade.id}')`.
+- Notification DM: `context.push('/messages')` direto, removida classe `_MessageRedirectPlaceholder` (código morto).
+
+### 25.6 Cache TTL (MarketProvider)
+
+**Porquê:** `fetchMovers()` fazia request HTTP a cada troca de tab, sem verificar se dados recentes já existiam.
+
+**Como:**
+- Adicionado `_cacheTtl = Duration(minutes: 5)` e getter `_isCacheValid`.
+- `fetchMovers()` agora retorna imediatamente se cache é válido (parâmetro `force: true` para ignorar).
+- `refresh()` chama `fetchMovers(force: true)`.
+
+### 25.7 Dead Code Cleanup
+
+**Porquê:** `BinderScreen` e `MarketplaceScreen` (classes standalone) eram duplicatas de `BinderTabContent` e `MarketplaceTabContent`, nunca instanciadas em nenhum lugar do app. ~1160 linhas de código morto.
+
+**Como:**
+- Removidas as classes standalone de ambos os arquivos.
+- Mantidos os widgets compartilhados (`_StatsBar`, `_BinderItemCard`, `_ConditionDropdown`, `_MarketplaceCard`) que eram usados pela versão TabContent.
+
+---
+
+## 26. Fix de Produção — Login 500, Crons, Price History, Cotações Tab (10/Fev/2026)
+
+### 26.1 Login 500 Error — Cascata de 3 Bugs
+
+**Porquê:** O `POST /auth/login` retornava `500 Internal Server Error` (texto puro, não JSON). Eram 3 bugs encadeados:
+
+1. **SSL mismatch:** PostgreSQL no servidor tem `ssl=off`, mas o código forçava `SslMode.require` quando `ENVIRONMENT=production`. A conexão falhava silenciosamente.
+2. **SQL inválido em `_ensureRuntimeSchema`:** `UNIQUE (LEAST(user_a_id, user_b_id), GREATEST(...))` dentro de `CREATE TABLE` é sintaxe inválida no PostgreSQL (erro 42601).
+3. **Middleware sem try-catch:** O Dart Frog retornava texto puro "Internal Server Error" em vez de JSON.
+
+**Como:**
+
+- **`server/lib/database.dart`:**
+  - `late final Pool` → `late Pool` (permitir reassignment no fallback SSL).
+  - Smart SSL fallback: tenta `SslMode.disable` primeiro, depois `SslMode.require`.
+  - Validação com `SELECT 1` após criar pool.
+  - Getter `isConnected` para middleware verificar estado.
+
+- **`server/routes/_middleware.dart`:**
+  - Handler inteiro envolto em `try-catch` → retorna JSON 500 com mensagem.
+  - Verifica `_db.isConnected` antes de marcar `_connected = true`.
+  - Retorna 503 JSON se DB falhar na conexão.
+  - `UNIQUE(LEAST, GREATEST)` movido para `CREATE UNIQUE INDEX IF NOT EXISTS` separado.
+
+### 26.2 Cotações Tab — 4ª aba na CommunityScreen
+
+**Porquê:** O Market Movers (valorizando/desvalorizando) não tinha visibilidade na tela principal de Comunidade.
+
+**Como:**
+- Adicionada 4ª tab "Cotações" ao `CommunityScreen` (Explorar | Seguindo | Usuários | **Cotações**).
+- Widget `_CotacoesTab` com `TickerProviderStateMixin` + `AutomaticKeepAliveClientMixin`.
+- Sub-tabs: Valorizando/Desvalorizando.
+- Cards com: rank badge, imagem, nome, set, raridade (cores ManaLoom), preço, variação % e USD.
+- Pull-to-refresh, loading/error/empty states.
+- `isScrollable: true, tabAlignment: TabAlignment.start` para caber as 4 tabs.
+
+### 26.3 Fix Cron de Preços — Container ID Hardcoded
+
+**Porquê:** O cron `/root/sync_mtg_prices.sh` tinha container ID hardcoded (`evolution_cartinhas.1.aoay2q0k7jvfb5rdq6r2dor1p`) que não existia mais. Todos os syncs de preço desde 1/Fev falharam com "No such container".
+
+**Como:**
+- Script reescrito com lookup dinâmico: `docker ps --filter "name=evolution_cartinhas" --format "{{.Names}}" | head -1`.
+- Pipeline de 3 etapas: (1) Scryfall sync rápido, (2) MTGJSON full sync, (3) Snapshot price_history.
+- Cada etapa com `|| echo "WARN: ... falhou"` para não bloquear as próximas.
+
+### 26.4 Price History Snapshot — sync_prices.dart e snapshot_price_history.dart
+
+**Porquê:** O `sync_prices.dart` (Scryfall) atualizava `cards.price` mas NÃO inseria no `price_history`. O Market Movers/Cotações depende de `price_history` para calcular variações.
+
+**Como:**
+- Adicionado bloco de snapshot ao final do `sync_prices.dart`:
+  ```sql
+  INSERT INTO price_history (card_id, price_date, price_usd)
+  SELECT id, CURRENT_DATE, price
+  FROM cards WHERE price IS NOT NULL AND price > 0
+  ON CONFLICT (card_id, price_date) DO UPDATE SET price_usd = EXCLUDED.price_usd
+  ```
+- Criado `bin/snapshot_price_history.dart` como script standalone para uso manual ou cron fallback.
+- Dados de 5 dias consecutivos (6-10/Fev) com ~30.500 cartas/dia.
+
+### 26.5 MTGJSON Sync v2 — Fix OOM com AllIdentifiers.json
+
+**Porquê:** O `sync_prices_mtgjson_fast.dart` carregava `AllIdentifiers.json` (~400MB) inteiro via `jsonDecode(readAsString())`, consumindo ~1.6GB de RAM. A Dart VM no container era morta pelo OOM killer sem nenhum erro visível.
+
+**Como (v2 do script):**
+- **Tentativa 1 (preferida):** Usa `jq` via `Process.start` para extrair UUID→name+setCode com streaming — não carrega nada na memória Dart.
+  ```bash
+  jq -r '.data | to_entries[] | [.key, .value.name, .value.setCode] | @tsv' cache/AllIdentifiers.json
+  ```
+- **Tentativa 2 (fallback):** Se jq não estiver disponível, carrega em memória com tratamento de erro explícito e mensagem para instalar jq.
+- `jq` instalado no container de produção (`apt-get install -y jq`).
+- Match via tabela temp com `card_id UUID` em vez de `name TEXT + set_code TEXT` (mais eficiente no JOIN).
+- Snapshot `price_history` integrado ao final.
+
+### 26.6 Tabelas Criadas em Produção
+
+Tabelas que existiam no código mas não no banco de produção, criadas manualmente:
+- `conversations` + `CREATE UNIQUE INDEX idx_conversations_pair ON conversations (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))`
+- `direct_messages` + índices
+- `notifications` + índices
+
+---
+
+## 27. Fichário Have/Want + Localização + Observação de Troca
+
+**Data:** Fevereiro de 2026
+
+### 27.1 Motivação
+
+O fichário (binder) original era uma lista única. Jogadores precisam separar cartas que **possuem** (Have) das que **procuram** (Want), além de informar sua localização e como preferem negociar.
+
+### 27.2 Alterações no Banco de Dados
+
+**Migration:** `bin/migrate_binder_havewant.dart`
+
+1. **`user_binder_items.list_type`** — `VARCHAR(4) NOT NULL DEFAULT 'have'` com CHECK `('have','want')`.
+2. **UNIQUE constraint** atualizada para `(user_id, card_id, condition, is_foil, list_type)` — permite a mesma carta em ambas as listas.
+3. **Index** `idx_binder_list_type ON user_binder_items (user_id, list_type)`.
+4. **`users.location_state`** — `VARCHAR(2)` (sigla UF brasileira).
+5. **`users.location_city`** — `VARCHAR(100)`.
+6. **`users.trade_notes`** — `TEXT` (observação livre, max 500 chars no app).
+
+### 27.3 Endpoints Alterados (Server)
+
+| Endpoint | Mudança |
+|---|---|
+| `GET /binder` | Aceita `?list_type=have\|want` para filtrar por lista |
+| `POST /binder` | Aceita `list_type` no body (default: `'have'`), inclui na UNIQUE check |
+| `PUT /binder/:id` | Aceita `list_type` no body para mudar entre listas |
+| `GET /community/marketplace` | Retorna `list_type`, `owner.location_state`, `owner.location_city`, `owner.trade_notes` |
+| `GET /community/binders/:userId` | Retorna `list_type` nos itens + localização do dono |
+| `GET /users/me` | Retorna `location_state`, `location_city`, `trade_notes` |
+| `PATCH /users/me` | Aceita `location_state` (2 chars), `location_city` (max 100), `trade_notes` (max 500) |
+
+### 27.4 Flutter — Mudanças
+
+- **`BinderItem`**: novo campo `listType` (`'have'` ou `'want'`).
+- **`MarketplaceItem`**: novos campos `ownerLocationState`, `ownerLocationCity`, `ownerTradeNotes` + getter `ownerLocationLabel`.
+- **`BinderProvider`**: novo método `fetchBinderDirect()` para listas independentes por `listType` sem alterar o state compartilhado.
+- **`BinderTabContent`**: redesenhada com 2 sub-tabs ("Tenho" 🔵 / "Quero" 🟡), cada uma com `_BinderListView` independente (scroll, paginação, filtros).
+- **`BinderItemEditor`**: novo seletor de lista (Tenho/Quero) no modal de adição/edição, via `initialListType` param.
+- **`ProfileScreen`**: dropdown de estado BR (27 UFs), campo cidade, textarea de observação para trocas.
+- **`MarketplaceCard`**: exibe localização e observação de troca do dono.
+- **`User` model**: novos campos `locationState`, `locationCity`, `tradeNotes` + getter `locationLabel`.
+
+### 27.5 UX Design
+
+- Tab **Tenho** (inventory_2 icon, cor `loomCyan`): cartas que o jogador possui.
+- Tab **Quero** (favorite_border icon, cor `mythicGold`): cartas que o jogador procura.
+- No editor, seletor visual com duas metades: `[📦 Tenho | ❤️ Quero]`.
+- No perfil, seção "Localização" com dropdown de estado + campo de cidade + textarea "Observação para trocas".
+- No marketplace, localização e observação aparecem junto ao nome do vendedor.
+
+---
+
+## 28. Interação Social no Fichário — Visualização Have/Want Pública + Proposta de Trade
+
+### 28.1 Porquê
+
+Apenas exibir o fichário de outro usuário não é suficiente — o jogador precisa **interagir**: ver separadamente o que o outro jogador **tem** (disponível para troca/venda) e o que ele **quer** (lista de desejos), e então poder **propor uma troca, compra ou venda** diretamente, sem sair do contexto.
+
+### 28.2 Alterações no Backend
+
+**Arquivo:** `routes/community/binders/[userId].dart`
+
+- Adicionado query parameter `list_type` (`have`, `want` ou ausente para todos).
+- Para `want`: exibe **todos** os itens da wish list (sem exigir `for_trade` ou `for_sale`).
+- Para `have`: mantém o filtro existente — só mostra itens com `for_trade=true` OU `for_sale=true`.
+- Para `null` (sem filtro): mostra wants OU itens com flags de troca/venda.
+
+### 28.3 Flutter — Provider
+
+**Arquivo:** `features/binder/providers/binder_provider.dart`
+
+- **Novo método `fetchPublicBinderDirect()`**: busca itens de outro usuário por `list_type` sem alterar o estado compartilhado do provider. Ideal para tabs independentes (Tenho/Quero) no perfil público.
+
+### 28.4 Flutter — UserProfileScreen (Have/Want Público)
+
+**Arquivo:** `features/social/screens/user_profile_screen.dart`
+
+- **`_PublicBinderTabHaveWant`**: substitui o antigo `_PublicBinderTab`. Possui `TabController(length: 2)` com sub-tabs "Tem" e "Quer".
+- **`_PublicBinderListView`**: widget independente com scroll infinito e `AutomaticKeepAliveClientMixin`, buscando itens via `fetchPublicBinderDirect()`.
+- **Interação via Bottom Sheet**: ao tocar num item, abre modal com:
+  - Se item **Have** e `forTrade`: botão "Propor troca" (abre `CreateTradeScreen` tipo `trade`)
+  - Se item **Have** e `forSale`: botão "Quero comprar" (abre `CreateTradeScreen` tipo `sale`)
+  - Se item **Want**: botão "Posso vender / trocar" (abre `CreateTradeScreen` tipo `trade`)
+  - Sempre: botão "Enviar mensagem" (abre chat direto)
+- **`_PublicBinderItemCard`**: card compacto com badges de qty, condição, foil, troca/venda, preço e ícone de interação (carrinho para have, sell para want).
+
+### 28.5 Flutter — CreateTradeScreen (Nova Tela)
+
+**Arquivo:** `features/trades/screens/create_trade_screen.dart`
+
+Tela completa para criação de proposta de troca/compra/venda:
+
+- **Parâmetros**: `receiverId` (obrigatório), `initialType` ('trade'|'sale'|'mixed'), `preselectedItem` (BinderItem opcional pré-selecionado).
+- **Tipo de negociação**: seletor visual com 3 chips — Troca (loomCyan), Compra (mythicGold), Misto (manaViolet).
+- **Itens que você quer**: lista de itens do outro jogador selecionados. Botão "Adicionar item" abre bottom sheet com itens do fichário público do outro jogador (have list).
+- **Itens que você oferece**: (visível apenas para type=trade/mixed) lista de itens do próprio fichário (have list com `for_trade=true`). Carrega via `fetchBinderDirect()`.
+- **Pagamento**: (visível apenas para type=sale/mixed) campo de valor R$ + seletor PIX/Transferência/Outro.
+- **Mensagem**: campo opcional de texto livre.
+- **Quantidade ±**: cada item selecionado tem controles incrementais, limitados ao estoque do item.
+- **Submissão**: via `TradeProvider.createTrade()` com payloads `my_items` e `requested_items` usando `binder_item_id`.
+
+### 28.6 Flutter — MarketplaceScreen (Botão de Interação)
+
+**Arquivo:** `features/binder/screens/marketplace_screen.dart`
+
+- `_MarketplaceCard` agora recebe callback `onTradeTap`.
+- Cada card no marketplace mostra botão "Quero comprar" (se item à venda) ou "Propor troca" (se item para troca).
+- O botão converte o `MarketplaceItem` em `BinderItem` e navega para `CreateTradeScreen` com os parâmetros corretos.
+
+### 28.7 Rota GoRouter
+
+**Arquivo:** `main.dart`
+
+```dart
+GoRoute(
+  path: 'create/:receiverId',
+  builder: (context, state) {
+    final receiverId = state.pathParameters['receiverId']!;
+    return CreateTradeScreen(receiverId: receiverId);
+  },
+),
+```
+
+Adicionada dentro do grupo `/trades`, antes da rota `:tradeId` para evitar conflito de path matching.
+
+### 28.8 Fluxo Completo do Usuário
+
+1. Usuário A abre o perfil do Usuário B → aba Fichário
+2. Vê sub-tabs **Tem** / **Quer**
+3. Toca num item → modal com opções contextuais
+4. Escolhe "Propor troca" ou "Quero comprar"
+5. Abre `CreateTradeScreen` com item pré-selecionado
+6. Pode adicionar mais itens, oferecer itens próprios, definir pagamento
+7. Envia proposta → cria trade via API → aparece na Trade Inbox do Usuário B
+8. Usuário B aceita/recusa → fluxo normal de trade (shipped → delivered → completed)
+
+---
+
+## 29. Correção de Duplicatas em Endpoints de Cartas (Fevereiro 2026)
+
+### 29.1 Problema Identificado
+
+O banco de dados contém cartas de múltiplas fontes (MTGJSON, Scryfall) onde uma mesma carta pode ter várias **variantes** (normal, foil, borderless, extended art, etc.) da mesma edição. Isso causava retornos com duplicatas nos endpoints:
+
+**Exemplo - Lightning Bolt:**
+- **Antes:** 31 resultados, com SLD aparecendo 11 vezes, 2XM aparecendo 3 vezes
+- **Depois:** 14 resultados, um por edição única
+
+**Exemplo - Cyclonic Rift:**
+- **Antes:** 13 resultados com duplicatas
+- **Depois:** 7 resultados (sets únicos)
+
+### 29.2 Causa Raiz
+
+1. **Variantes de carta**: Uma mesma carta na mesma edição pode ter múltiplos registros (normal, foil, showcase, etc.)
+2. **Inconsistência de case**: Alguns set_codes estão em maiúsculo (`2XM`) e outros em minúsculo (`2xm`)
+3. **scryfall_id único**: Cada registro TEM scryfall_id único (esperado), mas o mesmo (name + set_code) pode ter múltiplos
+
+### 29.3 Solução Implementada
+
+#### Endpoint `/cards/printings` (`routes/cards/printings/index.dart`)
+
+```sql
+SELECT DISTINCT ON (LOWER(c.set_code))
+  c.id, c.scryfall_id, c.name, c.mana_cost, c.type_line,
+  c.oracle_text, c.colors, c.image_url, 
+  LOWER(c.set_code) AS set_code, c.rarity,
+  s.name AS set_name,
+  s.release_date AS set_release_date
+FROM cards c
+LEFT JOIN sets s ON LOWER(s.code) = LOWER(c.set_code)
+WHERE c.name ILIKE @name
+ORDER BY LOWER(c.set_code), s.release_date DESC NULLS LAST
+```
+
+**Pontos chave:**
+- `DISTINCT ON (LOWER(c.set_code))` - Retorna apenas uma carta por set (case-insensitive)
+- `LOWER()` no JOIN e no DISTINCT - Resolve inconsistências de case (2xm vs 2XM)
+- `ORDER BY ... release_date DESC NULLS LAST` - Prioriza impressão mais recente de cada set
+
+#### Endpoint `/cards` (`routes/cards/index.dart`)
+
+Adicionado parâmetro opcional `dedupe` (default: `true`):
+
+```dart
+final deduplicate = params['dedupe']?.toLowerCase() != 'false';
+```
+
+Quando `dedupe=true` (padrão), usa query com deduplicação:
+
+```sql
+SELECT * FROM (
+  SELECT DISTINCT ON (c.name, LOWER(c.set_code))
+    c.id, c.scryfall_id, c.name, c.mana_cost, c.type_line,
+    c.oracle_text, c.colors, c.color_identity, c.image_url,
+    LOWER(c.set_code) AS set_code, c.rarity, c.cmc,
+    s.name AS set_name,
+    s.release_date AS set_release_date
+  FROM cards c
+  LEFT JOIN sets s ON LOWER(s.code) = LOWER(c.set_code)
+  WHERE ...
+  ORDER BY c.name, LOWER(c.set_code), s.release_date DESC NULLS LAST
+) AS deduped
+ORDER BY name ASC, set_code ASC
+LIMIT @limit OFFSET @offset
+```
+
+**Para obter todas as variantes**, use `?dedupe=false`:
+```
+GET /cards?name=Lightning%20Bolt&dedupe=false
+```
+
+### 29.4 Script de Auditoria de Integridade
+
+Criado `bin/audit_data_integrity.dart` para verificar:
+
+1. **Duplicatas por scryfall_id** (não deveria haver)
+2. **Duplicatas por (name, set_code)** (esperado por variantes)
+3. **Inconsistências de case em set_code** (2xm vs 2XM)
+4. **Integridade de foreign keys** (orphan records)
+
+**Uso:**
+```bash
+dart run bin/audit_data_integrity.dart
+```
+
+**Resultados típicos:**
+```
+=== CARDS INTEGRITY ===
+Total cards: 33,519
+Unique scryfall_ids: 33,519 ✓
+
+=== DUPLICATES BY (name, set_code) ===
+Top 5:
+  Sol Ring [sld]: 13 duplicates
+  Lightning Bolt [sld]: 12 duplicates
+  ...
+
+=== CASE INCONSISTENCIES ===
+  2x2 and 2X2
+  8ed and 8ED
+  ...
+```
+
+### 29.5 Resultados Após Correção
+
+| Endpoint | Carta | Antes | Depois |
+|----------|-------|-------|--------|
+| `/cards` | Lightning Bolt | 31 | 14 |
+| `/cards` | Sol Ring | ~50 | 12 |
+| `/cards/printings` | Cyclonic Rift | 13 | 7 |
+
+### 29.6 Considerações Futuras
+
+1. **Migração de normalização de case**: Considerar rodar `UPDATE cards SET set_code = LOWER(set_code)` para normalizar todos os set_codes
+2. **Índice funcional**: Criar índice em `LOWER(set_code)` para performance
+3. **Tabela follows**: Auditoria identificou que a tabela `follows` não existe - criar se funcionalidade social for necessária
+
+### 29.7 Deploy
+
+As alterações foram deployadas via:
+1. SCP do arquivo atualizado para `/tmp/` no servidor
+2. `docker cp` para o container ativo
+3. `dart_frog build` dentro do container
+4. `docker commit` para criar imagem com o build atualizado
+5. `docker service update --image` para aplicar a nova imagem
+
+**Imagem atual:** `easypanel/evolution/cartinhas:fixed-v2`
+
+---
+
+## 30. Firebase Performance Monitoring
+
+### 30.1 Objetivo
+
+Monitorar automaticamente a performance do app Flutter, identificando:
+- Telas lentas (tempo de permanência e carregamento)
+- Requisições HTTP lentas (tempo de resposta por endpoint)
+- Operações críticas que demoram mais que o esperado
+
+### 30.2 Dependências
+
+```yaml
+# app/pubspec.yaml
+dependencies:
+  firebase_performance: ^0.10.0+10
+```
+
+### 30.3 Arquitetura
+
+#### PerformanceService (`app/lib/core/services/performance_service.dart`)
+
+Singleton que gerencia todos os traces de performance:
+
+```dart
+// Inicialização (feita no main.dart)
+await PerformanceService.instance.init();
+
+// Medir operação assíncrona
+await PerformanceService.instance.traceAsync('fetch_decks', () async {
+  return await apiClient.get('/decks');
+});
+
+// Medir operação manual
+PerformanceService.instance.startTrace('analyze_deck');
+// ... fazer operação ...
+PerformanceService.instance.stopTrace('analyze_deck', 
+  attributes: {'deck_format': 'commander'},
+  metrics: {'card_count': 100},
+);
+```
+
+#### PerformanceNavigatorObserver
+
+Observer integrado ao GoRouter que rastreia automaticamente:
+- PUSH de telas (início do trace)
+- POP de telas (fim do trace + log do tempo)
+- REPLACE de telas
+
+```dart
+// Configurado no main.dart
+_router = GoRouter(
+  observers: [PerformanceNavigatorObserver()],
+  // ...
+);
+```
+
+#### ApiClient com HTTP Metrics
+
+Todas as requisições HTTP são automaticamente rastreadas:
+
+```dart
+// GET, POST, PUT, PATCH, DELETE - todos rastreados
+final response = await apiClient.get('/decks');
+// Logs: [🌐 ApiClient] GET /decks → 200 (145ms)
+// Se > 2000ms: [⚠️ SLOW REQUEST] GET /decks demorou 3500ms
+```
+
+### 30.4 O Que é Rastreado
+
+| Categoria | Trace Name | Descrição |
+|-----------|------------|-----------|
+| Telas | `screen_home` | Tempo na HomeScreen |
+| Telas | `screen_decks_123` | Tempo na DeckDetailsScreen |
+| Telas | `screen_community` | Tempo na CommunityScreen |
+| HTTP | Auto | Todas as requisições com tempo, status, payload size |
+| Custom | `fetch_decks` | Operações específicas que você medir |
+
+### 30.5 Logs de Debug
+
+Durante desenvolvimento, você verá no console:
+
+```
+[📱 Screen] → PUSH: home
+[🌐 ApiClient] GET /decks → 200 (145ms)
+[📱 Screen] → PUSH: decks_abc123
+[🌐 ApiClient] GET /decks/abc123 → 200 (89ms)
+[📱 Screen] ← POP: decks_abc123 (5230ms)
+[⚠️ SLOW SCREEN] decks_abc123 demorou 5s
+```
+
+### 30.6 Firebase Console
+
+Para ver as métricas em produção:
+
+1. Acesse [console.firebase.google.com](https://console.firebase.google.com)
+2. Selecione o projeto ManaLoom
+3. Vá em **Performance** no menu lateral
+4. Aba **Traces** mostra todas as telas e operações
+5. Aba **Network** mostra todas as requisições HTTP
+
+**Métricas disponíveis:**
+- Tempo médio, P50, P90, P99
+- Amostras por dia/hora
+- Distribuição por versão do app
+- Filtros por país, dispositivo, etc.
+
+### 30.7 Estatísticas Locais (Debug)
+
+Para debug durante desenvolvimento:
+
+```dart
+// Em qualquer lugar do app
+PerformanceService.instance.printLocalStats();
+```
+
+Output:
+```
+[📊 Performance] ═══════════════════════════════════════
+[📊 Performance] screen_home:
+    count=15 | avg=120ms | p50=95ms | p90=250ms | max=450ms
+[📊 Performance] fetch_decks:
+    count=8 | avg=180ms | p50=150ms | p90=320ms | max=500ms
+[📊 Performance] ═══════════════════════════════════════
+```
+
+### 30.8 Próximos Passos (Opcional)
+
+1. **Alertas de Threshold**: Configurar alertas no Firebase quando P90 > 2s
+2. **Custom Traces em Providers**: Adicionar `traceAsync` nos providers críticos
+3. **Métricas de Negócio**: Adicionar contadores como `decks_created`, `cards_searched`
+
+---
+
+## 31. Correção do Bug de Balanceamento na Otimização (Deck com 99 Cartas)
+
+**Data:** Fevereiro 2026  
+**Arquivo Modificado:** `server/routes/ai/optimize/index.dart`  
+**Commit:** `b3b1de7`
+
+### 31.1 O Problema
+
+Quando a IA sugeria cartas para swap (remoções + adições), algumas adições eram filtradas por:
+- **Identidade de cor**: Carta fora das cores do Commander
+- **Bracket policy**: Carta acima do nível do deck
+- **Validação**: Carta inexistente ou nome incorreto
+
+O código anterior simplesmente truncava para o mínimo entre remoções e adições:
+
+```dart
+// CÓDIGO ANTIGO (problemático)
+final minCount = removals.length < additions.length 
+    ? removals.length 
+    : additions.length;
+removals = removals.take(minCount).toList();
+additions = additions.take(minCount).toList();
+```
+
+**Exemplo do bug:**
+- IA sugere 3 remoções e 3 adições
+- Filtro de cor remove 2 adições (cartas vermelhas em deck mono-azul)
+- Código trunca para 1 remoção e 1 adição
+- Deck fica com 99 cartas (perdeu 2 cartas)
+
+### 31.2 A Solução
+
+Em vez de truncar, **preencher com terrenos básicos** da identidade de cor do Commander:
+
+```dart
+// CÓDIGO NOVO (corrigido)
+if (validAdditions.length < validRemovals.length) {
+  final missingCount = validRemovals.length - validAdditions.length;
+  
+  // Obter básicos compatíveis com identidade do Commander
+  final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+  final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+  
+  if (basicsWithIds.isNotEmpty) {
+    final keys = basicsWithIds.keys.toList();
+    var i = 0;
+    for (var j = 0; j < missingCount; j++) {
+      final name = keys[i % keys.length];
+      validAdditions.add(name);
+      // Registrar no mapa para additions_detailed funcionar
+      validByNameLower[name.toLowerCase()] = {
+        'id': basicsWithIds[name],
+        'name': name,
+      };
+      i++;
+    }
+  }
+}
+```
+
+### 31.3 Mapeamento de Básicos por Identidade
+
+```dart
+List<String> _basicLandNamesForIdentity(Set<String> identity) {
+  if (identity.isEmpty) return const ['Wastes'];  // Commander colorless
+  final names = <String>[];
+  if (identity.contains('W')) names.add('Plains');
+  if (identity.contains('U')) names.add('Island');
+  if (identity.contains('B')) names.add('Swamp');
+  if (identity.contains('R')) names.add('Mountain');
+  if (identity.contains('G')) names.add('Forest');
+  return names.isEmpty ? const ['Wastes'] : names;
+}
+```
+
+### 31.4 Cenários de Teste Validados
+
+| Cenário | Antes | Depois |
+|---------|-------|--------|
+| 3 remoções, 1 adição válida | Deck = 99 cartas | Deck = 100 (2 Islands adicionadas) |
+| Deck com 99 cartas (mode complete) | Retorna 0 adições | Retorna 1 adição (Blast Zone) |
+| Deck com 100 cartas (mode optimize) | 5 remoções ≠ adições | 5 remoções = 5 adições |
+| Commander colorless | Cartas azuis permitidas ❌ | Apenas colorless/Wastes |
+
+### 31.5 Regras de MTG Implementadas
+
+**Regras de Formato Commander:**
+- Deck: Exatamente 100 cartas (incluindo Commander)
+- Cópias: Máximo 1 de cada carta (exceto básicos)
+- Identidade de Cor: Cartas devem estar dentro da identidade do Commander
+- Commander: Deve ser Legendary Creature (ou ter "can be your commander")
+- Partner: Dois commanders com Partner são permitidos
+- Background: "Choose a Background" + Background enchantment é válido
+
+**Validações Aplicadas na Otimização:**
+1. ✅ Remoções existem no deck
+2. ✅ Commander nunca é removido
+3. ✅ Adições respeitam identidade de cor
+4. ✅ Adições não são cartas já existentes no deck
+5. ✅ Balanceamento: removals.length == additions.length
+6. ✅ Busca sinérgica quando há shortage (basics como último recurso)
+7. ✅ Validação pós-otimização: total_cards permanece estável
+8. ✅ Comparação case-insensitive de nomes (AI vs DB)
+
+---
+
+## 32. Refatoração Filosófica da Otimização (v2.0)
+
+**Data:** Junho 2025
+**Arquivo:** `routes/ai/optimize/index.dart`
+
+### 32.1 O Problema (Antes)
+
+A otimização tinha 5 falhas filosóficas fundamentais:
+
+1. **"Preencher com land" é preguiçoso** — quando adições < remoções após filtros, o sistema simplesmente
+   jogava terrenos básicos para equilibrar. Isso NÃO é otimização.
+2. **Sistema nunca RE-CONSULTAVA a IA** quando cartas eram filtradas por identidade de cor ou bracket.
+3. **Sem validação de qualidade** — nunca verificava se o deck ficou MELHOR após otimização.
+4. **Categorias ignoradas** — o prompt da IA retorna categorias (Ramp/Draw/Removal) mas o backend
+   as ignorava na hora de substituir uma carta filtrada.
+5. **Modo complete misturava lands com spells** sem calcular proporção ideal.
+
+### 32.2 A Solução
+
+#### `_findSynergyReplacements()` — Busca Sinérgica no DB
+
+Nova função que, quando cartas são filtradas, busca substitutas SINÉRGICAS no banco:
+
+```dart
+Future<List<Map<String, dynamic>>> _findSynergyReplacements({
+  required pool, required optimizer, required commanders,
+  required commanderColorIdentity, required targetArchetype,
+  required bracket, required keepTheme, required detectedTheme,
+  required coreCards, required missingCount,
+  required removedCards, required excludeNames,
+  required allCardData,
+}) async {
+  // 1. Analisa tipos funcionais das cartas removidas
+  //    (draw, removal, ramp, creature, artifact, utility)
+  // 2. Consulta DB: identidade de cor, legal em Commander, EDHREC rank
+  // 3. Prioriza cartas do MESMO tipo funcional
+  // 4. Retorna lista de {id, name}
+}
+```
+
+**Fluxo de decisão:**
+```
+Cartas filtradas → Analisa tipo funcional → Busca no DB por tipo
+→ Encontrou? Usa como substituta
+→ Não encontrou? Fallback com melhor carta genérica do DB
+→ DB vazio? Último recurso: terreno básico
+```
+
+#### Modo Complete — Ratio Inteligente de Lands/Spells
+
+O complete mode agora calcula a quantidade ideal de terrenos baseada no CMC médio:
+- CMC médio < 2.0 → 32 terrenos
+- CMC médio < 3.0 → 35 terrenos
+- CMC médio < 4.0 → 37 terrenos
+- CMC médio >= 4.0 → 39 terrenos
+
+Primeiro preenche com spells sinérgicos via `_findSynergyReplacements()`,
+depois completa com terrenos básicos apenas se necessário.
+
+#### Validação Pós-Otimização (Qualidade Real)
+
+Nova análise compara o deck ANTES e DEPOIS:
+- **Distribuição de tipos**: criaturas, instants, sorceries subiram/desceram?
+- **CMC por arquétipo**: aggro deve ter CMC baixo, control pode ter alto
+- **Mana base**: fontes de mana melhoraram ou pioraram?
+- **Lista de melhorias**: retorna `improvements` com frases como
+  "Curva de mana melhorou de 3.5 para 3.2"
+
+### 32.3 Bugs Corrigidos
+
+1. **Case-sensitivity no removeWhere**: "Engulf The Shore" (IA) vs "Engulf the Shore" (DB)
+   causava mismatch na contagem do virtualDeck (101 ou 99 em vez de 100).
+   **Fix**: `removalNamesLower.contains(name.toLowerCase())`
+
+2. **Case-sensitivity na query PostgreSQL**: `WHERE name = ANY(@names)` é case-sensitive
+   no PostgreSQL. Cartas como "Ugin, The Spirit Dragon" (IA) vs "Ugin, the Spirit Dragon" (DB)
+   não eram encontradas na busca de additionsData.
+   **Fix**: `WHERE LOWER(name) = ANY(@names)` + nomes convertidos para lowercase.
+
+### 32.4 Resultado
+
+**Antes**: Deck com 99 cartas (1 era terreno básico jogado aleatoriamente)
+**Depois**: Deck com 100 cartas, todas sinérgicas, swaps balanceados 1-por-1
+
+Exemplo de swap em deck Jin-Gitaxias (mono-U artifacts/control):
+| Removida | Adicionada | Justificativa |
+|---|---|---|
+| Engulf the Shore | Mystic Sanctuary | Land que recicla instants |
+| Whir of Invention | Reshape | Tutor de artefato mais eficiente |
+| Dramatic Reversal | Snap | Bounce grátis, mana-positive |
+| Forsaken Monument | Vedalken Shackles | Controle de criaturas |
+| Karn's Bastion | Evacuation | Board bounce para boardwipes |
+
+---
+
+## 33. Sistema de Validação Automática (OptimizationValidator v1.0)
+
+### 33.1 Filosofia
+"A IA sugere trocas, mas elas precisam ser PROVADAS boas."
+
+Antes deste sistema, a otimização era um fluxo unidirecional: IA sugere → aceitar cegamente. Agora existe uma **segunda opinião automática** com 3 camadas de validação que PROVAM se as trocas realmente melhoraram o deck.
+
+### 33.2 Arquitetura — 3 Camadas
+
+```
+┌─────────────────────────────────────────────┐
+│ POST /ai/optimize                            │
+│                                              │
+│  1. IA sugere swaps                          │
+│  2. Filtros (cor, bracket, tema)             │
+│  3. ═══ VALIDAÇÃO AUTOMÁTICA ═══            │
+│     │                                        │
+│     ├── Camada 1: Monte Carlo + Mulligan    │
+│     │   (1000 mãos ANTES vs DEPOIS)         │
+│     │                                        │
+│     ├── Camada 2: Análise Funcional         │
+│     │   (draw→draw? removal→removal?)       │
+│     │                                        │
+│     └── Camada 3: Critic IA (GPT-4o-mini)  │
+│         (segunda opinião sobre as trocas)    │
+│                                              │
+│  4. Score final 0-100 + Veredito            │
+└─────────────────────────────────────────────┘
+```
+
+### 33.3 Camada 1 — Monte Carlo + London Mulligan
+
+**Arquivo**: `server/lib/ai/optimization_validator.dart` → `_runMonteCarloComparison()`
+
+Usa o `GoldfishSimulator` (já existente em `goldfish_simulator.dart`) para rodar **1000 simulações** de mão inicial no deck ANTES e DEPOIS das trocas. Compara:
+- `consistencyScore` (0-100): Mãos jogáveis, jogada no T2/T3, screw/flood
+- `screwRate`: % de mãos com 0-1 terrenos
+- `floodRate`: % de mãos com 6-7 terrenos
+- `keepableRate`: % de mãos com 2-5 terrenos
+- `turn1-4PlayRate`: Chance de ter jogada em cada turno
+
+**London Mulligan** (500 simulações adicionais):
+- Compra 7 cartas → decide keep/mull
+- Se mull, compra 7 de novo, coloca N no fundo (N = número de mulligans)
+- Heurística de keep: 2-5 lands + pelo menos 1 jogada de CMC ≤ 3
+- Métricas: keepAt7Rate, keepAt6Rate, avgMulligans, keepableAfterMullRate
+
+### 33.4 Camada 2 — Análise Funcional
+
+**Método**: `_analyzeFunctionalSwaps()`
+
+Para CADA troca (out → in), classifica o **papel funcional** da carta:
+- `draw` — "Draw a card", "look at the top"
+- `removal` — "Destroy target", "Exile target", "Counter target"
+- `wipe` — "Destroy all", "Exile all"
+- `ramp` — "Add {", "Search your library for a...land", mana rocks
+- `tutor` — "Search your library" (não-land)
+- `protection` — Hexproof, Indestructible, Shroud, Ward
+- `creature`, `artifact`, `enchantment`, `planeswalker`
+- `utility` — Catch-all
+
+**Vereditos por troca:**
+| Veredito | Condição |
+|---|---|
+| `upgrade` | Mesmo papel + CMC menor/igual |
+| `sidegrade` | Mesmo papel + CMC maior |
+| `tradeoff` | Papel diferente + CMC menor |
+| `questionável` | Papel diferente + CMC maior |
+
+**Role Delta**: Conta quantas cartas de cada papel o deck ganhou/perdeu. Perder `removal` ou `draw` gera warnings.
+
+### 33.5 Camada 3 — Critic IA (Segunda Opinião)
+
+**Modelo**: GPT-4o-mini (mais barato que a chamada principal)
+**Temperature**: 0.3 (mais determinístico que a chamada principal)
+
+Recebe:
+- Lista de trocas com papéis funcionais e vereditos
+- Dados de simulação Monte Carlo (antes/depois)
+- Contagem de upgrades, sidegrades, tradeoffs, questionáveis
+
+Retorna JSON:
+```json
+{
+  "approval_score": 65,      // 0-100
+  "verdict": "aprovado_com_ressalvas",
+  "concerns": ["A troca X pode prejudicar..."],
+  "strong_swaps": ["Polluted Delta por Engulf the Shore é upgrade claro"],
+  "weak_swaps": [{"swap": "...", "justification": "..."}],
+  "overall_assessment": "Resumo de 1-2 linhas"
+}
+```
+
+### 33.6 Score Final (Veredito Composto)
+
+Fórmula (base 50, range 0-100):
+- `+0.5` por ponto de consistencyScore ganho
+- `+20` por ponto percentual de keepAt7Rate ganho
+- `+15` por ponto percentual de screwRate reduzido
+- `+3` por upgrade funcional
+- `+1` por sidegrade
+- `-5` por troca questionável
+- `-8` se perdeu removal
+- `-6` se perdeu draw
+- Mistura 70% score calculado + 30% score do Critic IA
+
+**Vereditos:**
+| Score | Veredito |
+|---|---|
+| ≥ 70 | `aprovado` |
+| 45-69 | `aprovado_com_ressalvas` |
+| < 45 | `reprovado` |
+
+### 33.7 Response JSON (Campo `validation` em `post_analysis`)
+
+```json
+{
+  "post_analysis": {
+    "validation": {
+      "validation_score": 52,
+      "verdict": "aprovado_com_ressalvas",
+      "monte_carlo": {
+        "before": { "consistency_score": 85, "mana_analysis": {...}, "curve_analysis": {...} },
+        "after": { "consistency_score": 85, ... },
+        "mulligan_before": { "keep_at_7": 0.814, "avg_mulligans": 0.21 },
+        "mulligan_after": { "keep_at_7": 0.698, "avg_mulligans": 0.38 },
+        "deltas": {
+          "consistency_score": 0,
+          "screw_rate_delta": 0.111,
+          "mulligan_keep7_delta": -0.116
+        }
+      },
+      "functional_analysis": {
+        "swaps": [
+          { "removed": "Engulf The Shore", "added": "Polluted Delta",
+            "removed_role": "utility", "added_role": "land",
+            "role_preserved": true, "cmc_delta": -4, "verdict": "upgrade" }
+        ],
+        "summary": { "upgrades": 3, "sidegrades": 0, "tradeoffs": 1, "questionable": 1 },
+        "role_delta": { "draw": 1, "removal": 1, "ramp": -1, "land": 2, "utility": -2 }
+      },
+      "critic_ai": {
+        "approval_score": 65,
+        "verdict": "aprovado_com_ressalvas",
+        "concerns": [...],
+        "strong_swaps": [...],
+        "weak_swaps": [...]
+      },
+      "warnings": [
+        "1 troca(s) questionável(is) — mudou função E ficou mais cara.",
+        "Risco de mana screw aumentou significativamente."
+      ]
+    }
+  }
+}
+```
+
+### 33.8 Testes
+
+Arquivo: `server/test/optimization_validator_test.dart` — 4 testes:
+1. **Aprova quando otimização melhora consistência** — Deck com poucos terrenos vs balanceado
+2. **Detecta preservação de papel funcional** — Counterspell→Swan Song = removal→removal = upgrade
+3. **Mulligan rates são razoáveis** — keepAt7 > 30%, avgMulligans < 2.0
+4. **toJson produz estrutura válida** — Todos os campos existem com tipos corretos
+
+### 33.9 Não-bloqueante
+
+A validação é um **enhancement**. Se qualquer camada falhar (timeout, API down, etc.), o erro é capturado e a resposta segue normalmente sem o campo `validation`. Isso garante que o endpoint nunca quebra por causa da validação.
+
+### 33.10 Validações Pós-Processamento (v1.1)
+
+**Data:** Junho 2025
+
+Após a validação das 3 camadas (Monte Carlo, Funcional, Critic IA), foram adicionadas **3 validações adicionais** que aparecem em `validation_warnings`:
+
+#### 33.10.1 Warning de Color Identity
+
+Quando a IA sugere cartas que violam a identidade de cor do commander, elas são **filtradas automaticamente** (não entram em `additions`), mas agora um **warning é adicionado** para transparência:
+
+```
+⚠️ 3 carta(s) sugerida(s) pela IA foram removidas por violar a identidade de cor do commander: Counterspell, Blue Elemental Blast...
+```
+
+**Implementação:** `routes/ai/optimize/index.dart` — Verifica se `filteredByColorIdentity` não está vazio.
+
+#### 33.10.2 Validação EDHREC para Additions
+
+Cada carta sugerida é verificada contra os dados do EDHREC para o commander. Cartas que **não aparecem** nos dados de sinergia do EDHREC são identificadas com warnings:
+
+```
+⚠️ 6 (50%) das cartas sugeridas NÃO aparecem nos dados EDHREC de Muldrotha, the Gravetide. Isso pode indicar baixa sinergia: Card X, Card Y...
+```
+
+**Níveis:**
+- `>50%` das additions não estão no EDHREC → Warning forte (⚠️)
+- `≥3` cartas não estão no EDHREC → Info leve (💡)
+
+**Resposta inclui:**
+```json
+{
+  "edhrec_validation": {
+    "commander": "Muldrotha, the Gravetide",
+    "deck_count": 15234,
+    "themes": ["Reanimator", "Self-Mill", "Value"],
+    "additions_validated": 4,
+    "additions_not_in_edhrec": ["Card X", "Card Y"]
+  }
+}
+```
+
+#### 33.10.3 Comparação de Tema
+
+O tema detectado automaticamente pelo sistema é comparado com os **temas populares do EDHREC** para o commander. Se não houver correspondência, um warning é emitido:
+
+```
+💡 Tema detectado "Aggro" não corresponde aos temas populares do EDHREC (Reanimator, Self-Mill, Value). Considere ajustar a estratégia.
+```
+
+Isso ajuda o usuário a entender se está construindo um deck "off-meta" ou se o detector de tema errou.
+
+---
+
+## 34. Auditoria e Correção de 13 Falhas (Junho 2025)
+
+### 34.1 Contexto
+Uma auditoria completa do fluxo de otimização identificou 13 falhas potenciais documentadas em `DOCUMENTACAO_OTIMIZACAO_EXCLUSIVA.md`. Todas (exceto Falha 6 — MatchupAnalyzer, escopo futuro) foram corrigidas e deployadas.
+
+### 34.2 Correções de Alta Severidade
+
+**Goldfish mana colorida (Falha 5):** `goldfish_simulator.dart` — Adicionados `_getColorRequirements()` (extrai `{U}`, `{B}` etc. do mana_cost, ignora phyrexian) e `_getLandColors()` (analisa oracle_text/type_line para determinar cores produzidas por lands). A simulação agora verifica tanto mana total quanto requisitos de cor por turno.
+
+**Efficiency scores com sinergia (Falha 7):** `otimizacao.dart` — `_extractMechanicKeywords()` analisa o oracle_text do commander e extrai 30+ patterns mecânicos. Cartas com 2+ matches têm score÷2 (forte sinergia), 1 match → score×0.7. Impede que a IA remova peças sinérgicas.
+
+**sanitizeCardName unicode (Falha 2):** `card_validation_service.dart` — Removido Title Case forçado que destruía "AEther Vial", "Lim-Dûl's Vault". Regex alterada de `[^\w\s',-]` para `[\x00-\x1F\x7F]` (só control chars). Adicionado strip de sufixo "(Set Code)".
+
+### 34.3 Correções de Média Severidade
+
+**Operator precedence (Falha 1):** `optimization_validator.dart` — 5 expressões `&&`/`||` sem parênteses receberam parênteses explícitos em `_classifyFunctionalRole()`.
+
+**Parse resiliente IA (Falha 9):** `index.dart` — 4º fallback de parsing (`suggestions` key), null-safety no formato `changes`, warning log quando resultado é vazio.
+
+**Scryfall rate limiting (Falha 11):** `sinergia.dart` — `Future.wait()` (paralelo) substituído por loop sequencial com 120ms delay entre requests.
+
+**Scryfall fallback queries (Falha 3):** `sinergia.dart` — Se query `function:` retorna vazio, `_buildFallbackQuery()` gera query text-based equivalente (9 mapeamentos).
+
+**Índice DB (Falha 10):** `CREATE INDEX idx_cards_name_lower ON cards (LOWER(name))` criado em produção. Query de exclusão alterada para `LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude)))`.
+
+### 34.4 Correções de Baixa Severidade
+
+**Case-sensitive exclude (Falha 4):** SQL corrigido para comparação case-insensitive.
+
+**Mulligan com mana rocks (Falha 8):** `optimization_validator.dart` — Conta artifact + "add" + CMC≤2 como rocks. `effectiveLands = lands + (rocks × 0.5)`, threshold `1.5-5.5`.
+
+**Novos temas (Falha 12):** `index.dart` `_detectThemeProfile()` — 8 novos temas: tokens, reanimator, aristocrats, voltron, tribal (com subtipo), landfall, wheels, stax. Detecção via oracle_text e type_line em vez de nomes hardcoded.
+
+**Logger (Falha 13):** 31 `print('[DEBUG/WARN/ERROR]...')` substituídos por `Log.d()`/`Log.w()`/`Log.e()`. Em produção, `Log.d()` é suprimido automaticamente.
+
+### 34.5 Bug Encontrado no Deploy
+
+`_extractMechanicKeywords()` usava `List<dynamic>.firstWhere(orElse: () => null)` que causa `type '() => Null' is not a subtype of type '(() => Map<String, dynamic>)?'` em runtime. Corrigido com loop manual `for`/`break`.
+---
+
+## 35. Integração EDHREC (Fevereiro 2026)
+
+### 35.1 Motivação
+
+A seleção de cartas pela IA dependia de heurísticas internas (keywords, oracle text parsing) e rankings globais do Scryfall. Isso causava dois problemas:
+
+1. **Cartas sinérgicas específicas** eram cortadas por serem "impopulares globalmente"
+2. **Sugestões genéricas** não consideravam co-ocorrências reais com o commander
+
+**Solução:** Integrar dados do EDHREC, que possui estatísticas de **milhões de decklists reais** de Commander.
+
+### 35.2 Arquitetura
+
+Novo serviço: `lib/ai/edhrec_service.dart`
+
+```dart
+class EdhrecService {
+  // Cache em memória (6h) para evitar requests repetidos
+  static final Map<String, _CachedResult> _cache = {};
+  
+  // Busca dados de co-ocorrência para o commander
+  Future<EdhrecCommanderData?> fetchCommanderData(String commanderName) async;
+  
+  // Converte nome para slug EDHREC
+  // "Jin-Gitaxias // The Great Synthesis" → "jin-gitaxias"
+  String _toSlug(String name);
+  
+  // Retorna cartas com synergy > threshold
+  List<EdhrecCard> getHighSynergyCards(data, {minSynergy: 0.15, limit: 40});
+}
+```
+
+### 35.3 Dados Retornados pelo EDHREC
+
+```json
+{
+  "commanderName": "Jin-Gitaxias",
+  "deckCount": 3847,           // Número de decks analisados
+  "themes": ["Draw", "Artifacts", "Voltron"],
+  "topCards": [
+    {
+      "name": "Rhystic Study",
+      "synergy": 0.42,         // -1.0 a 1.0 (1.0 = só aparece neste deck)
+      "inclusion": 0.89,       // 89% dos decks usam
+      "numDecks": 3424,
+      "category": "card_draw"
+    }
+  ]
+}
+```
+
+### 35.4 Integração no Fluxo de Otimização
+
+**Arquivo:** `lib/ai/otimizacao.dart`
+
+1. **Antes do scoring:** Busca dados EDHREC para o commander
+2. **Efficiency Scoring:** Novo método `_calculateEfficiencyScoresWithEdhrec()`:
+   - Se carta está no EDHREC com synergy > 0.3 → score ÷4 (protegida)
+   - Se synergy > 0.15 → score ÷2.5
+   - Se synergy > 0 → score ÷1.5
+   - Se carta NÃO está no EDHREC → fallback para keywords
+3. **Synergy Pool:** Top 40 cartas com synergy > 0.15 do EDHREC
+
+```dart
+// No optimizeDeck():
+final edhrecData = await edhrecService.fetchCommanderData(commanders.first);
+
+final scoredCards = _calculateEfficiencyScoresWithEdhrec(
+  currentCards,
+  commanderKeywords,
+  edhrecData,  // Novo parâmetro
+);
+
+List<String> synergyCards;
+if (edhrecData != null && edhrecData.topCards.isNotEmpty) {
+  synergyCards = edhrecService
+      .getHighSynergyCards(edhrecData, minSynergy: 0.15, limit: 40)
+      .map((c) => c.name)
+      .toList();
+} else {
+  synergyCards = await synergyEngine.fetchCommanderSynergies(...);  // Fallback
+}
+```
+
+### 35.5 Headers Anti-Bloqueio
+
+EDHREC bloqueia User-Agents genéricos. Headers implementados:
+
+```dart
+headers: {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://edhrec.com/',
+}
+```
+
+### 35.6 Tratamento de Flip Cards
+
+Cartas dupla face (MDFCs, Transform) são suportadas:
+
+```dart
+// "Jin-Gitaxias // The Great Synthesis" → "jin-gitaxias"
+for (final separator in [' // ', '//', ' / ']) {
+  if (cleanName.contains(separator)) {
+    cleanName = cleanName.split(separator).first.trim();
+    break;
+  }
+}
+```
+
+### 35.7 Impacto na Qualidade
+
+**Antes:** Sugestões baseadas em popularidade global + heurísticas de keywords.
+
+**Depois:** Sugestões baseadas em **co-ocorrência real** de milhões de decks.
+
+Exemplo prático: Para Jin-Gitaxias, agora cartas como "Mystic Remora" e "Curiosity" (que têm alta sinergia específica com ele) são priorizadas sobre staples genéricos.
+
+### 35.8 Fallback
+
+Se EDHREC retornar erro (403, 404, timeout):
+- Log de warning
+- Usa Scryfall como fallback (comportamento anterior)
+- Não quebra o fluxo de otimização

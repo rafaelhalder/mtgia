@@ -515,7 +515,9 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         break;
 
       case 'accepted':
-        if (isSender) {
+        // Em venda: receiver (vendedor) envia; em troca: qualquer participante
+        final canShip = trade.type == 'sale' ? isReceiver : (isSender || isReceiver);
+        if (canShip) {
           actions.add(_actionButton(
             label: 'Marcar como Enviado',
             icon: Icons.local_shipping,
@@ -532,7 +534,9 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         break;
 
       case 'shipped':
-        if (isReceiver) {
+        // Em venda: sender (comprador) confirma recebimento; em troca: qualquer participante
+        final canConfirm = trade.type == 'sale' ? isSender : (isSender || isReceiver);
+        if (canConfirm) {
           actions.add(_actionButton(
             label: 'Confirmar Entrega',
             icon: Icons.inventory_2,

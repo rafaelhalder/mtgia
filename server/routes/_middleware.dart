@@ -22,29 +22,41 @@ Handler middleware(Handler handler) {
       return Response(statusCode: HttpStatus.noContent, headers: _corsHeaders);
     }
 
-    // ── DB ────────────────────────────────────────────────
-    if (!_connected) {
-      await _db.connect();
-      _connected = true;
-    }
-    if (!_schemaReady) {
-      await _ensureRuntimeSchema(_db.connection);
-      _schemaReady = true;
-    }
+    try {
+      // ── DB ────────────────────────────────────────────────
+      if (!_connected) {
+        await _db.connect();
+        if (!_db.isConnected) {
+          return Response.json(
+            statusCode: HttpStatus.serviceUnavailable,
+            body: {'error': 'Serviço temporariamente indisponível (DB)'},
+            headers: _corsHeaders,
+          );
+        }
+        _connected = true;
+      }
+      if (!_schemaReady) {
+        await _ensureRuntimeSchema(_db.connection);
+        _schemaReady = true;
+      }
 
-    // Executa o handler com Pool injetado.
-    final response =
-        await handler.use(provider<Pool>((_) => _db.connection))(context);
+      // Executa o handler com Pool injetado.
+      final response =
+          await handler.use(provider<Pool>((_) => _db.connection))(context);
 
-    // ── Adiciona CORS nas respostas ──────────────────────
-    // Lê o body como string e reconstrói a Response com headers merged.
-    final bodyStr = await response.body();
-    final merged = <String, Object>{...response.headers, ..._corsHeaders};
-    return Response(
-      statusCode: response.statusCode,
-      body: bodyStr,
-      headers: merged,
-    );
+      // ── Adiciona CORS nas respostas ──────────────────────
+      // Evita materializar o body (performance/streaming).
+      final merged = <String, Object>{...response.headers, ..._corsHeaders};
+      return response.copyWith(headers: merged);
+    } catch (e, st) {
+      print('[ERROR] middleware: $e');
+      print('[ERROR] stack: $st');
+      return Response.json(
+        statusCode: HttpStatus.internalServerError,
+        body: {'error': 'Erro interno do servidor'},
+        headers: _corsHeaders,
+      );
+    }
   };
 }
 
@@ -80,9 +92,13 @@ Future<void> _ensureRuntimeSchema(Pool pool) async {
       user_b_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       last_message_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT uq_conversation UNIQUE (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id)),
       CONSTRAINT chk_no_self_chat CHECK (user_a_id != user_b_id)
     )
+  '''));
+  // Unique funcional: garante apenas 1 conversa por par de usuários (ordem irrelevante).
+  await pool.execute(Sql.named('''
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_conversation_pair
+    ON conversations (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))
   '''));
   await pool.execute(Sql.named('''
     CREATE TABLE IF NOT EXISTS direct_messages (
@@ -116,4 +132,8 @@ Future<void> _ensureRuntimeSchema(Pool pool) async {
       'CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, created_at DESC)'));
   await pool.execute(Sql.named(
       'CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id) WHERE read_at IS NULL'));
+
+  // Push Notifications: FCM token
+  await pool.execute(Sql.named(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token TEXT'));
 }
