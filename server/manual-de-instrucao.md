@@ -5311,8 +5311,8 @@ Padrões técnicos aplicados:
 - asserção de contrato mínima e objetiva: `statusCode` + presença de `error` textual.
 
 Observação técnica sobre `405`:
-- em alguns cenários de `Method Not Allowed`, o runtime pode responder `405` com body vazio;
-- nesses casos, o teste valida obrigatoriamente o status `405` e valida `error` quando o body JSON estiver presente.
+- para os endpoints core cobertos, foram adicionados handlers explícitos de método inválido;
+- o contrato agora é estrito nesses casos: `405` **sempre** com body JSON contendo `error`.
 
 Execução:
 ```bash

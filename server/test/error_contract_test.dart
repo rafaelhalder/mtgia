@@ -85,9 +85,7 @@ void main() {
   void expect405Contract(http.Response response) {
     expect(response.statusCode, equals(405));
     final body = decodeJson(response);
-    if (body.isNotEmpty) {
-      expect(body['error'], isA<String>());
-    }
+    expect(body['error'], isA<String>());
   }
 
   group('Error contract | Core + AI', () {

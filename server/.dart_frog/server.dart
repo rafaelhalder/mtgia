@@ -26,12 +26,15 @@ import '../routes/notifications/[id]/read.dart' as notifications_$id_read;
 import '../routes/market/movers/index.dart' as market_movers_index;
 import '../routes/market/card/[cardId].dart' as market_card_$card_id;
 import '../routes/import/index.dart' as import_index;
+import '../routes/import/get.dart' as import_get;
 import '../routes/import/validate/index.dart' as import_validate_index;
 import '../routes/import/to-deck/index.dart' as import_to_deck_index;
 import '../routes/health/index.dart' as health_index;
 import '../routes/health/ready/index.dart' as health_ready_index;
 import '../routes/health/live/index.dart' as health_live_index;
+import '../routes/decks/put.dart' as decks_put;
 import '../routes/decks/index.dart' as decks_index;
+import '../routes/decks/[id]/post.dart' as decks_$id_post;
 import '../routes/decks/[id]/index.dart' as decks_$id_index;
 import '../routes/decks/[id]/validate/index.dart' as decks_$id_validate_index;
 import '../routes/decks/[id]/simulate/index.dart' as decks_$id_simulate_index;
@@ -86,7 +89,7 @@ import '../routes/ai/_middleware.dart' as ai_middleware;
 
 void main() async {
   final address = InternetAddress.tryParse('') ?? InternetAddress.anyIPv6;
-  final port = int.tryParse(Platform.environment['PORT'] ?? '8080') ?? 8080;
+  final port = int.tryParse(Platform.environment['PORT'] ?? '8081') ?? 8081;
   hotReload(() => createServer(address, port));
 }
 
@@ -382,14 +385,14 @@ Handler buildDecks$idValidateHandler(String id,) {
 Handler buildDecks$idHandler(String id,) {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
-    ..all('/', (context) => decks_$id_index.onRequest(context,id,));
+    ..all('/post', (context) => decks_$id_post.onRequest(context,id,))..all('/', (context) => decks_$id_index.onRequest(context,id,));
   return pipeline.addHandler(router);
 }
 
 Handler buildDecksHandler() {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
-    ..all('/', (context) => decks_index.onRequest(context,));
+    ..all('/put', (context) => decks_put.onRequest(context,))..all('/', (context) => decks_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
@@ -431,7 +434,7 @@ Handler buildImportValidateHandler() {
 Handler buildImportHandler() {
   final pipeline = const Pipeline().addMiddleware(import_middleware.middleware);
   final router = Router()
-    ..all('/', (context) => import_index.onRequest(context,));
+    ..all('/', (context) => import_index.onRequest(context,))..all('/get', (context) => import_get.onRequest(context,));
   return pipeline.addHandler(router);
 }
 
