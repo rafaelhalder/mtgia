@@ -93,24 +93,37 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final prompt = '''
-    Analise este deck de Magic: The Gathering ($deckFormat).
-    Nome: $deckName
-    Comandante(s): ${commanders.join(', ')}
-    Lista (amostra): ${otherCards.take(30).join(', ')}... (total ${otherCards.length} cartas)
+Você está analisando um deck de MTG para sugerir linhas estratégicas de evolução.
 
-    Identifique 3 caminhos estratégicos distintos (arquétipos) para otimizar este deck, baseados no comandante e nas cores.
-    Retorne APENAS um JSON válido com o seguinte formato, sem markdown:
+Contexto:
+- Formato: $deckFormat
+- Nome: $deckName
+- Comandante(s): ${commanders.join(', ')}
+- Amostra de cartas: ${otherCards.take(30).join(', ')}
+- Total de cartas não-comandante: ${otherCards.length}
+
+Objetivo:
+Retornar EXATAMENTE 3 opções de arquétipo com planos distintos e úteis para o jogador, priorizando consistência, plano de vitória e qualidade de curva.
+
+Regras:
+1) Não repetir o mesmo plano com nomes diferentes.
+2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spell-slinger, Reanimator, Tokens, Control).
+3) Cada descrição deve explicar o plano em no máximo 2 frases, incluindo "como vence" e "o que precisa melhorar".
+4) Dificuldade obrigatória em: Baixa, Média ou Alta.
+5) Responda SOMENTE JSON válido, sem markdown.
+
+Formato obrigatório:
+{
+  "options": [
     {
-      "options": [
-        {
-          "id": "string_curta_identificadora",
-          "title": "Nome do Arquétipo (ex: Aristocrats, Voltron)",
-          "description": "Breve explicação do foco estratégico (max 2 frases).",
-          "difficulty": "Baixa/Média/Alta"
-        }
-      ]
+      "id": "slug-curto",
+      "title": "Nome do Arquétipo",
+      "description": "Plano estratégico objetivo em até 2 frases.",
+      "difficulty": "Baixa|Média|Alta"
     }
-    ''';
+  ]
+}
+''';
 
     // 3. Call OpenAI
     final response = await http.post(
@@ -130,7 +143,7 @@ Future<Response> onRequest(RequestContext context) async {
         'messages': [
           {
             'role': 'system',
-            'content': 'Você é um especialista em construção de decks de Magic: The Gathering. Responda sempre em JSON.'
+            'content': 'Você é um deck builder competitivo de MTG focado em decisões práticas para o jogador. Seja objetivo, técnico e útil. Responda sempre em JSON válido.'
           },
           {
             'role': 'user',

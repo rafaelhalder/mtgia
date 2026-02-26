@@ -5655,3 +5655,31 @@ Campos relevantes:
 Regra prática:
 - se `OPENAI_MODEL_*`/`OPENAI_TEMP_*` estiverem definidos, eles prevalecem;
 - se não estiverem, aplica fallback por perfil automaticamente.
+
+## 54. Prompt v2 unificado (Archetypes, Explain, Recommendations)
+
+### 54.1 O Porquê
+
+Apesar do núcleo de `optimize/complete` já estar robusto, os prompts dos fluxos auxiliares ainda estavam mais genéricos e com menor foco em decisão real do jogador.
+
+Isso gerava variância de qualidade entre endpoints IA e diminuía valor percebido na experiência geral.
+
+### 54.2 O Como
+
+Endpoints ajustados:
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+
+Melhorias aplicadas:
+- reforço de objetivo orientado ao usuário (plano de jogo + ação recomendada);
+- instruções mais restritivas para saída previsível;
+- maior foco em consistência de deck (curva, ramp, draw, remoção, sinergia);
+- anti-hallucination textual em `explain` (fidelidade ao Oracle, explicitar limitações de contexto);
+- manutenção do contrato de resposta atual de cada endpoint (sem breaking change para o app).
+
+### 54.3 Resultado esperado
+
+- respostas mais úteis para tomada de decisão do jogador;
+- menor variância de qualidade entre endpoints de IA;
+- melhor alinhamento com o objetivo do produto: construir, entender e melhorar decks com consistência.

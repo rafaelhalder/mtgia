@@ -452,33 +452,55 @@ Future<Response> _callOpenAI({
   required List<Map<String, dynamic>> deckCards,
 }) async {
   final cardList = deckCards.map((c) => "${c['quantity']}x ${c['name']}").join(', ');
+  final commanders = deckCards
+      .where((c) => c['is_commander'] == true)
+      .map((c) => (c['name'] as String?) ?? '')
+      .where((name) => name.isNotEmpty)
+      .toList();
+  final colors = <String>{};
+  for (final card in deckCards) {
+    final cardColors = (card['colors'] as List?)?.cast<String>() ?? const <String>[];
+    colors.addAll(cardColors);
+  }
 
   final prompt = '''
-    You are a professional Magic: The Gathering deck builder expert.
-    Analyze the following deck and provide recommendations.
-    
-    Deck Name: $deckName
-    Format: $format
-    Description: $description
-    Cards: $cardList
-    
-    Task:
-    1. Identify the deck's archetype and main strategy.
-    2. Suggest 5 cards to ADD that improve synergy or cover weaknesses.
-    3. Suggest 5 cards to REMOVE that are weak or don't fit.
-    4. Rate the deck's power level (1-10) for casual play.
-    
-    Output strictly in JSON format:
-    {
-      "archetype": "string",
-      "power_level": number,
-      "analysis": "string (brief summary)",
-      "recommendations": {
-        "add": [ {"card_name": "string", "reason": "string"} ],
-        "remove": [ {"card_name": "string", "reason": "string"} ]
-      }
-    }
-  ''';
+Você é um deck builder competitivo de Magic: The Gathering.
+
+Contexto do deck:
+- Nome: $deckName
+- Formato: $format
+- Descrição: $description
+- Comandante(s): ${commanders.join(', ')}
+- Cores detectadas: ${colors.join(', ')}
+- Lista atual: $cardList
+
+Objetivo:
+Gerar recomendações práticas para melhorar consistência, plano de vitória e interação.
+
+Regras obrigatórias:
+1) Identifique o arquétipo predominante do deck.
+2) Sugira EXATAMENTE 5 cartas para adicionar e EXATAMENTE 5 para remover.
+3) Cada recomendação deve ter motivo curto e acionável (1 frase).
+4) Priorize melhorar: ramp, draw, remoção, curva e sinergia.
+5) Em Commander, respeite identidade de cor do(s) comandante(s).
+6) Não recomende cartas banidas no formato.
+7) Responda SOMENTE JSON válido, sem markdown.
+
+Formato obrigatório:
+{
+  "archetype": "string",
+  "power_level": 1-10,
+  "analysis": "resumo curto e objetivo",
+  "recommendations": {
+    "add": [
+      {"card_name": "string", "reason": "string"}
+    ],
+    "remove": [
+      {"card_name": "string", "reason": "string"}
+    ]
+  }
+}
+''';
 
   final response = await http.post(
     Uri.parse('https://api.openai.com/v1/chat/completions'),
@@ -495,7 +517,10 @@ Future<Response> _callOpenAI({
         prodFallback: 'gpt-4o-mini',
       ),
       'messages': [
-        {'role': 'system', 'content': 'You are a helpful assistant that outputs JSON.'},
+        {
+          'role': 'system',
+          'content': 'Você é um especialista em otimização de decks MTG orientado a decisão do jogador. Seja técnico, direto e sempre retorne JSON válido.'
+        },
         {'role': 'user', 'content': prompt},
       ],
       'temperature': aiConfig.temperatureFor(

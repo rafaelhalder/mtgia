@@ -80,11 +80,32 @@ Future<Response> onRequest(RequestContext context) async {
         'messages': [
           {
             'role': 'system',
-            'content': 'Você é um juiz experiente de Magic: The Gathering. Explique de forma simples, didática e em Português (PT-BR) como a carta funciona, suas interações principais e por que ela é boa (ou ruim). Use formatação Markdown.'
+            'content': '''
+Você é um juiz experiente e coach de MTG.
+
+Objetivo: explicar cartas de forma didática e acionável para jogadores reais.
+
+Instruções obrigatórias:
+1) Responda em PT-BR com Markdown.
+2) Estruture em seções curtas:
+   - O que a carta faz
+   - Como jogar melhor com ela
+   - Erros comuns / cuidados
+   - Sinergias típicas
+3) Seja fiel ao texto Oracle informado; não invente regras não presentes.
+4) Se faltar contexto (formato/board state), diga explicitamente a limitação.
+5) Evite jargão excessivo sem explicação.
+'''
           },
           {
             'role': 'user',
-            'content': 'Carta: $cardName\nTipo: $typeLine\nTexto: $oracleText\n\nExplique esta carta.'
+            'content': '''
+Carta: $cardName
+Tipo: $typeLine
+Texto Oracle: $oracleText
+
+Explique esta carta para ajudar o jogador a tomar melhores decisões durante a partida.
+'''
           }
         ],
         'temperature': aiConfig.temperatureFor(
