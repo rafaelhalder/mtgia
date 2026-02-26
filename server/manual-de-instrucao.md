@@ -5292,6 +5292,9 @@ Cobertura incluída (integração):
 - `GET /decks/:id` com deck inexistente → `404` com `error`
 - `POST /import` sem token → `401` com `error`
 - `POST /import` com payload inválido → `400` com `error`
+- `PUT /decks` (método inválido) → `405`
+- `GET /import` (método inválido) → `405`
+- `POST /decks/:id` (método inválido) → `405`
 - `POST /ai/archetypes` sem token → `401` com `error`
 - `POST /ai/archetypes` inválido → `400` com `error`
 - `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`
@@ -5306,6 +5309,10 @@ Padrões técnicos aplicados:
 - mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
 - autenticação real de usuário de teste para rotas protegidas;
 - asserção de contrato mínima e objetiva: `statusCode` + presença de `error` textual.
+
+Observação técnica sobre `405`:
+- em alguns cenários de `Method Not Allowed`, o runtime pode responder `405` com body vazio;
+- nesses casos, o teste valida obrigatoriamente o status `405` e valida `error` quando o body JSON estiver presente.
 
 Execução:
 ```bash

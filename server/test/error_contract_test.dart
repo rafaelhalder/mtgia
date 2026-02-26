@@ -82,6 +82,14 @@ void main() {
     authToken = await getAuthToken();
   });
 
+  void expect405Contract(http.Response response) {
+    expect(response.statusCode, equals(405));
+    final body = decodeJson(response);
+    if (body.isNotEmpty) {
+      expect(body['error'], isA<String>());
+    }
+  }
+
   group('Error contract | Core + AI', () {
     test(
       'POST /decks without token returns 401 with error',
@@ -98,6 +106,20 @@ void main() {
         expect(response.statusCode, equals(401));
         final body = decodeJson(response);
         expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /decks returns 405 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/decks'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expect405Contract(response);
       },
       skip: skipIntegration,
     );
@@ -207,6 +229,19 @@ void main() {
     );
 
     test(
+      'GET /import returns 405 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/import'),
+          headers: authHeaders(),
+        );
+
+        expect405Contract(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
       'POST /ai/archetypes without deck_id returns 400 with error',
       () async {
         final response = await http.post(
@@ -218,6 +253,20 @@ void main() {
         expect(response.statusCode, equals(400));
         final body = decodeJson(response);
         expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /decks/:id returns 405 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/decks/$missingDeckId'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expect405Contract(response);
       },
       skip: skipIntegration,
     );
