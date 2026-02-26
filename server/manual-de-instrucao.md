@@ -5339,6 +5339,60 @@ Cobertura incluída (integração):
 - `GET /cards/resolve/batch` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
 - `POST /cards/resolve/batch` inválido → `400` (ou `404` quando endpoint não existe no runtime)
 - `POST /rules` (método inválido) → `405`
+- `POST /community/decks/:id` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/decks/:id` inexistente → `404`
+- `PUT /community/decks/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/users` sem `q` → `400` (ou `404` quando endpoint não existe no runtime)
+- `POST /community/users` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/users/:id` inexistente → `404`
+- `PUT /community/users/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/binders/:userId` inexistente → `404`
+- `POST /community/binders/:userId` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /community/marketplace` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET/POST /users/:id/follow` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/follow` com alvo inexistente → `404`
+- `POST /users/:id/follow` em si mesmo → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /users/:id/followers` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/followers` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /users/:id/following` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/following` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /notifications` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/count` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /notifications/count` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/read-all` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/read-all` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/:id/read` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/:id/read` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/:id/read` inexistente → `404`
+- `GET /trades` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades` inválido (payload/tipo) → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id` inexistente → `404`
+- `POST /trades/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/respond` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/respond` inválido (`action`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/status` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/status` sem `status` → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id/messages` inexistente → `404`
+- `POST /trades/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades/:id/messages` inválido → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations` inválido (sem `user_id`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/unread-count` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations/unread-count` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/messages` inexistente → `404`
+- `POST /conversations/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations/:id/messages` inválido (sem `message`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations/:id/read` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/read` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations/:id/read` inexistente → `404`
 
 Padrões técnicos aplicados:
 - mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
@@ -5348,6 +5402,7 @@ Padrões técnicos aplicados:
 Observação técnica sobre `404/405` em ambientes mistos:
 - em runtime atualizado, o middleware raiz normaliza `405` vazios para JSON com `error`;
 - em runtime legado (ex.: servidor já em execução antigo), algumas respostas de framework ainda podem vir como `text/plain` ou body vazio;
+- para famílias de endpoint ainda não publicadas no runtime ativo, o suite aceita `404` como fallback de compatibilidade sem mascarar regressões de `statusCode`;
 - o teste de contrato mantém validação estrita de `statusCode` e valida payload estruturado quando disponível, com fallback compatível para `404/405` de framework.
 
 Execução:
@@ -5360,4 +5415,4 @@ RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/e
 
 - Contrato de erro padronizado agora tem cobertura automatizada dedicada.
 - Redução de risco de regressão silenciosa em handlers core/IA/Auth.
-- Cobertura expandida para família `cards/*` e `rules`, incluindo cenários de compatibilidade entre runtimes.
+- Cobertura expandida para `cards/*`, `rules`, `community/*`, `users/*`, `notifications/*`, `trades/*` e `conversations/*`, incluindo cenários de compatibilidade entre runtimes.

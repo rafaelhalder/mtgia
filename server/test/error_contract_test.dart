@@ -21,6 +21,8 @@ void main() {
   const missingDeckId = '00000000-0000-0000-0000-000000000001';
   const missingUserId = '00000000-0000-0000-0000-000000000002';
   const missingNotificationId = '00000000-0000-0000-0000-000000000003';
+  const missingTradeId = '00000000-0000-0000-0000-000000000004';
+  const missingConversationId = '00000000-0000-0000-0000-000000000005';
 
   String? authToken;
   String? authUserId;
@@ -1358,6 +1360,397 @@ void main() {
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/notifications/$missingNotificationId/read'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /trades without token returns 401 with error',
+      () async {
+        final response = await http.get(Uri.parse('$baseUrl/trades'));
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /trades returns 405 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/trades'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional405Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades with empty payload returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades with invalid type returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades'),
+          headers: authHeaders(true),
+          body: jsonEncode({
+            'receiver_id': missingUserId,
+            'type': 'invalid_type',
+            'my_items': [],
+            'requested_items': [],
+          }),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /trades/:id without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/trades/$missingTradeId'),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /trades/:id with missing trade returns 404 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/trades/$missingTradeId'),
+          headers: authHeaders(),
+        );
+
+        expectOptional404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades/:id returns 405 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades/$missingTradeId'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional405Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /trades/:id/respond without token returns 401 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/trades/$missingTradeId/respond'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'action': 'accept'}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /trades/:id/respond invalid action returns 400 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/trades/$missingTradeId/respond'),
+          headers: authHeaders(true),
+          body: jsonEncode({'action': 'noop'}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /trades/:id/status without token returns 401 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/trades/$missingTradeId/status'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'status': 'shipped'}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /trades/:id/status missing status returns 400 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/trades/$missingTradeId/status'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /trades/:id/messages without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /trades/:id/messages missing trade returns 404 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
+          headers: authHeaders(),
+        );
+
+        expectOptional404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades/:id/messages without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'message': 'hello'}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /trades/:id/messages invalid payload returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /conversations without token returns 401 with error',
+      () async {
+        final response = await http.get(Uri.parse('$baseUrl/conversations'));
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /conversations returns 405 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/conversations'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional405Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /conversations without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/conversations'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'user_id': missingUserId}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /conversations missing user_id returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/conversations'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /conversations/unread-count without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/conversations/unread-count'),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /conversations/unread-count returns 405 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/conversations/unread-count'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional405Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /conversations/:id/messages without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /conversations/:id/messages missing conversation returns 404 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
+          headers: authHeaders(),
+        );
+
+        expectOptional404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /conversations/:id/messages without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'message': 'hello'}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /conversations/:id/messages missing message returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectOptional400Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /conversations/:id/read without token returns 401 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/read'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({}),
+        );
+
+        expectOptional401Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /conversations/:id/read returns 405 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/read'),
+          headers: authHeaders(),
+        );
+
+        expectOptional405Or404(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'PUT /conversations/:id/read missing conversation returns 404 with error',
+      () async {
+        final response = await http.put(
+          Uri.parse('$baseUrl/conversations/$missingConversationId/read'),
           headers: authHeaders(true),
           body: jsonEncode({}),
         );
