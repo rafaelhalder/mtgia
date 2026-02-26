@@ -7,6 +7,7 @@ import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
 import '../../../lib/ai/optimization_validator.dart';
 import '../../../lib/ai/edhrec_service.dart';
+import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/edh_bracket_policy.dart';
 
@@ -742,7 +743,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -755,10 +756,7 @@ Future<Response> onRequest(RequestContext context) async {
     final keepTheme = body['keep_theme'] as bool? ?? true;
 
     if (deckId == null || archetype == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'deck_id and archetype are required'},
-      );
+      return badRequest('deck_id and archetype are required');
     }
 
     // 1. Fetch Deck Data
@@ -771,8 +769,7 @@ Future<Response> onRequest(RequestContext context) async {
     );
 
     if (deckResult.isEmpty) {
-      return Response.json(
-          statusCode: HttpStatus.notFound, body: {'error': 'Deck not found'});
+      return notFound('Deck not found');
     }
 
     // Get Cards with CMC for analysis
@@ -1251,10 +1248,7 @@ Future<Response> onRequest(RequestContext context) async {
       }
     } catch (e, stackTrace) {
       Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'error': 'Optimization failed', 'details': e.toString()},
-      );
+      return internalServerError('Optimization failed', details: e);
     }
 
     // Se o modo complete já veio “determinístico” (com card_id/quantity),
@@ -2145,10 +2139,7 @@ Future<Response> onRequest(RequestContext context) async {
     return Response.json(body: responseBody);
   } catch (e) {
     Log.e('handler: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': e.toString()},
-    );
+    return internalServerError('Failed to optimize deck', details: e);
   }
 }
 

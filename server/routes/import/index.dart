@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../lib/http_responses.dart';
+
 List<Map<String, dynamic>> _consolidateCardsById(
   List<Map<String, dynamic>> cards,
 ) {
@@ -30,7 +32,7 @@ Future<Response> onRequest(RequestContext context) async {
   if (context.request.method == HttpMethod.post) {
     return _importDeck(context);
   }
-  return Response(statusCode: HttpStatus.methodNotAllowed);
+  return methodNotAllowed();
 }
 
 Future<Response> _importDeck(RequestContext context) async {
@@ -45,10 +47,7 @@ Future<Response> _importDeck(RequestContext context) async {
   final rawList = body['list'];
 
   if (name == null || format == null || rawList == null) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Fields name, format, and list are required.'},
-    );
+    return badRequest('Fields name, format, and list are required.');
   }
 
   List<String> lines = [];
@@ -67,10 +66,7 @@ Future<Response> _importDeck(RequestContext context) async {
       }
     }
   } else {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Field list must be a String or a List.'},
-    );
+    return badRequest('Field list must be a String or a List.');
   }
 
   // Regex para fazer o parse da linha
@@ -252,10 +248,7 @@ Future<Response> _importDeck(RequestContext context) async {
   if (cardsToInsert.isEmpty) {
     return Response.json(
       statusCode: HttpStatus.badRequest,
-      body: {
-        'error': 'No valid cards found in the list.',
-        'not_found': notFoundCards
-      },
+      body: {'error': 'No valid cards found in the list.', 'not_found': notFoundCards},
     );
   }
 
@@ -294,12 +287,7 @@ Future<Response> _importDeck(RequestContext context) async {
     final isBasicLand = typeLine.toLowerCase().contains('basic land');
 
     if (!isBasicLand && quantity > limit) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {
-          'error': 'Regra violada: $name tem $quantity cópias (Limite: $limit).'
-        },
-      );
+      return badRequest('Regra violada: $name tem $quantity cópias (Limite: $limit).');
     }
     cardIdsToCheck.add(card['card_id'] as String);
   }
@@ -321,12 +309,8 @@ Future<Response> _importDeck(RequestContext context) async {
     }
 
     if (bannedCards.isNotEmpty) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {
-          'error':
-              'O deck contém cartas BANIDAS no formato $format: ${bannedCards.join(", ")}'
-        },
+      return badRequest(
+        'O deck contém cartas BANIDAS no formato $format: ${bannedCards.join(", ")}',
       );
     }
   }
@@ -404,9 +388,6 @@ Future<Response> _importDeck(RequestContext context) async {
     return Response.json(body: responseBody);
   } catch (e) {
     print('[ERROR] Failed to import deck: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to import deck'},
-    );
+    return internalServerError('Failed to import deck');
   }
 }

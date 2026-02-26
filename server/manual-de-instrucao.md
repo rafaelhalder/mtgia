@@ -236,6 +236,96 @@ dart test test/decks_crud_test.dart
 dart test
 ```
 
+---
+
+## 42. Sprint 1 (Core) — Padronização de erros e status HTTP
+
+### 42.1 O Porquê
+
+Os endpoints core estavam com variações no tratamento de erro:
+- `methodNotAllowed` sem body em alguns handlers;
+- mistura de `statusCode: 500` e `HttpStatus.internalServerError`;
+- mensagens de erro com formatos diferentes para cenários equivalentes.
+
+Essa inconsistência dificultava observabilidade, testes de contrato e manutenção do app cliente.
+
+### 42.2 O Como
+
+Foi criado um utilitário compartilhado:
+- `lib/http_responses.dart`
+
+Funções adicionadas:
+- `apiError(statusCode, message, {details})`
+- `badRequest(message, {details})`
+- `notFound(message, {details})`
+- `internalServerError(message, {details})`
+- `methodNotAllowed([message])`
+
+Endpoints ajustados para usar o helper (sem alterar contratos de sucesso):
+- `routes/decks/index.dart`
+- `routes/decks/[id]/index.dart`
+- `routes/import/index.dart`
+- `routes/ai/generate/index.dart`
+- `routes/ai/explain/index.dart`
+- `routes/ai/optimize/index.dart` (pontos críticos do `onRequest` e catches principais)
+
+Também foi feita limpeza de imports não usados (`dart:io`) após a refatoração.
+
+### 42.3 Padrões aplicados
+
+- **Single source of truth para erros HTTP:** respostas padronizadas em um único módulo.
+- **Mudança cirúrgica:** foco no tratamento de erro, sem mexer em payloads de sucesso.
+- **Compatibilidade:** campos de erro continuam no padrão `{"error": "..."}`.
+- **Observabilidade:** opção de `details` centralizada para cenários técnicos específicos.
+
+### 42.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh quick`
+
+Resultado:
+- backend: testes passaram;
+- frontend analyze: apenas infos (não fatais no modo quick).
+
+---
+
+## 43. Quality Gate — Detecção robusta de API (localhost/Easypanel)
+
+### 43.1 O Porquê
+
+O `quality_gate.sh full` habilitava integração ao detectar qualquer resposta em `http://localhost:8080/`.
+Isso gerava falso positivo quando a porta respondia HTML (proxy/painel/outro serviço), quebrando testes que esperavam JSON.
+
+### 43.2 O Como
+
+Arquivo alterado:
+- `scripts/quality_gate.sh`
+
+Mudanças principais:
+- novo suporte a `API_BASE_URL` (default: `http://localhost:8080`);
+- troca do probe de `/` para `POST /auth/login` com payload `{}`;
+- validação do response por:
+  - status HTTP aceitável (`200/400/401/403/405`),
+  - `Content-Type: application/json`,
+  - body com sinais de contrato JSON (`error`/`token`/`user`).
+
+Se o probe falhar, a suíte backend roda sem integração (sem ativar `RUN_INTEGRATION_TESTS=1`).
+
+### 43.3 Como usar
+
+Exemplos:
+- `./scripts/quality_gate.sh full`
+- `API_BASE_URL=https://sua-api.easypanel.host ./scripts/quality_gate.sh full`
+
+### 43.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh full`
+
+Resultado:
+- backend e frontend passaram;
+- integração backend foi corretamente desabilitada quando o probe JSON não confirmou API válida em `localhost`.
+
 **Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
 
 ---

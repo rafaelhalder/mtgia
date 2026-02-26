@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/http_responses.dart';
+
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -18,10 +19,7 @@ Future<Response> onRequest(RequestContext context) async {
     final cardId = body['card_id'] as String?;
 
     if (cardName == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'Card name is required'},
-      );
+      return badRequest('Card name is required');
     }
 
     // 1. Check Database Cache
@@ -105,18 +103,15 @@ Future<Response> onRequest(RequestContext context) async {
 
       return Response.json(body: {'explanation': content, 'is_mock': false});
     } else {
-      return Response.json(
-        statusCode: response.statusCode,
-        body: {'error': 'Failed to call AI provider: ${response.body}'},
+      return apiError(
+        response.statusCode,
+        'Failed to call AI provider: ${response.body}',
       );
     }
 
   } catch (e) {
     print('[ERROR] Internal server error: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error'},
-    );
+    return internalServerError('Internal server error');
   }
 }
 

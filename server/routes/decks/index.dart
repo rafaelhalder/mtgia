@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../lib/deck_rules_service.dart';
+import '../../lib/http_responses.dart';
 import '../../lib/logger.dart';
 
 String? _normalizeScryfallImageUrl(String? url) {
@@ -85,7 +85,7 @@ Future<Response> onRequest(RequestContext context) async {
     return _listDecks(context);
   }
 
-  return Response(statusCode: HttpStatus.methodNotAllowed);
+  return methodNotAllowed();
 }
 
 /// Lista os decks do usuário autenticado.
@@ -275,10 +275,7 @@ Future<Response> _listDecks(RequestContext context) async {
   } catch (e, stackTrace) {
     Log.e('❌ Erro crítico em _listDecks: $e');
     Log.e('Stack trace: $stackTrace');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to list decks'},
-    );
+    return internalServerError('Failed to list decks');
   }
 }
 
@@ -299,10 +296,7 @@ Future<Response> _createDeck(RequestContext context) async {
       []; // Ex: [{'card_id': 'uuid', 'quantity': 2, 'is_commander': false}]
 
   if (name == null || format == null) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Fields name and format are required.'},
-    );
+    return badRequest('Fields name and format are required.');
   }
 
   final conn = context.read<Pool>();
@@ -406,13 +400,9 @@ Future<Response> _createDeck(RequestContext context) async {
     return Response.json(body: newDeck);
   } on DeckRulesException catch (e) {
     print('[ERROR] Failed to create deck: $e');
-    return Response.json(
-        statusCode: HttpStatus.badRequest, body: {'error': e.message});
+    return badRequest(e.message);
   } catch (e) {
     print('[ERROR] Failed to create deck: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to create deck'},
-    );
+    return internalServerError('Failed to create deck');
   }
 }
