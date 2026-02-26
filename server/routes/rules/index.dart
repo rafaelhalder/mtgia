@@ -83,16 +83,6 @@ bool _isTrue(String? value) {
 
 Future<Map<String, dynamic>?> _tryLoadRulesMeta(Pool pool) async {
   try {
-    await pool.execute(
-      Sql.named('''
-        CREATE TABLE IF NOT EXISTS sync_state (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-      '''),
-    );
-
     final result = await pool.execute(
       Sql.named('''
         SELECT key, value, updated_at

@@ -29,12 +29,6 @@ Future<Response> _searchUsers(RequestContext context) async {
   try {
     final conn = context.read<Pool>();
 
-    // Idempotente: garante colunas de perfil
-    await conn.execute(Sql.named(
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT'));
-    await conn.execute(Sql.named(
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT'));
-
     // Count
     final countResult = await conn.execute(
       Sql.named('''
@@ -47,23 +41,55 @@ Future<Response> _searchUsers(RequestContext context) async {
     );
     final total = (countResult.first[0] as int?) ?? 0;
 
-    // Fetch users with follower counts
+    // Fetch users with follower counts (batch aggregation, sem subquery por linha)
     final result = await conn.execute(
       Sql.named('''
+        WITH paged_users AS (
+          SELECT
+            u.id,
+            u.username,
+            u.display_name,
+            u.avatar_url,
+            u.created_at
+          FROM users u
+          WHERE LOWER(u.username) LIKE @search
+             OR LOWER(COALESCE(u.display_name, '')) LIKE @search
+          ORDER BY u.username ASC
+          LIMIT @lim OFFSET @off
+        ),
+        follower_counts AS (
+          SELECT uf.following_id AS user_id, COUNT(*)::int AS follower_count
+          FROM user_follows uf
+          WHERE uf.following_id IN (SELECT id FROM paged_users)
+          GROUP BY uf.following_id
+        ),
+        following_counts AS (
+          SELECT uf.follower_id AS user_id, COUNT(*)::int AS following_count
+          FROM user_follows uf
+          WHERE uf.follower_id IN (SELECT id FROM paged_users)
+          GROUP BY uf.follower_id
+        ),
+        public_deck_counts AS (
+          SELECT d.user_id, COUNT(*)::int AS public_deck_count
+          FROM decks d
+          WHERE d.is_public = true
+            AND d.user_id IN (SELECT id FROM paged_users)
+          GROUP BY d.user_id
+        )
         SELECT
-          u.id,
-          u.username,
-          u.display_name,
-          u.avatar_url,
-          u.created_at,
-          (SELECT COUNT(*)::int FROM user_follows WHERE following_id = u.id) as follower_count,
-          (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = u.id) as following_count,
-          (SELECT COUNT(*)::int FROM decks WHERE user_id = u.id AND is_public = true) as public_deck_count
-        FROM users u
-        WHERE LOWER(u.username) LIKE @search
-           OR LOWER(COALESCE(u.display_name, '')) LIKE @search
-        ORDER BY u.username ASC
-        LIMIT @lim OFFSET @off
+          pu.id,
+          pu.username,
+          pu.display_name,
+          pu.avatar_url,
+          pu.created_at,
+          COALESCE(fc.follower_count, 0) AS follower_count,
+          COALESCE(flc.following_count, 0) AS following_count,
+          COALESCE(pdc.public_deck_count, 0) AS public_deck_count
+        FROM paged_users pu
+        LEFT JOIN follower_counts fc ON fc.user_id = pu.id
+        LEFT JOIN following_counts flc ON flc.user_id = pu.id
+        LEFT JOIN public_deck_counts pdc ON pdc.user_id = pu.id
+        ORDER BY pu.username ASC
       '''),
       parameters: {
         'search': '%${query.toLowerCase()}%',

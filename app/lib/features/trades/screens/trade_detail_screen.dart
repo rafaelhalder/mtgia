@@ -646,7 +646,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: method,
+              initialValue: method,
               decoration: const InputDecoration(labelText: 'Método de envio'),
               dropdownColor: AppTheme.surfaceSlate,
               items: const [

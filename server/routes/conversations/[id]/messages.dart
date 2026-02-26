@@ -22,6 +22,8 @@ Future<Response> _getMessages(RequestContext context, String id) async {
     final page = int.tryParse(params['page'] ?? '1') ?? 1;
     final limit = (int.tryParse(params['limit'] ?? '50') ?? 50).clamp(1, 100);
     final offset = (page - 1) * limit;
+    final sinceRaw = params['since'];
+    final since = sinceRaw != null ? DateTime.tryParse(sinceRaw) : null;
 
     // Verificar participação
     final convResult = await pool.execute(
@@ -42,27 +44,51 @@ Future<Response> _getMessages(RequestContext context, String id) async {
       );
     }
 
-    // Count
-    final countResult = await pool.execute(
-      Sql.named('SELECT COUNT(*)::int FROM direct_messages WHERE conversation_id = @id'),
-      parameters: {'id': id},
-    );
-    final total = (countResult.first[0] as int?) ?? 0;
+    final int total;
+    final Result msgResult;
 
-    // Messages
-    final msgResult = await pool.execute(
-      Sql.named('''
-        SELECT dm.id, dm.sender_id, dm.message, dm.read_at, dm.created_at,
-               u.username AS sender_username, u.display_name AS sender_display_name,
-               u.avatar_url AS sender_avatar_url
-        FROM direct_messages dm
-        JOIN users u ON u.id = dm.sender_id
-        WHERE dm.conversation_id = @id
-        ORDER BY dm.created_at DESC
-        LIMIT @lim OFFSET @off
-      '''),
-      parameters: {'id': id, 'lim': limit, 'off': offset},
-    );
+    if (since != null) {
+      // Modo incremental: retorna somente mensagens novas após `since`.
+      msgResult = await pool.execute(
+        Sql.named('''
+          SELECT dm.id, dm.sender_id, dm.message, dm.read_at, dm.created_at,
+                 u.username AS sender_username, u.display_name AS sender_display_name,
+                 u.avatar_url AS sender_avatar_url
+          FROM direct_messages dm
+          JOIN users u ON u.id = dm.sender_id
+          WHERE dm.conversation_id = @id
+            AND dm.created_at > @since
+          ORDER BY dm.created_at DESC
+          LIMIT @lim
+        '''),
+        parameters: {'id': id, 'since': since.toUtc(), 'lim': limit},
+      );
+
+      // Em modo incremental o total relevante é o número retornado.
+      total = msgResult.length;
+    } else {
+      // Count completo para paginação tradicional.
+      final countResult = await pool.execute(
+        Sql.named('SELECT COUNT(*)::int FROM direct_messages WHERE conversation_id = @id'),
+        parameters: {'id': id},
+      );
+      total = (countResult.first[0] as int?) ?? 0;
+
+      // Messages (modo tradicional)
+      msgResult = await pool.execute(
+        Sql.named('''
+          SELECT dm.id, dm.sender_id, dm.message, dm.read_at, dm.created_at,
+                 u.username AS sender_username, u.display_name AS sender_display_name,
+                 u.avatar_url AS sender_avatar_url
+          FROM direct_messages dm
+          JOIN users u ON u.id = dm.sender_id
+          WHERE dm.conversation_id = @id
+          ORDER BY dm.created_at DESC
+          LIMIT @lim OFFSET @off
+        '''),
+        parameters: {'id': id, 'lim': limit, 'off': offset},
+      );
+    }
 
     final messages = msgResult.map((row) {
       final m = row.toColumnMap();

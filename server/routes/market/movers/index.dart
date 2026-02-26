@@ -57,52 +57,43 @@ Future<Response> onRequest(RequestContext context) async {
 
     final today = datesResult[0][0].toString().substring(0, 10);
 
-    // Encontra a melhor data de comparação: a mais recente que tenha
-    // variações significativas (preços diferentes do dia mais recente).
-    // Usa amostragem eficiente: pega 5 cards do dia mais recente e verifica
-    // se seus preços mudaram na data candidata.
+    // Encontra a melhor data de comparação em uma única query:
+    // a data mais recente (< today) com pelo menos uma variação significativa
+    // (diferença > 0.5%) em cartas com preço > 1.0.
+    // Fallback: se não houver variação detectada, usa a segunda data mais recente.
     var yesterday = datesResult[1][0].toString().substring(0, 10);
 
-    // Pegar 5 card_ids de amostra do dia mais recente (os com maior preço)
-    final sampleCards = await pool.execute(
+    final comparisonDateResult = await pool.execute(
       Sql.named('''
-        SELECT card_id, price_usd 
-        FROM price_history 
-        WHERE price_date = @today::date AND price_usd > 1.0
-        ORDER BY price_usd DESC 
-        LIMIT 5
+        WITH recent_dates AS (
+          SELECT DISTINCT price_date
+          FROM price_history
+          ORDER BY price_date DESC
+          LIMIT 7
+        )
+        SELECT rd.price_date
+        FROM recent_dates rd
+        WHERE rd.price_date < @today::date
+          AND EXISTS (
+            SELECT 1
+            FROM price_history ph_today
+            JOIN price_history ph_candidate
+              ON ph_candidate.card_id = ph_today.card_id
+             AND ph_candidate.price_date = rd.price_date
+            WHERE ph_today.price_date = @today::date
+              AND ph_today.price_usd > 1.0
+              AND ph_candidate.price_usd > 0
+              AND ABS((ph_today.price_usd - ph_candidate.price_usd) / ph_candidate.price_usd) > 0.005
+            LIMIT 1
+          )
+        ORDER BY rd.price_date DESC
+        LIMIT 1
       '''),
       parameters: {'today': today},
     );
 
-    if (sampleCards.isNotEmpty) {
-      final sampleId = sampleCards.first[0].toString();
-      final samplePrice = _toDouble(sampleCards.first[1]) ?? 0;
-
-      for (var i = 1; i < datesResult.length; i++) {
-        final candidateDate = datesResult[i][0].toString().substring(0, 10);
-        // Verifica se o preço deste card mudou nesta data
-        final priceCheck = await pool.execute(
-          Sql.named('''
-            SELECT price_usd FROM price_history
-            WHERE card_id = @card_id::uuid
-              AND price_date = @candidate::date
-          '''),
-          parameters: {'card_id': sampleId, 'candidate': candidateDate},
-        );
-        if (priceCheck.isNotEmpty) {
-          final oldPrice = _toDouble(priceCheck.first[0]) ?? 0;
-          // Se o preço mudou (diferença > 0.5%), é um snapshot diferente
-          if (samplePrice > 0 && oldPrice > 0) {
-            final diff = ((samplePrice - oldPrice) / oldPrice).abs();
-            if (diff > 0.005) {
-              yesterday = candidateDate;
-              break;
-            }
-          }
-        }
-        yesterday = candidateDate;
-      }
+    if (comparisonDateResult.isNotEmpty) {
+      yesterday = comparisonDateResult.first[0].toString().substring(0, 10);
     }
 
     // Query para pegar gainers (maior aumento %)

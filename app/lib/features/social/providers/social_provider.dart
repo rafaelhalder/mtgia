@@ -157,10 +157,18 @@ class SocialProvider extends ChangeNotifier {
   /// Busca usuários por username/display_name
   Future<void> searchUsers(String query) async {
     if (query.trim().isEmpty) {
+      final hasStateToClear =
+          _searchResults.isNotEmpty ||
+          _searchTotal != 0 ||
+          _searchError != null ||
+          _isSearching;
       _searchResults = [];
       _searchTotal = 0;
       _searchError = null;
-      notifyListeners();
+      _isSearching = false;
+      if (hasStateToClear) {
+        notifyListeners();
+      }
       return;
     }
 
@@ -193,6 +201,9 @@ class SocialProvider extends ChangeNotifier {
   }
 
   void clearSearch() {
+    if (_searchResults.isEmpty && _searchTotal == 0 && _searchError == null) {
+      return;
+    }
     _searchResults = [];
     _searchTotal = 0;
     _searchError = null;
@@ -436,6 +447,36 @@ class SocialProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_searchResults.isEmpty &&
+        !_isSearching &&
+        _searchError == null &&
+        _searchTotal == 0 &&
+        _visitedUser == null &&
+        _visitedUserDecks.isEmpty &&
+        !_isLoadingProfile &&
+        _profileError == null &&
+        !_isFollowingVisited &&
+        _isOwnProfile == null &&
+        _followers.isEmpty &&
+        _following.isEmpty &&
+        !_isLoadingFollowers &&
+        !_isLoadingFollowing &&
+        _followersTotal == 0 &&
+        _followingTotal == 0 &&
+        _followersPage == 1 &&
+        _followingPage == 1 &&
+        _hasMoreFollowers &&
+        _hasMoreFollowing &&
+        _currentFollowersUserId == null &&
+        _currentFollowingUserId == null &&
+        _followingFeed.isEmpty &&
+        !_isLoadingFeed &&
+        _hasMoreFeed &&
+        _feedPage == 1 &&
+        _feedTotal == 0) {
+      return;
+    }
+
     _searchResults = [];
     _isSearching = false;
     _searchError = null;

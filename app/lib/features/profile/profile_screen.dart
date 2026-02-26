@@ -274,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SizedBox(
                         width: 100,
                         child: DropdownButtonFormField<String>(
-                          value: _selectedState,
+                          initialValue: _selectedState,
                           decoration: const InputDecoration(
                             labelText: 'Estado',
                             prefixIcon: Icon(Icons.location_on, size: 20),

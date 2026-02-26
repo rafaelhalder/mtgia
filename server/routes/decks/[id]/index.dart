@@ -3,6 +3,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../../lib/deck_rules_service.dart';
+import '../../../lib/http_responses.dart';
 
 String? _normalizeScryfallImageUrl(String? url) {
   if (url == null) return null;
@@ -87,7 +88,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
   }
 
   // Futuramente, podemos adicionar PUT para atualizar e DELETE para remover.
-  return Response(statusCode: HttpStatus.methodNotAllowed);
+  return methodNotAllowed();
 }
 
 /// Deleta um deck.
@@ -124,12 +125,9 @@ Future<Response> _deleteDeck(RequestContext context, String deckId) async {
   } on Exception catch (e) {
     print('[ERROR] Failed to delete deck: $e');
     if (e.toString().contains('permission denied')) {
-      return Response.json(statusCode: 404, body: {'error': e.toString()});
+      return notFound(e.toString());
     }
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to delete deck'},
-    );
+    return internalServerError('Failed to delete deck');
   }
 }
 
@@ -319,15 +317,13 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
     return Response.json(body: {'success': true, 'deck': updatedDeck});
   } on DeckRulesException catch (e) {
     print('[ERROR] Failed to update deck: $e');
-    return Response.json(
-        statusCode: HttpStatus.badRequest, body: {'error': e.message});
+    return badRequest(e.message);
   } on Exception catch (e) {
     print('[ERROR] Failed to update deck: $e');
     if (e.toString().contains('permission denied')) {
-      return Response.json(statusCode: 404, body: {'error': e.toString()});
+      return notFound(e.toString());
     }
-    return Response.json(
-        statusCode: 500, body: {'error': 'Failed to update deck'});
+    return internalServerError('Failed to update deck');
   }
 }
 
@@ -363,12 +359,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     );
 
     if (deckResult.isEmpty) {
-      return Response.json(
-        statusCode: HttpStatus.notFound,
-        body: {
-          'error': 'Deck not found or you do not have permission to view it.'
-        },
-      );
+      return notFound('Deck not found or you do not have permission to view it.');
     }
 
     final deckInfo = deckResult.first.toColumnMap();
@@ -528,10 +519,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     return Response.json(body: responseBody);
   } catch (e) {
     print('[ERROR] Failed to retrieve deck details: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to retrieve deck details'},
-    );
+    return internalServerError('Failed to retrieve deck details');
   }
 }
 

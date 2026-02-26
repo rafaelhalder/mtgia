@@ -1,13 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/http_responses.dart';
+import '../../../lib/openai_runtime_config.dart';
+
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -18,10 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
     final cardId = body['card_id'] as String?;
 
     if (cardName == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'Card name is required'},
-      );
+      return badRequest('Card name is required');
     }
 
     // 1. Check Database Cache
@@ -50,6 +49,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Carregar variáveis de ambiente
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     // Se não tiver chave da API, retorna uma explicação mockada/heurística
@@ -70,18 +70,51 @@ Future<Response> onRequest(RequestContext context) async {
         'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-3.5-turbo',
+        'model': aiConfig.modelFor(
+          key: 'OPENAI_MODEL_EXPLAIN',
+          fallback: 'gpt-4o-mini',
+          devFallback: 'gpt-4o-mini',
+          stagingFallback: 'gpt-4o-mini',
+          prodFallback: 'gpt-4o-mini',
+        ),
         'messages': [
           {
             'role': 'system',
-            'content': 'Você é um juiz experiente de Magic: The Gathering. Explique de forma simples, didática e em Português (PT-BR) como a carta funciona, suas interações principais e por que ela é boa (ou ruim). Use formatação Markdown.'
+            'content': '''
+Você é um juiz experiente e coach de MTG.
+
+Objetivo: explicar cartas de forma didática e acionável para jogadores reais.
+
+Instruções obrigatórias:
+1) Responda em PT-BR com Markdown.
+2) Estruture em seções curtas:
+   - O que a carta faz
+   - Como jogar melhor com ela
+   - Erros comuns / cuidados
+   - Sinergias típicas
+3) Seja fiel ao texto Oracle informado; não invente regras não presentes.
+4) Se faltar contexto (formato/board state), diga explicitamente a limitação.
+5) Evite jargão excessivo sem explicação.
+'''
           },
           {
             'role': 'user',
-            'content': 'Carta: $cardName\nTipo: $typeLine\nTexto: $oracleText\n\nExplique esta carta.'
+            'content': '''
+Carta: $cardName
+Tipo: $typeLine
+Texto Oracle: $oracleText
+
+Explique esta carta para ajudar o jogador a tomar melhores decisões durante a partida.
+'''
           }
         ],
-        'temperature': 0.7,
+        'temperature': aiConfig.temperatureFor(
+          key: 'OPENAI_TEMP_EXPLAIN',
+          fallback: 0.5,
+          devFallback: 0.55,
+          stagingFallback: 0.5,
+          prodFallback: 0.45,
+        ),
         'max_tokens': 500,
       }),
     );
@@ -105,18 +138,15 @@ Future<Response> onRequest(RequestContext context) async {
 
       return Response.json(body: {'explanation': content, 'is_mock': false});
     } else {
-      return Response.json(
-        statusCode: response.statusCode,
-        body: {'error': 'Failed to call AI provider: ${response.body}'},
+      return apiError(
+        response.statusCode,
+        'Failed to call AI provider: ${response.body}',
       );
     }
 
   } catch (e) {
     print('[ERROR] Internal server error: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Internal server error'},
-    );
+    return internalServerError('Internal server error');
   }
 }
 

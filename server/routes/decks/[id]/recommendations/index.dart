@@ -4,6 +4,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
+import '../../../../lib/openai_runtime_config.dart';
 
 Future<Response> onRequest(RequestContext context, String deckId) async {
   if (context.request.method == HttpMethod.post) {
@@ -15,6 +16,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 Future<Response> _generateRecommendations(RequestContext context, String deckId) async {
   final pool = context.read<Pool>();
   final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+  final aiConfig = OpenAiRuntimeConfig(env);
   final apiKey = env['OPENAI_API_KEY'];
 
   try {
@@ -149,6 +151,7 @@ Future<Response> _generateRecommendations(RequestContext context, String deckId)
     if (apiKey != null && apiKey.isNotEmpty) {
       return _callOpenAI(
         apiKey: apiKey,
+        aiConfig: aiConfig,
         deckName: deckName,
         format: format,
         description: description,
@@ -442,39 +445,62 @@ Future<List<String>> _findStaples({
 /// Caminho com OpenAI (quando apiKey está configurada)
 Future<Response> _callOpenAI({
   required String apiKey,
+  required OpenAiRuntimeConfig aiConfig,
   required String deckName,
   required String format,
   required String description,
   required List<Map<String, dynamic>> deckCards,
 }) async {
   final cardList = deckCards.map((c) => "${c['quantity']}x ${c['name']}").join(', ');
+  final commanders = deckCards
+      .where((c) => c['is_commander'] == true)
+      .map((c) => (c['name'] as String?) ?? '')
+      .where((name) => name.isNotEmpty)
+      .toList();
+  final colors = <String>{};
+  for (final card in deckCards) {
+    final cardColors = (card['colors'] as List?)?.cast<String>() ?? const <String>[];
+    colors.addAll(cardColors);
+  }
 
   final prompt = '''
-    You are a professional Magic: The Gathering deck builder expert.
-    Analyze the following deck and provide recommendations.
-    
-    Deck Name: $deckName
-    Format: $format
-    Description: $description
-    Cards: $cardList
-    
-    Task:
-    1. Identify the deck's archetype and main strategy.
-    2. Suggest 5 cards to ADD that improve synergy or cover weaknesses.
-    3. Suggest 5 cards to REMOVE that are weak or don't fit.
-    4. Rate the deck's power level (1-10) for casual play.
-    
-    Output strictly in JSON format:
-    {
-      "archetype": "string",
-      "power_level": number,
-      "analysis": "string (brief summary)",
-      "recommendations": {
-        "add": [ {"card_name": "string", "reason": "string"} ],
-        "remove": [ {"card_name": "string", "reason": "string"} ]
-      }
-    }
-  ''';
+Você é um deck builder competitivo de Magic: The Gathering.
+
+Contexto do deck:
+- Nome: $deckName
+- Formato: $format
+- Descrição: $description
+- Comandante(s): ${commanders.join(', ')}
+- Cores detectadas: ${colors.join(', ')}
+- Lista atual: $cardList
+
+Objetivo:
+Gerar recomendações práticas para melhorar consistência, plano de vitória e interação.
+
+Regras obrigatórias:
+1) Identifique o arquétipo predominante do deck.
+2) Sugira EXATAMENTE 5 cartas para adicionar e EXATAMENTE 5 para remover.
+3) Cada recomendação deve ter motivo curto e acionável (1 frase).
+4) Priorize melhorar: ramp, draw, remoção, curva e sinergia.
+5) Em Commander, respeite identidade de cor do(s) comandante(s).
+6) Não recomende cartas banidas no formato.
+7) Responda SOMENTE JSON válido, sem markdown.
+
+Formato obrigatório:
+{
+  "archetype": "string",
+  "power_level": 1-10,
+  "analysis": "resumo curto e objetivo",
+  "recommendations": {
+    "add": [
+      {"card_name": "string", "reason": "string"}
+    ],
+    "remove": [
+      {"card_name": "string", "reason": "string"}
+    ]
+  }
+}
+''';
 
   final response = await http.post(
     Uri.parse('https://api.openai.com/v1/chat/completions'),
@@ -483,12 +509,28 @@ Future<Response> _callOpenAI({
       'Authorization': 'Bearer $apiKey',
     },
     body: jsonEncode({
-      'model': 'gpt-3.5-turbo',
+      'model': aiConfig.modelFor(
+        key: 'OPENAI_MODEL_RECOMMENDATIONS',
+        fallback: 'gpt-4o-mini',
+        devFallback: 'gpt-4o-mini',
+        stagingFallback: 'gpt-4o-mini',
+        prodFallback: 'gpt-4o-mini',
+      ),
       'messages': [
-        {'role': 'system', 'content': 'You are a helpful assistant that outputs JSON.'},
+        {
+          'role': 'system',
+          'content': 'Você é um especialista em otimização de decks MTG orientado a decisão do jogador. Seja técnico, direto e sempre retorne JSON válido.'
+        },
         {'role': 'user', 'content': prompt},
       ],
-      'temperature': 0.7,
+      'temperature': aiConfig.temperatureFor(
+        key: 'OPENAI_TEMP_RECOMMENDATIONS',
+        fallback: 0.3,
+        devFallback: 0.35,
+        stagingFallback: 0.3,
+        prodFallback: 0.25,
+      ),
+      'response_format': {'type': 'json_object'},
     }),
   );
 

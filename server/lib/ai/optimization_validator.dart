@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
+import 'package:dotenv/dotenv.dart';
 import '../logger.dart';
+import '../openai_runtime_config.dart';
 import 'goldfish_simulator.dart';
 
 /// Motor de Validação Pós-Otimização
@@ -361,6 +363,23 @@ class OptimizationValidator {
   }) async {
     if (openAiKey == null || openAiKey!.isEmpty) return null;
 
+    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
+    final model = aiConfig.modelFor(
+      key: 'OPENAI_MODEL_OPTIMIZATION_CRITIC',
+      fallback: 'gpt-4o-mini',
+      devFallback: 'gpt-4o-mini',
+      stagingFallback: 'gpt-4o-mini',
+      prodFallback: 'gpt-4o-mini',
+    );
+    final temperature = aiConfig.temperatureFor(
+      key: 'OPENAI_TEMP_OPTIMIZATION_CRITIC',
+      fallback: 0.2,
+      devFallback: 0.25,
+      stagingFallback: 0.2,
+      prodFallback: 0.15,
+    );
+
     try {
       final criticPrompt = '''Você é um revisor crítico de otimizações de deck de Magic: The Gathering (Commander).
 
@@ -399,11 +418,11 @@ SUA TAREFA: Avaliar se as trocas são REALMENTE boas. Retorne apenas JSON:
           'Authorization': 'Bearer $openAiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-4o-mini', // Usar modelo mais barato para a revisão
+          'model': model,
           'messages': [
             {'role': 'user', 'content': criticPrompt},
           ],
-          'temperature': 0.3,
+          'temperature': temperature,
           'response_format': {'type': 'json_object'},
         }),
       );

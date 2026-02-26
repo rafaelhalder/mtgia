@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../../lib/ai/battle_simulator.dart';
 import '../../../lib/ai/goldfish_simulator.dart';
+import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
 
 /// POST /ai/simulate
@@ -25,10 +25,7 @@ import '../../../lib/logger.dart';
 /// - battle: Simulação turno-a-turno completa (lento, 1 partida detalhada)
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response.json(
-      body: {'error': 'Method not allowed'},
-      statusCode: HttpStatus.methodNotAllowed,
-    );
+    return methodNotAllowed();
   }
 
   final pool = context.read<Pool>();
@@ -39,10 +36,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     final deckId = data['deck_id'] as String?;
     if (deckId == null || deckId.isEmpty) {
-      return Response.json(
-        body: {'error': 'deck_id is required'},
-        statusCode: HttpStatus.badRequest,
-      );
+      return badRequest('deck_id is required');
     }
 
     final simType = (data['type'] as String?) ?? 'goldfish';
@@ -51,28 +45,19 @@ Future<Response> onRequest(RequestContext context) async {
     // Busca cartas do deck
     final deckCards = await _fetchDeckCards(pool, deckId);
     if (deckCards.isEmpty) {
-      return Response.json(
-        body: {'error': 'Deck not found or empty'},
-        statusCode: HttpStatus.notFound,
-      );
+      return notFound('Deck not found or empty');
     }
 
     if (simType == 'battle') {
       // Simulação turno-a-turno completa
       final opponentId = data['opponent_deck_id'] as String?;
       if (opponentId == null || opponentId.isEmpty) {
-        return Response.json(
-          body: {'error': 'opponent_deck_id is required for battle simulation'},
-          statusCode: HttpStatus.badRequest,
-        );
+        return badRequest('opponent_deck_id is required for battle simulation');
       }
 
       final opponentCards = await _fetchDeckCards(pool, opponentId);
       if (opponentCards.isEmpty) {
-        return Response.json(
-          body: {'error': 'Opponent deck not found or empty'},
-          statusCode: HttpStatus.notFound,
-        );
+        return notFound('Opponent deck not found or empty');
       }
 
       final simulator = BattleSimulator(
@@ -103,18 +88,12 @@ Future<Response> onRequest(RequestContext context) async {
       // Análise heurística de matchup
       final opponentId = data['opponent_deck_id'] as String?;
       if (opponentId == null || opponentId.isEmpty) {
-        return Response.json(
-          body: {'error': 'opponent_deck_id is required for matchup simulation'},
-          statusCode: HttpStatus.badRequest,
-        );
+        return badRequest('opponent_deck_id is required for matchup simulation');
       }
 
       final opponentCards = await _fetchDeckCards(pool, opponentId);
       if (opponentCards.isEmpty) {
-        return Response.json(
-          body: {'error': 'Opponent deck not found or empty'},
-          statusCode: HttpStatus.notFound,
-        );
+        return notFound('Opponent deck not found or empty');
       }
 
       final result = MatchupAnalyzer.analyze(deckCards, opponentCards);
@@ -159,16 +138,10 @@ Future<Response> onRequest(RequestContext context) async {
     }
   } on FormatException catch (e) {
     print('[ERROR] Invalid JSON: ${e.message}: $e');
-    return Response.json(
-      body: {'error': 'Invalid JSON: ${e.message}'},
-      statusCode: HttpStatus.badRequest,
-    );
+    return badRequest('Invalid JSON: ${e.message}');
   } catch (e, st) {
     Log.e('Error in /ai/simulate: $e\n$st');
-    return Response.json(
-      body: {'error': 'Internal server error'},
-      statusCode: HttpStatus.internalServerError,
-    );
+    return internalServerError('Internal server error');
   }
 }
 

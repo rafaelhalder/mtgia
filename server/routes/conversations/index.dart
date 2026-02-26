@@ -143,12 +143,15 @@ Future<Response> _createConversation(RequestContext context) async {
     final userA = userId.compareTo(otherUserId) < 0 ? userId : otherUserId;
     final userB = userId.compareTo(otherUserId) < 0 ? otherUserId : userId;
 
-    // Tentar inserir, ON CONFLICT retorna existente
+    // Tentar inserir, ON CONFLICT retorna existente.
+    // Usa inferência por expressão para compatibilidade com índice funcional
+    // uq_conversation_pair (LEAST/GREATEST), sem depender de constraint nomeada.
     final result = await pool.execute(
       Sql.named('''
         INSERT INTO conversations (user_a_id, user_b_id)
         VALUES (@userA, @userB)
-        ON CONFLICT ON CONSTRAINT uq_conversation DO UPDATE SET created_at = conversations.created_at
+        ON CONFLICT (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))
+        DO UPDATE SET created_at = conversations.created_at
         RETURNING id, created_at
       '''),
       parameters: {'userA': userA, 'userB': userB},

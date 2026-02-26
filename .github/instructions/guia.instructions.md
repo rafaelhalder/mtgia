@@ -5,6 +5,20 @@ applyTo: '**'
 
 Este arquivo define as regras estritas, a filosofia e o fluxo de trabalho para o desenvolvimento deste projeto.
 
+## 🔒 Modo Operacional Obrigatório (fonte única de execução)
+
+Para manter o projeto organizado e executável ponta a ponta, seguir SEMPRE:
+
+1. **Roadmap único:** usar `ROADMAP.md` como fonte principal de priorização e ordem de execução.
+2. **Histórico técnico:** registrar mudanças relevantes em `server/manual-de-instrucao.md`.
+3. **Documentos arquivados:** materiais não prioritários ficam em `archive_docs/`.
+4. **Quality Gate obrigatório:** antes de concluir qualquer etapa, executar:
+    - `./scripts/quality_gate.sh quick` (durante implementação)
+    - `./scripts/quality_gate.sh full` (fechamento de item/sprint)
+5. **Definição de pronto (DoD):** nenhuma tarefa é concluída sem critério de aceite + testes + documentação.
+
+> Regra: se uma mudança não melhora fluxo core, não reduz risco crítico, e não aumenta valor percebido, ela vai para backlog.
+
 ## ⚠️ Estado Atual (importante para manutenção)
 Este repositório é **full-stack**:
 - `app/`: Flutter (Provider + GoRouter) consumindo API HTTP em `http://localhost:8080` (ou `10.0.2.2:8080` no Android emulator).
@@ -48,7 +62,8 @@ Desenvolver um aplicativo de Deck Builder de Magic: The Gathering (MTG) revoluci
     *   **Trades:** Propostas de negociação com fluxo de status (pending→accepted→shipped→delivered→completed), chat interno, upload de comprovantes, código de rastreio.
     *   **Mensagens:** Chat direto entre jogadores.
     *   **Notificações:** Alertas de novos seguidores, propostas de trade, mudanças de status.
-    *   **📋 Roadmap detalhado:** `ROADMAP_SOCIAL_TRADES.md` (documento único de referência — consultar ANTES de implementar qualquer task desse módulo).
+    *   **📋 Referência histórica:** `archive_docs/root/ROADMAP_SOCIAL_TRADES.md`.
+    *   **Priorização atual:** seguir `ROADMAP.md` (social/trades não é foco principal deste ciclo de 90 dias).
 
 ## 2. Estrutura de Dados (Schema Atual)
 Para garantir consistência, consulte sempre as colunas existentes antes de criar queries.
@@ -162,10 +177,27 @@ O `manual-de-instrucao.md` deve conter:
 - **Tratamento de Erros:** Blocos try-catch explícitos e mensagens de erro claras.
 
 ## 6. Fluxo de Trabalho
-1.  **Entender:** Analisar o pedido do usuário.
-2.  **Planejar:** Definir quais arquivos serão criados/alterados.
-3.  **Executar:** Escrever o código seguindo os padrões acima.
-4.  **Documentar:** Atualizar IMEDIATAMENTE o `manual-de-instrucao.md` com os detalhes do que foi feito.
+1.  **Entender e delimitar escopo:** confirmar objetivo, impacto e critério de aceite.
+2.  **Planejar execução mínima correta:** listar arquivos afetados e ordem de implementação.
+3.  **Executar com foco:** implementar somente o necessário para a etapa.
+4.  **Validar obrigatoriamente:**
+    - rodar `./scripts/quality_gate.sh quick` durante o desenvolvimento;
+    - rodar `./scripts/quality_gate.sh full` antes de concluir.
+5.  **Testar fluxo funcional impactado:** validar manualmente o caminho principal afetado (happy path + erro crítico).
+6.  **Documentar:** atualizar IMEDIATAMENTE o `server/manual-de-instrucao.md` com o que mudou.
+7.  **Fechar etapa:** somente com DoD atendida (aceite + testes + documentação + impacto explícito).
+
+## 6.1 Critérios de bloqueio (obrigatório)
+
+Bloquear e replanejar quando:
+- faltar dependência crítica (infra, schema, segredo, contrato),
+- houver risco de regressão sem cobertura mínima,
+- o escopo extrapolar e comprometer a sprint.
+
+Ao bloquear:
+- registrar causa em 1 linha,
+- definir próximo passo objetivo,
+- ajustar backlog sem quebrar meta da sprint.
 
 ## 7. Stack Tecnológica (Backend)
 - **Framework:** Dart Frog.
@@ -179,6 +211,16 @@ O `manual-de-instrucao.md` deve conter:
 - Rate limiting:
   - Auth deve ser restritivo em produção (brute force).
   - Em **development/test**, o rate limiting não pode impedir QA e suíte de testes. Preferir limites maiores em dev.
+
+## 8.1 Gate de qualidade e validação contínua
+
+Checklist mínimo por entrega:
+- [ ] `./scripts/quality_gate.sh quick` executado durante implementação.
+- [ ] `./scripts/quality_gate.sh full` executado no fechamento.
+- [ ] Sem erros de compilação/lint relevantes.
+- [ ] Teste manual do fluxo impactado documentado.
+
+Se a API local estiver ativa em `http://localhost:8080`, o modo `full` habilita integração backend automaticamente.
 
 ## 9. Roadmap de Implementação da IA (MVP)
 
@@ -211,3 +253,15 @@ Para transformar o projeto em um "Deck Builder Inteligente", seguiremos este rot
     *   *Métrica 2 (Curva):* Qual a % de chance de ter uma jogada válida no turno 1, 2, 3 e 4?
 2.  **Treinamento Futuro:**
     *   Os resultados dessas simulações populam a tabela `battle_simulations`, criando um dataset para futuramente treinar uma IA que entenda "o que faz um deck ser consistente".
+
+## 10. Ordem de prioridade obrigatória (90 dias)
+
+Executar nesta ordem:
+1. **Core impecável:** criar/importar → validar → analisar → otimizar.
+2. **Segurança e observabilidade:** hardening, rate limit de produção, métricas.
+3. **IA com ROI:** explicabilidade, confiança, cache, custo controlado.
+4. **Monetização e escala:** somente após estabilidade do core e métricas mínimas.
+
+Evitar neste ciclo:
+- expansão de superfícies secundárias sem impacto no funil principal,
+- novas frentes grandes sem critério de valor mensurável.

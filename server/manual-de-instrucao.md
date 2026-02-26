@@ -236,6 +236,207 @@ dart test test/decks_crud_test.dart
 dart test
 ```
 
+---
+
+## 42. Sprint 1 (Core) — Padronização de erros e status HTTP
+
+### 42.1 O Porquê
+
+Os endpoints core estavam com variações no tratamento de erro:
+- `methodNotAllowed` sem body em alguns handlers;
+- mistura de `statusCode: 500` e `HttpStatus.internalServerError`;
+- mensagens de erro com formatos diferentes para cenários equivalentes.
+
+Essa inconsistência dificultava observabilidade, testes de contrato e manutenção do app cliente.
+
+### 42.2 O Como
+
+Foi criado um utilitário compartilhado:
+- `lib/http_responses.dart`
+
+Funções adicionadas:
+- `apiError(statusCode, message, {details})`
+- `badRequest(message, {details})`
+- `notFound(message, {details})`
+- `internalServerError(message, {details})`
+- `methodNotAllowed([message])`
+
+Endpoints ajustados para usar o helper (sem alterar contratos de sucesso):
+- `routes/decks/index.dart`
+- `routes/decks/[id]/index.dart`
+- `routes/import/index.dart`
+- `routes/ai/generate/index.dart`
+- `routes/ai/explain/index.dart`
+- `routes/ai/optimize/index.dart` (pontos críticos do `onRequest` e catches principais)
+
+Também foi feita limpeza de imports não usados (`dart:io`) após a refatoração.
+
+### 42.3 Padrões aplicados
+
+- **Single source of truth para erros HTTP:** respostas padronizadas em um único módulo.
+- **Mudança cirúrgica:** foco no tratamento de erro, sem mexer em payloads de sucesso.
+- **Compatibilidade:** campos de erro continuam no padrão `{"error": "..."}`.
+- **Observabilidade:** opção de `details` centralizada para cenários técnicos específicos.
+
+### 42.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh quick`
+
+Resultado:
+- backend: testes passaram;
+- frontend analyze: apenas infos (não fatais no modo quick).
+
+---
+
+## 43. Quality Gate — Detecção robusta de API (localhost/Easypanel)
+
+### 43.1 O Porquê
+
+O `quality_gate.sh full` habilitava integração ao detectar qualquer resposta em `http://localhost:8080/`.
+Isso gerava falso positivo quando a porta respondia HTML (proxy/painel/outro serviço), quebrando testes que esperavam JSON.
+
+### 43.2 O Como
+
+Arquivo alterado:
+- `scripts/quality_gate.sh`
+
+Mudanças principais:
+- novo suporte a `API_BASE_URL` (default: `http://localhost:8080`);
+- troca do probe de `/` para `POST /auth/login` com payload `{}`;
+- validação do response por:
+  - status HTTP aceitável (`200/400/401/403/405`),
+  - `Content-Type: application/json`,
+  - body com sinais de contrato JSON (`error`/`token`/`user`).
+
+Se o probe falhar, a suíte backend roda sem integração (sem ativar `RUN_INTEGRATION_TESTS=1`).
+
+### 43.3 Como usar
+
+Exemplos:
+- `./scripts/quality_gate.sh full`
+- `API_BASE_URL=https://sua-api.easypanel.host ./scripts/quality_gate.sh full`
+
+### 43.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh full`
+
+Resultado:
+- backend e frontend passaram;
+- integração backend foi corretamente desabilitada quando o probe JSON não confirmou API válida em `localhost`.
+
+---
+
+## 44. Automação de validação local — script único para integração
+
+### 44.1 O Porquê
+
+Mesmo com `quality_gate.sh` robusto, ainda era necessário coordenar manualmente:
+1. subir API local;
+2. esperar readiness;
+3. rodar `quality_gate.sh full`;
+4. encerrar processo local.
+
+Isso aumentava atrito operacional no fechamento de tarefas.
+
+### 44.2 O Como
+
+Novo script criado:
+- `scripts/dev_full_with_integration.sh`
+
+Fluxo automatizado:
+- verifica se a API já está pronta em `API_BASE_URL`;
+- se não estiver, sobe `dart_frog dev` local;
+- aguarda readiness via probe JSON em `POST /auth/login`;
+- executa `quality_gate.sh full` com integração habilitada;
+- encerra automaticamente o processo da API quando ele foi iniciado pelo script.
+
+Variáveis suportadas:
+- `PORT` (default: `8080`)
+- `API_BASE_URL` (default: `http://localhost:$PORT`)
+- `SERVER_START_TIMEOUT` (default: `45` segundos)
+
+### 44.3 Como usar
+
+Comando padrão:
+- `./scripts/dev_full_with_integration.sh`
+
+Com parâmetros:
+- `PORT=8081 ./scripts/dev_full_with_integration.sh`
+- `API_BASE_URL=http://localhost:8081 PORT=8081 ./scripts/dev_full_with_integration.sh`
+
+### 44.4 Padrões aplicados
+
+- **Fail-fast:** aborta com mensagem clara em caso de timeout/queda do servidor.
+- **Cleanup garantido:** `trap` para encerrar processo iniciado pelo script.
+- **Compatibilidade:** reaproveita `quality_gate.sh` como fonte única de validação.
+
+---
+
+## 45. Estabilização de integração no quality gate (execução serial)
+
+### 45.1 O Porquê
+
+Durante a execução completa (`full`) com integração habilitada, a suíte backend apresentou timeout intermitente em teste incremental quando executada em paralelo com outros testes de integração.
+
+### 45.2 O Como
+
+Arquivo alterado:
+- `scripts/quality_gate.sh`
+
+Mudança:
+- quando a integração está habilitada (`RUN_INTEGRATION_TESTS=1`), o backend passa a executar:
+  - `dart test -j 1`
+
+Isso força execução serial para eliminar competição por estado/recursos compartilhados durante integração.
+
+### 45.3 Resultado esperado
+
+- menor flakiness em CI/local para cenários de integração;
+- custo: execução backend full um pouco mais lenta;
+- benefício: fechamento de sprint mais previsível (menos falso negativo).
+
+---
+
+## 46. Sprint 1 (Core) — Padronização de erros nos endpoints IA restantes
+
+### 46.1 O Porquê
+
+Após a padronização inicial em `generate/explain/optimize`, ainda havia variação de status e payload de erro em outros endpoints IA, com mistura de `Response(...)`, `statusCode` numérico e formatos diferentes.
+
+### 46.2 O Como
+
+Rotas atualizadas para usar `lib/http_responses.dart`:
+- `routes/ai/archetypes/index.dart`
+- `routes/ai/simulate/index.dart`
+- `routes/ai/simulate-matchup/index.dart`
+- `routes/ai/weakness-analysis/index.dart`
+- `routes/ai/ml-status/index.dart`
+
+Padronizações aplicadas:
+- `methodNotAllowed()` para método inválido
+- `badRequest(...)` para validação de payload
+- `notFound(...)` para recursos ausentes
+- `internalServerError(...)` para falhas inesperadas
+
+Também foi feita limpeza de imports não utilizados (`dart:io`) nas rotas afetadas.
+
+### 46.3 Resultado
+
+- Erros HTTP mais consistentes no módulo IA completo;
+- mesma semântica de sucesso preservada (payloads de sucesso sem mudanças);
+- menor custo de manutenção e testes de contrato.
+
+### 46.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh quick`
+
+Resultado:
+- backend: ok;
+- frontend analyze: apenas infos não-fatais.
+
 **Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
 
 ---
@@ -4541,3 +4742,944 @@ Se EDHREC retornar erro (403, 404, timeout):
 - Log de warning
 - Usa Scryfall como fallback (comportamento anterior)
 - Não quebra o fluxo de otimização
+
+---
+
+## 36. Hardening de Performance (P0) — DDL fora de runtime + chat incremental
+
+### 36.1 O Porquê
+
+Foram identificados gargalos no fluxo de requisição:
+
+1. **DDL em runtime** (`ALTER TABLE`, `CREATE INDEX`, `CREATE TABLE`) no middleware/rotas.
+   - Mesmo idempotente, DDL no caminho de request pode causar lock, latência e comportamento inconsistente em múltiplas instâncias.
+2. **Contagem de mensagens não lidas via endpoint pesado**.
+   - O app consultava lista de conversas completa para calcular badge.
+3. **Polling do chat recarregando histórico inteiro** a cada ciclo.
+   - Requisições maiores e renderizações desnecessárias.
+
+Objetivo: reduzir latência e carga de banco sem alterar UX.
+
+### 36.2 O Como
+
+#### A) Remoção de DDL do caminho de requisição
+
+- Removido bootstrap de schema em:
+  - `routes/_middleware.dart`
+  - `routes/community/users/index.dart`
+  - `routes/community/users/[id].dart`
+
+Essas rotinas foram substituídas por migração explícita:
+
+- **Novo script:** `bin/migrate_runtime_schema_cleanup.dart`
+
+Execução:
+
+```bash
+dart run bin/migrate_runtime_schema_cleanup.dart
+```
+
+Esse script garante, de forma idempotente:
+- `cards.color_identity` + índice GIN
+- `users.display_name`, `users.avatar_url`, `users.fcm_token`
+- `user_follows` + índices
+- `conversations` + índice funcional único `uq_conversation_pair`
+- `direct_messages` + índices
+- `notifications` + índices
+
+#### B) Endpoint dedicado para unread de mensagens
+
+- **Novo endpoint:** `GET /conversations/unread-count`
+- Implementação em: `routes/conversations/unread-count.dart`
+
+Query usada:
+
+```sql
+SELECT COUNT(*)::int
+FROM direct_messages dm
+JOIN conversations c ON c.id = dm.conversation_id
+WHERE dm.read_at IS NULL
+  AND dm.sender_id != @userId
+  AND (c.user_a_id = @userId OR c.user_b_id = @userId)
+```
+
+No app, `MessageProvider.fetchUnreadCount()` passou a usar esse endpoint, eliminando a necessidade de baixar conversas para computar badge.
+
+#### C) Polling incremental no chat
+
+- Backend: `GET /conversations/:id/messages` agora aceita `?since=<ISO8601>`.
+- Quando `since` existe, retorna apenas mensagens novas (`created_at > since`) mantendo ordenação DESC.
+- Frontend:
+  - `MessageProvider.fetchMessages(..., incremental: true)` faz merge sem recarregar lista inteira.
+  - `ChatScreen` usa polling incremental no timer.
+
+Resultado: menor payload por ciclo e menos churn de UI.
+
+### 36.3 Correção de consistência (conversations)
+
+Foi removida dependência de nome fixo de constraint no upsert de conversas.
+
+Antes:
+```sql
+ON CONFLICT ON CONSTRAINT uq_conversation
+```
+
+Depois (compatível com índice funcional):
+```sql
+ON CONFLICT (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))
+```
+
+Arquivo: `routes/conversations/index.dart`.
+
+### 36.4 Padrões aplicados (Clean Code / Clean Architecture)
+
+- **Separação de responsabilidades:** schema evolui por migration (camada operacional), não por handler HTTP.
+- **Single Responsibility:** endpoint de unread faz uma única tarefa, com query dedicada.
+- **Performance by design:** polling incremental baseado em cursor temporal (`since`).
+- **Backward compatibility:** sem `since`, endpoint de mensagens mantém comportamento paginado anterior.
+
+### 36.5 Bibliotecas envolvidas
+
+- `postgres`: execução de SQL e parâmetros tipados.
+- `dart_frog`: roteamento e handlers.
+
+Nenhuma dependência nova foi adicionada nesse pacote de melhorias.
+
+---
+
+## 37. Otimização P1 — Consultas Sociais (`/community/users`)
+
+### 37.1 O Porquê
+
+As rotas sociais utilizavam contadores com subqueries correlacionadas por linha:
+
+- seguidores
+- seguindo
+- decks públicos
+
+Esse padrão escala pior em páginas com muitos usuários, pois reexecuta contagens para cada linha retornada.
+
+### 37.2 O Como
+
+Refatoramos para **paginar primeiro** e **agregar em lote** usando CTEs:
+
+- `routes/community/users/index.dart`
+  - `paged_users` (subset paginado)
+  - `follower_counts`, `following_counts`, `public_deck_counts` agregados apenas para os IDs da página
+  - `LEFT JOIN` dos agregados no resultado final
+
+- `routes/community/users/[id].dart`
+  - mesmo princípio para perfil público: contadores agregados em CTEs e join único
+
+Benefícios:
+- menos round-trips lógicos no planner
+- menor custo para páginas com muitos resultados
+- query mais previsível para tuning/EXPLAIN
+
+### 37.3 Índices adicionados
+
+Novo script:
+
+- `bin/migrate_social_query_indexes.dart`
+
+Executa:
+
+```bash
+dart run bin/migrate_social_query_indexes.dart
+```
+
+Cria (idempotente):
+- `idx_users_username_lower`
+- `idx_users_display_name_lower`
+- `idx_decks_user_public`
+- reforço de `idx_user_follows_follower` e `idx_user_follows_following`
+
+### 37.4 Padrões aplicados
+
+- **Performance por desenho:** reduzir subqueries por linha
+- **Compatibilidade:** contrato de resposta mantido
+- **Migração explícita:** ajustes de índice fora do request path
+
+---
+
+## 38. Otimização P1 — `GET /market/movers`
+
+### 38.1 O Porquê
+
+O endpoint de movers fazia seleção de `previous_date` com múltiplas consultas em loop:
+
+- 1 query para amostra de cartas do dia atual
+- N queries (até 6) para comparar preço por data candidata
+
+Isso aumentava latência e round-trips ao banco, principalmente em períodos de maior tráfego.
+
+### 38.2 O Como
+
+Refatoração em `routes/market/movers/index.dart`:
+
+- Substituição do loop por **uma única query SQL** com `EXISTS`.
+- A query busca a data mais recente `< today` que possua ao menos uma variação significativa
+  (diferença > 0.5%) para cartas com preço > 1.0.
+- Mantido fallback para a segunda data mais recente quando não houver candidata válida.
+
+### 38.3 Resultado técnico
+
+- Menos queries por requisição no endpoint de movers.
+- Menor latência média e menor carga no pool do PostgreSQL.
+- Contrato de resposta preservado (`date`, `previous_date`, `gainers`, `losers`, `total_tracked`).
+
+---
+
+## 48. Sprint 1 — Remoção de DDL em request path (hardening backend)
+
+### 48.1 O Porquê
+
+Ainda existiam rotas executando `ALTER TABLE` / `CREATE TABLE` durante requisições HTTP. Isso aumenta latência, pode causar lock desnecessário e mistura responsabilidade de runtime com provisionamento de schema.
+
+### 48.2 O Como
+
+Rotas ajustadas para remover DDL em runtime:
+- `server/routes/users/me/index.dart`
+- `server/routes/sets/index.dart`
+- `server/routes/rules/index.dart`
+
+Mudanças aplicadas:
+- removido `_ensureUserProfileColumns(pool)` de `GET/PATCH /users/me`.
+- removido `_ensureSetsTable(pool)` de `GET /sets`.
+- removido `CREATE TABLE IF NOT EXISTS sync_state` da leitura de metadados em `GET /rules`.
+
+Garantia de schema movida para migração idempotente:
+- `server/bin/migrate_runtime_schema_cleanup.dart`
+
+Objetos adicionados/garantidos na migração:
+- colunas de perfil em `users` (`location_state`, `location_city`, `trade_notes`, `updated_at`),
+- `sets` + índice `idx_sets_name`,
+- `sync_state`.
+
+### 48.3 Validação
+
+- Migração executada com sucesso localmente (`dart run bin/migrate_runtime_schema_cleanup.dart`).
+- Quality gate quick executado com sucesso (`./scripts/quality_gate.sh quick`).
+
+### 48.4 Resultado técnico
+
+- Menos trabalho no caminho de requisição.
+- Menor risco de lock/latência por DDL em runtime.
+- Separação mais limpa entre inicialização de schema e lógica de API.
+
+---
+
+## 43. Otimização P1 (Flutter) — NotificationProvider e SocialProvider
+
+### 43.1 O Porquê
+
+Após otimizar decks, mensagens e comunidade, ainda existiam pontos de notify em no-op em notificações e social, especialmente em fluxos de limpar estado e marcação de leitura.
+
+### 43.2 O Como
+
+Arquivos alterados:
+- app/lib/features/notifications/providers/notification_provider.dart
+- app/lib/features/social/providers/social_provider.dart
+
+`NotificationProvider`:
+- `fetchNotifications`: retorno antecipado se já estiver carregando, evitando chamadas/notify paralelos redundantes.
+- `markAsRead`: retorno antecipado quando a notificação já estava lida.
+- `markAllAsRead`: retorno antecipado quando já não há itens não lidos; notifica somente quando houve mudança real.
+- `clearAllState`: guard clause para evitar notify quando estado já está limpo.
+
+`SocialProvider`:
+- `searchUsers`: na busca vazia, notifica apenas se havia algo a limpar.
+- `clearSearch`: evita notify quando já está limpo.
+- `clearAllState`: guard clause para evitar notify em no-op durante logout/reset repetido.
+
+### 43.3 Resultado técnico
+
+- Menos repaints em telas com badge/lista de notificações.
+- Menor ruído de rebuild em ciclos de busca/limpeza no módulo social.
+- Sem alteração de contrato de API e sem mudança de comportamento funcional.
+
+---
+
+## 44. Otimização P1 (Flutter) — TradeProvider e BinderProvider
+
+### 44.1 O Porquê
+
+Nos módulos de trade e fichário, havia notificação em cenários de no-op (estado já limpo/inalterado), além de refresh de mensagens/stats que podia notificar sem mudança real.
+
+### 44.2 O Como
+
+Arquivos alterados:
+- app/lib/features/trades/providers/trade_provider.dart
+- app/lib/features/binder/providers/binder_provider.dart
+
+`TradeProvider`:
+- `fetchMessages`: atualização de chat agora compara IDs e total antes de notificar.
+- `clearError`: retorna sem notify quando já não existe erro.
+- `clearSelectedTrade`: retorna sem notify quando já está limpo.
+- `clearAllState`: guard clause para evitar notify em no-op.
+
+`BinderProvider`:
+- `fetchStats`: notifica apenas quando os valores de estatística realmente mudam.
+- `clearAllState`: guard clause para evitar notify em no-op.
+
+### 44.3 Resultado técnico
+
+- Menos rebuilds em polling/refresh de chat de trades sem novas mensagens.
+- Menor ruído de redraw em limpeza de estado no fichário e trades.
+- Sem alteração de contrato de API e sem mudança de regra de negócio.
+
+---
+
+## 45. Governança de documentação — README executivo + arquivo de documentos
+
+### 45.1 O Porquê
+
+Com o crescimento do projeto, múltiplos `.md` na raiz estavam gerando ruído e dificultando foco para execução de produto.
+
+Objetivo:
+- deixar a entrada do projeto mais clara para produto/demo,
+- manter histórico técnico sem perda,
+- centralizar direção estratégica em um roadmap único.
+
+### 45.2 O Como
+
+Mudanças aplicadas:
+- `README.md` da raiz foi simplificado para formato executivo (proposta de valor, quick start e links ativos).
+- documentos não essenciais do momento foram movidos para `archive_docs/`.
+- `ROADMAP.md` passou a ser a referência principal de priorização de 90 dias.
+
+### 45.3 Resultado
+
+- Menos confusão para time e stakeholders ao abrir o repositório.
+- Melhor percepção de produto na primeira leitura.
+- Histórico preservado em pasta de arquivo, sem descarte de conhecimento.
+
+---
+
+## 46. Operação de execução — Roadmap operacional + quality gate padronizado
+
+### 46.1 O Porquê
+
+Para garantir andamento contínuo com qualidade, era necessário transformar o roadmap em rotina operacional objetiva e criar um gate de testes único para cada etapa.
+
+### 46.2 O Como
+
+Mudanças aplicadas:
+- `ROADMAP.md` recebeu protocolo operacional com:
+  - Definition of Ready (DoR),
+  - ordem obrigatória de execução por item,
+  - critérios de bloqueio,
+  - política de rollback,
+  - quality gate obrigatório.
+
+- Novo script: `scripts/quality_gate.sh`
+  - `quick`: backend tests + frontend analyze.
+  - `full`: backend tests + frontend analyze + frontend tests.
+  - no `full`, se API local estiver ativa em `http://localhost:8080`, habilita automaticamente testes de integração backend (`RUN_INTEGRATION_TESTS=1`).
+
+### 46.3 Resultado
+
+- Execução mais previsível sprint a sprint.
+- Menor risco de concluir tarefas sem validação mínima.
+- Processo replicável para qualquer etapa do roadmap, com teste como requisito de fechamento.
+
+---
+
+## 47. Playbook diário — Checklist operacional de execução
+
+### 47.1 O Porquê
+
+Mesmo com roadmap e guia alinhados, faltava um artefato curto de uso diário para reduzir variação de execução entre dias e entre pessoas.
+
+### 47.2 O Como
+
+Novo arquivo criado:
+- `CHECKLIST_EXECUCAO.md`
+
+Conteúdo do checklist:
+- início do dia (foco + critério de aceite + plano de teste),
+- pré-implementação (escopo e dependências),
+- execução com gate quick,
+- fechamento com gate full + validação manual,
+- DoD e encerramento do dia,
+- regra de foco para entrada de novas tarefas.
+
+Também foi adicionado no `ROADMAP.md` o link explícito para esse checklist como referência operacional ativa.
+
+### 47.3 Resultado
+
+- Menos risco de esquecer etapas críticas.
+- Rotina de execução mais padronizada e auditável.
+- Maior consistência para manter fluxo ponta a ponta com testes em todas as entregas.
+
+---
+
+## 42. Otimização P1 (Flutter) — Mensagens e Comunidade (notify mais enxuto)
+
+### 42.1 O Porquê
+
+Após reduzir rebuilds no módulo de decks, ainda havia custo de repaint em fluxos de mensagens por polling e em resets repetidos de estado da comunidade.
+
+Objetivo: manter o mesmo comportamento funcional, com menos notificações redundantes.
+
+### 42.2 O Como
+
+Arquivos alterados:
+- app/lib/features/messages/providers/message_provider.dart
+- app/lib/features/community/providers/community_provider.dart
+
+`MessageProvider`:
+- `fetchMessages`: no modo incremental, só notifica quando houve mudança real (novas mensagens, cursor atualizado ou erro). No modo completo, mantém o ciclo padrão de loading.
+- `fetchMessages`: atualização de `_lastMessageAtByConversation` agora compara valor anterior para evitar notify por escrita idempotente.
+- `sendMessage`: removida notificação intermediária de sucesso; mantém notificação no início (`isSending=true`) e no fim (`isSending=false`) com lista já atualizada.
+- `markAsRead`: retorno antecipado quando a conversa já está com `unreadCount = 0`.
+- `clearAllState`: guard clause para evitar `notifyListeners()` quando o provider já está totalmente limpo.
+
+`CommunityProvider`:
+- `clearAllState`: guard clause para evitar `notifyListeners()` em logout/reset repetido sem mudança de estado.
+
+### 42.3 Resultado técnico
+
+- Menos rebuilds durante polling incremental de chat.
+- Menos repaints em ciclos de logout/login com estado já limpo.
+- Sem alteração de contrato de API, sem mudança de regras de negócio e sem impacto de UX funcional.
+
+---
+
+## 39. Otimização P1 — Resolução de cartas em lote (criação de deck)
+
+### 39.1 O Porquê
+
+No fluxo de criação de deck, quando o payload vinha com nomes de cartas (sem `card_id`),
+o app resolvia cada nome com uma requisição individual para `/cards`.
+
+Impacto:
+- N requisições HTTP por criação de deck
+- latência acumulada
+- maior chance de timeout/intermitência em redes móveis
+
+### 39.2 O Como
+
+#### Backend
+
+Novo endpoint:
+- `POST /cards/resolve/batch`
+- Arquivo: `routes/cards/resolve/batch/index.dart`
+
+Entrada:
+```json
+{ "names": ["Sol Ring", "Arcane Signet"] }
+```
+
+Saída:
+```json
+{
+  "data": [
+    { "input_name": "Sol Ring", "card_id": "...", "matched_name": "Sol Ring" }
+  ],
+  "unresolved": [],
+  "total_input": 2,
+  "total_resolved": 2
+}
+```
+
+Implementação com SQL único usando `unnest(@names::text[])` + `LEFT JOIN LATERAL`,
+priorizando match:
+1. exato (`LOWER(name) = LOWER(input_name)`)
+2. prefixo
+3. `ILIKE` geral
+
+#### Frontend
+
+`DeckProvider._normalizeCreateDeckCards` foi alterado para:
+- agregar nomes únicos
+- fazer **uma** chamada `POST /cards/resolve/batch`
+- montar lista normalizada com `card_id`, `quantity`, `is_commander`
+
+Arquivo:
+- `app/lib/features/decks/providers/deck_provider.dart`
+
+### 39.3 Padrões aplicados
+
+- **Menos round-trips:** troca de N chamadas por 1 chamada batch.
+- **Compatibilidade de contrato:** payload final de criação de deck mantém estrutura esperada.
+- **Resiliência:** cartas não resolvidas são ignoradas na normalização (comportamento equivalente ao fluxo anterior quando não havia match).
+
+---
+
+## 40. Otimização P1 — Import/Validate com resolvedor compartilhado
+
+### 40.1 O Porquê
+
+As rotas de importação tinham lógica duplicada de lookup (3 etapas):
+- exato por nome
+- fallback com nome limpo (ex: `Forest 96` -> `Forest`)
+- fallback para split card (`name // ...`)
+
+Isso aumentava complexidade de manutenção e risco de drift entre:
+- `routes/import/validate/index.dart`
+- `routes/import/to-deck/index.dart`
+
+### 40.2 O Como
+
+Criado serviço compartilhado:
+
+- `lib/import_card_lookup_service.dart`
+
+Função principal:
+- `resolveImportCardNames(Pool pool, List<Map<String, dynamic>> parsedItems)`
+
+Fluxo interno:
+1. consulta exata em lote para nomes originais e limpos (única query)
+2. fallback em lote para split cards via `LIKE ANY(patterns)`
+3. retorna mapa resolvido para montagem final de `found_cards`/`cardsToInsert`
+
+As duas rotas de import agora reutilizam exatamente essa função, mantendo o mesmo contrato de resposta.
+
+### 40.3 Benefícios
+
+- Menos SQL repetido por arquivo
+- Menor risco de inconsistência entre validar e importar
+- Manutenção mais simples para ajustes futuros de matching
+
+---
+
+## 41. Otimização P1 (Flutter) — Redução de rebuilds no DeckProvider
+
+### 41.1 O Porquê
+
+Nos fluxos de deck havia notificações redundantes de estado em sequência. Isso aumentava rebuilds e podia gerar flicker visual durante recargas.
+
+### 41.2 O Como
+
+Arquivo alterado: app/lib/features/decks/providers/deck_provider.dart.
+
+Ajustes aplicados:
+- fetchDeckDetails: cache hit agora só notifica quando há mudança real de estado.
+- fetchDeckDetails: removido reset antecipado de selectedDeck para evitar flicker.
+- addCardToDeck: removida notificação intermediária antes do refresh final.
+- refreshAiAnalysis: unificação de duas notificações em uma única notificação final.
+- importDeckFromList: removida notificação intermediária no caminho de sucesso.
+- clearError: não notifica quando já está sem erro.
+
+### 41.3 Resultado técnico
+
+- Menos repaints desnecessários na UI de decks.
+- Menor oscilação visual ao atualizar detalhes.
+- Sem alteração de contrato de API e sem mudança de regra de negócio.
+
+---
+
+## 48. Testes de contrato de erro (integração)
+
+### 48.1 O Porquê
+
+Após padronizar os helpers de erro HTTP (`error` + status consistente), era necessário
+blindar regressão de contrato para endpoints core e IA já ajustados.
+
+Sem esse teste, pequenas alterações de rota poderiam voltar a retornar formatos
+inconsistentes (ex.: body vazio em 405 ou payload sem campo `error`).
+
+### 48.2 O Como
+
+Arquivo criado:
+- `test/error_contract_test.dart`
+
+Cobertura incluída (integração):
+- `POST /auth/login` inválido → `400` com `message`
+- `POST /auth/register` inválido → `400` com `message`
+- `GET /auth/me` sem token → `401` com `error`
+- `POST /auth/me` (método inválido) → `405`
+- `GET /decks` sem token → `401` com `error`
+- `POST /decks` sem token → `401` com `error`
+- `POST /decks` inválido → `400` com `error`
+- `DELETE /decks` (método inválido) → `405`
+- `GET /decks/:id` sem token → `401` com `error`
+- `GET /decks/:id` com deck inexistente → `404` com `error`
+- `PUT /decks/:id` sem token → `401` com `error`
+- `PUT /decks/:id` com deck inexistente → `404` com `error`
+- `DELETE /decks/:id` sem token → `401` com `error`
+- `DELETE /decks/:id` com deck inexistente → `404` com `error`
+- `POST /import` sem token → `401` com `error`
+- `POST /import` com payload inválido → `400` com `error`
+- `PUT /decks` (método inválido) → `405`
+- `GET /import` (método inválido) → `405`
+- `POST /decks/:id` (método inválido) → `405`
+- `POST /decks/:id/validate` sem token → `401` com `error`
+- `GET /decks/:id/validate` (método inválido) → `405`
+- `POST /decks/:id/pricing` sem token → `401` com `error`
+- `GET /decks/:id/pricing` (método inválido) → `405`
+- `POST /decks/:id/pricing` com deck inexistente → `404` com `error`
+- `GET /decks/:id/export` sem token → `401` com `error`
+- `POST /decks/:id/export` (método inválido) → `405`
+- `GET /decks/:id/export` com deck inexistente → `404` com `error`
+- `POST /ai/explain` sem token → `401` com `error`
+- `POST /ai/explain` inválido → `400` com `error`
+- `POST /ai/archetypes` sem token → `401` com `error`
+- `POST /ai/archetypes` inválido → `400` com `error`
+- `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/optimize` sem token → `401` com `error`
+- `POST /ai/optimize` inválido → `400` com `error`
+- `POST /ai/optimize` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/generate` sem token → `401` com `error`
+- `POST /ai/generate` inválido → `400` com `error`
+- `GET /ai/ml-status` sem token → `401` com `error`
+- `POST /ai/ml-status` (método inválido) → `405`
+- `POST /ai/simulate` inválido → `400` com `error`
+- `POST /ai/simulate` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/simulate-matchup` inválido → `400` com `error`
+- `POST /ai/simulate-matchup` com deck inexistente → `404` com `error`
+- `POST /ai/weakness-analysis` inválido → `400` com `error`
+- `POST /ai/weakness-analysis` com `deck_id` inexistente → `404` com `error`
+- `POST /cards` (método inválido) → `405`
+- `POST /cards/printings` (método inválido) → `405`
+- `GET /cards/printings` sem `name` → `400` com `error`
+- `GET /cards/resolve` (método inválido) → `405`
+- `POST /cards/resolve` com body vazio/inválido/sem `name` → `400` com `error`
+- `GET /cards/resolve/batch` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /cards/resolve/batch` inválido → `400` (ou `404` quando endpoint não existe no runtime)
+- `POST /rules` (método inválido) → `405`
+- `POST /community/decks/:id` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/decks/:id` inexistente → `404`
+- `PUT /community/decks/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/users` sem `q` → `400` (ou `404` quando endpoint não existe no runtime)
+- `POST /community/users` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/users/:id` inexistente → `404`
+- `PUT /community/users/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /community/binders/:userId` inexistente → `404`
+- `POST /community/binders/:userId` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /community/marketplace` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET/POST /users/:id/follow` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/follow` com alvo inexistente → `404`
+- `POST /users/:id/follow` em si mesmo → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /users/:id/followers` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/followers` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /users/:id/following` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /users/:id/following` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /notifications` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/count` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /notifications/count` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/read-all` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/read-all` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/:id/read` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /notifications/:id/read` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /notifications/:id/read` inexistente → `404`
+- `GET /trades` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades` inválido (payload/tipo) → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id` inexistente → `404`
+- `POST /trades/:id` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/respond` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/respond` inválido (`action`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/status` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /trades/:id/status` sem `status` → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /trades/:id/messages` inexistente → `404`
+- `POST /trades/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /trades/:id/messages` inválido → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations` inválido (sem `user_id`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/unread-count` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations/unread-count` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/messages` inexistente → `404`
+- `POST /conversations/:id/messages` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `POST /conversations/:id/messages` inválido (sem `message`) → `400` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations/:id/read` sem token → `401` (ou `404` quando endpoint não existe no runtime)
+- `GET /conversations/:id/read` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `PUT /conversations/:id/read` inexistente → `404`
+
+Padrões técnicos aplicados:
+- mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
+- autenticação real de usuário de teste para rotas protegidas;
+- asserção de contrato: `statusCode` + header `content-type` JSON + presença de `error` (rotas padronizadas) ou `message` (auth legada).
+
+Observação técnica sobre `404/405` em ambientes mistos:
+- em runtime atualizado, o middleware raiz normaliza `405` vazios para JSON com `error`;
+- em runtime legado (ex.: servidor já em execução antigo), algumas respostas de framework ainda podem vir como `text/plain` ou body vazio;
+- para famílias de endpoint ainda não publicadas no runtime ativo, o suite aceita `404` como fallback de compatibilidade sem mascarar regressões de `statusCode`;
+- o teste de contrato mantém validação estrita de `statusCode` e valida payload estruturado quando disponível, com fallback compatível para `404/405` de framework.
+
+Execução:
+```bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/error_contract_test.dart
+```
+
+### 48.3 Resultado
+
+- Contrato de erro padronizado agora tem cobertura automatizada dedicada.
+- Redução de risco de regressão silenciosa em handlers core/IA/Auth.
+- Cobertura expandida para `cards/*`, `rules`, `community/*`, `users/*`, `notifications/*`, `trades/*` e `conversations/*`, incluindo cenários de compatibilidade entre runtimes.
+
+## 49. Consolidação do Core — Smoke E2E de fluxo principal
+
+### 49.1 O Porquê
+
+O projeto já possuía testes de contrato de erro e testes de integração pontuais de decks, porém faltava um **smoke único de ponta a ponta** para o funil principal do produto:
+
+`criar/importar → validar → analisar → otimizar`.
+
+Sem esse smoke, uma regressão em qualquer etapa do fluxo poderia passar despercebida até QA manual tardio.
+
+### 49.2 O Como
+
+Arquivo criado:
+- `server/test/core_flow_smoke_test.dart`
+
+Cobertura implementada (integração):
+- **Cenário de contrato core (create path):**
+  - cria deck Standard via `POST /decks`;
+  - valida contrato em `POST /decks/:id/validate` (`200` ou `400` com payload consistente);
+  - valida payload mínimo de `GET /decks/:id/analysis` (`200` + campos estruturais);
+  - valida contrato de `POST /ai/optimize` em ambiente real/mock (`200` com `reasoning` ou `500` com `error`).
+- **Cenário de erro crítico (import + optimize):**
+  - erro de import inválido (`list` numérico) com `POST /import` → `400`;
+  - erro de otimização sem `archetype` com `POST /ai/optimize` → `400`.
+
+Padrões aplicados:
+- gating por `RUN_INTEGRATION_TESTS` e `TEST_API_BASE_URL`;
+- helpers de autenticação e cleanup automático de decks criados;
+- asserts de contrato mínimo em payload de sucesso/erro.
+
+### 49.3 Execução
+
+Smoke focado:
+
+````bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/core_flow_smoke_test.dart
+````
+
+Durante desenvolvimento:
+
+````bash
+./scripts/quality_gate.sh quick
+````
+
+### 49.4 Resultado
+
+- Fluxo core ganhou cobertura executável de alto ROI, cobrindo sucesso e erro crítico no mesmo eixo funcional.
+- Redução do risco de quebra silenciosa entre rotas de criação/importação, validação de regras, análise e otimização.
+
+## 50. Expansão de cobertura do Core/IA/Rate Limit
+
+### 50.1 O Como
+
+Novos arquivos de teste adicionados:
+- `server/test/import_to_deck_flow_test.dart`
+- `server/test/deck_analysis_contract_test.dart`
+- `server/test/ai_optimize_flow_test.dart`
+- `server/test/rate_limit_middleware_test.dart`
+
+Cobertura adicionada:
+- **Import para deck existente** (`POST /import/to-deck`):
+  - sucesso com `cards_imported`;
+  - erro de payload inválido (`400`);
+  - deck inexistente/acesso inválido (`404`).
+- **Analysis de deck** (`GET /decks/:id/analysis`):
+  - contrato de payload em sucesso (`200`);
+  - recurso inexistente (`404`);
+  - método inválido (`405`).
+- **Optimize IA** (`POST /ai/optimize`):
+  - contrato de sucesso em modo mock/real;
+  - campos obrigatórios (`400`);
+  - deck inexistente (`404`);
+  - comportamento em Commander incompleto sem comandante (real: `400`, mock: `200` com `is_mock`).
+- **Rate limiter (unit)**:
+  - bloqueio após atingir limite;
+  - isolamento por cliente;
+  - reabertura após janela;
+  - limpeza de entradas antigas.
+
+### 50.2 Validação
+
+Executado e aprovado:
+- `dart test test/core_flow_smoke_test.dart test/import_to_deck_flow_test.dart test/deck_analysis_contract_test.dart test/ai_optimize_flow_test.dart test/rate_limit_middleware_test.dart`
+- `./scripts/quality_gate.sh quick`
+- `./scripts/quality_gate.sh full`
+
+## 51. Hardening do `/ai/optimize` (No element + contrato de resposta)
+
+### 51.1 O Porquê
+
+Durante execução real do fluxo core, o endpoint `POST /ai/optimize` podia retornar `500` com detalhe interno `Bad state: No element`, expondo erro de runtime e quebrando o contrato esperado pelo app.
+
+Também foi identificado que, em cenários de deck vazio/sem sugestões, o campo `reasoning` podia vir `null`, enquanto o frontend/testes esperam string.
+
+### 51.2 O Como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Ajustes aplicados:
+- hardening de seleção de tema em `_detectThemeProfile`, removendo uso frágil de `reduce` e adotando busca segura do melhor score;
+- leitura de `deck format` com guarda explícita, evitando dependência implícita de acesso direto à primeira linha sem validação contextual;
+- normalização do payload de saída para garantir `reasoning` como string também no modo `optimize` (`?? ''`);
+- tratamento defensivo no catch interno de otimização para não vazar `Bad state: No element` no payload público, mantendo log completo no servidor.
+
+Arquivo de teste ajustado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Regressão coberta:
+- quando houver erro no `optimize`, a API não deve expor `Bad state: No element` ao cliente.
+
+### 51.3 Validação
+
+Executado e aprovado:
+- `dart test test/ai_optimize_flow_test.dart test/core_flow_smoke_test.dart`
+- `./scripts/quality_gate.sh quick`
+- `./scripts/quality_gate.sh full`
+
+Resultado:
+- endpoint voltou a responder com contrato estável em runtime real;
+- eliminada exposição de detalhe interno de exceção para clientes;
+- pipeline de qualidade (`quick`/`full`) verde após correção.
+
+## 52. Padronização de modelos e prompts IA (configuração central)
+
+### 52.1 O Porquê
+
+Os endpoints de IA estavam com seleção de modelo e temperatura hardcoded em múltiplos pontos, com mistura de `gpt-3.5-turbo`, `gpt-4o-mini` e `gpt-4o`, além de variância alta em alguns fluxos estruturados.
+
+Isso aumentava risco de inconsistência para o cliente (especialmente em payload JSON), dificultava tuning por ambiente e tornava evolução de custo/qualidade mais lenta.
+
+### 52.2 O Como
+
+Foi criada uma configuração central de runtime:
+- `server/lib/openai_runtime_config.dart`
+
+Responsabilidades do helper:
+- ler modelo por chave de ambiente com fallback seguro;
+- ler temperatura por chave de ambiente com clamp para faixa válida (`0.0..1.0`).
+
+Endpoints/serviços ajustados:
+- `server/routes/ai/generate/index.dart`
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+- `server/routes/decks/[id]/ai-analysis/index.dart`
+- `server/lib/ai/otimizacao.dart`
+- `server/lib/ai/optimization_validator.dart`
+
+Padronizações aplicadas:
+- substituição de modelos hardcoded por configuração via env (`OPENAI_MODEL_*`);
+- substituição de temperaturas hardcoded por `OPENAI_TEMP_*`;
+- reforço de `response_format: { type: "json_object" }` em fluxos com contrato JSON estrito (`generate`, `archetypes`, `recommendations`, `optimize`, `complete`, `critic`, `ai-analysis`);
+- manutenção de fallback/mock já existente para dev quando `OPENAI_API_KEY` não está configurada.
+
+Arquivo de exemplo atualizado:
+- `server/.env.example` com todas as chaves novas de modelo/temperatura por endpoint.
+
+### 52.3 Configuração recomendada
+
+Defaults adicionados no `.env.example`:
+- Modelos:
+  - `OPENAI_MODEL_OPTIMIZE=gpt-4o`
+  - `OPENAI_MODEL_COMPLETE=gpt-4o`
+  - `OPENAI_MODEL_GENERATE=gpt-4o-mini`
+  - `OPENAI_MODEL_ARCHETYPES=gpt-4o-mini`
+  - `OPENAI_MODEL_EXPLAIN=gpt-4o-mini`
+  - `OPENAI_MODEL_RECOMMENDATIONS=gpt-4o-mini`
+  - `OPENAI_MODEL_AI_ANALYSIS=gpt-4o-mini`
+  - `OPENAI_MODEL_OPTIMIZATION_CRITIC=gpt-4o-mini`
+- Temperaturas:
+  - `OPENAI_TEMP_OPTIMIZE=0.3`
+  - `OPENAI_TEMP_COMPLETE=0.3`
+  - `OPENAI_TEMP_GENERATE=0.4`
+  - `OPENAI_TEMP_ARCHETYPES=0.3`
+  - `OPENAI_TEMP_EXPLAIN=0.5`
+  - `OPENAI_TEMP_RECOMMENDATIONS=0.3`
+  - `OPENAI_TEMP_AI_ANALYSIS=0.2`
+  - `OPENAI_TEMP_OPTIMIZATION_CRITIC=0.2`
+
+### 52.4 Resultado esperado para o cliente
+
+- maior consistência de respostas em JSON nos fluxos de construção/otimização;
+- menor variância de qualidade entre endpoints IA;
+- controle fino de custo/latência por ambiente sem alteração de código;
+- manutenção mais simples para futuras trocas de modelo.
+
+## 53. Presets de IA por ambiente (dev / staging / prod)
+
+### 53.1 O Porquê
+
+Após centralizar modelo/temperatura por endpoint, ainda faltava uma estratégia operacional clara por ambiente.
+
+Objetivo: evitar tuning manual repetitivo e garantir que:
+- development priorize custo/velocidade;
+- staging valide comportamento próximo de produção;
+- production maximize qualidade nos fluxos críticos (`optimize`/`complete`).
+
+### 53.2 O Como
+
+Arquivo evoluído:
+- `server/lib/openai_runtime_config.dart`
+
+Novidades:
+- suporte a `OPENAI_PROFILE` (`dev`, `staging`, `prod`);
+- fallback automático para perfil via `ENVIRONMENT` quando `OPENAI_PROFILE` não estiver definido;
+- seleção de fallback por perfil para `model` e `temperature`;
+- clamp de temperatura em faixa segura (`0.0..1.0`).
+
+Aplicado nos pontos de IA:
+- `server/lib/ai/otimizacao.dart`
+- `server/lib/ai/optimization_validator.dart`
+- `server/routes/ai/generate/index.dart`
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+- `server/routes/decks/[id]/ai-analysis/index.dart`
+
+### 53.3 Estratégia de preset
+
+- **dev**: majoritariamente `gpt-4o-mini`, temperaturas levemente maiores para iteração.
+- **staging**: mesma família de modelos com temperaturas mais estáveis para validação.
+- **prod**: `gpt-4o` em `optimize/complete`; `gpt-4o-mini` nos demais fluxos, com menor temperatura.
+
+### 53.4 Configuração
+
+Arquivo atualizado:
+- `server/.env.example`
+
+Campos relevantes:
+- `OPENAI_PROFILE=dev|staging|prod`
+- `OPENAI_MODEL_*`
+- `OPENAI_TEMP_*`
+
+Regra prática:
+- se `OPENAI_MODEL_*`/`OPENAI_TEMP_*` estiverem definidos, eles prevalecem;
+- se não estiverem, aplica fallback por perfil automaticamente.
+
+## 54. Prompt v2 unificado (Archetypes, Explain, Recommendations)
+
+### 54.1 O Porquê
+
+Apesar do núcleo de `optimize/complete` já estar robusto, os prompts dos fluxos auxiliares ainda estavam mais genéricos e com menor foco em decisão real do jogador.
+
+Isso gerava variância de qualidade entre endpoints IA e diminuía valor percebido na experiência geral.
+
+### 54.2 O Como
+
+Endpoints ajustados:
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+
+Melhorias aplicadas:
+- reforço de objetivo orientado ao usuário (plano de jogo + ação recomendada);
+- instruções mais restritivas para saída previsível;
+- maior foco em consistência de deck (curva, ramp, draw, remoção, sinergia);
+- anti-hallucination textual em `explain` (fidelidade ao Oracle, explicitar limitações de contexto);
+- manutenção do contrato de resposta atual de cada endpoint (sem breaking change para o app).
+
+### 54.3 Resultado esperado
+
+- respostas mais úteis para tomada de decisão do jogador;
+- menor variância de qualidade entre endpoints de IA;
+- melhor alinhamento com o objetivo do produto: construir, entender e melhorar decks com consistência.

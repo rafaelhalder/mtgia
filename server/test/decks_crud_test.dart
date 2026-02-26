@@ -23,8 +23,9 @@ void main() {
       ? null
       : 'Requer servidor rodando (defina RUN_INTEGRATION_TESTS=1).';
 
-  // URL base do servidor (ajustar conforme necessário)
-  const baseUrl = 'http://localhost:8080';
+  // URL base do servidor (ajustável via TEST_API_BASE_URL)
+  final baseUrl =
+      Platform.environment['TEST_API_BASE_URL'] ?? 'http://localhost:8080';
   
   // Credenciais de teste - devem existir no banco ou serem criadas no setup
   const testUser = {

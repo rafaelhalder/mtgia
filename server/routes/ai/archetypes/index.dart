@@ -1,13 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/http_responses.dart';
+import '../../../lib/openai_runtime_config.dart';
+
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -15,10 +17,7 @@ Future<Response> onRequest(RequestContext context) async {
     final deckId = body['deck_id'] as String?;
 
     if (deckId == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'deck_id is required'},
-      );
+      return badRequest('deck_id is required');
     }
 
     // 1. Fetch Deck Data
@@ -31,7 +30,7 @@ Future<Response> onRequest(RequestContext context) async {
     );
     
     if (deckResult.isEmpty) {
-      return Response.json(statusCode: HttpStatus.notFound, body: {'error': 'Deck not found'});
+      return notFound('Deck not found');
     }
     
     final deckName = deckResult.first[0] as String;
@@ -63,6 +62,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // 2. Prepare Prompt
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
@@ -93,24 +93,37 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final prompt = '''
-    Analise este deck de Magic: The Gathering ($deckFormat).
-    Nome: $deckName
-    Comandante(s): ${commanders.join(', ')}
-    Lista (amostra): ${otherCards.take(30).join(', ')}... (total ${otherCards.length} cartas)
+Você está analisando um deck de MTG para sugerir linhas estratégicas de evolução.
 
-    Identifique 3 caminhos estratégicos distintos (arquétipos) para otimizar este deck, baseados no comandante e nas cores.
-    Retorne APENAS um JSON válido com o seguinte formato, sem markdown:
+Contexto:
+- Formato: $deckFormat
+- Nome: $deckName
+- Comandante(s): ${commanders.join(', ')}
+- Amostra de cartas: ${otherCards.take(30).join(', ')}
+- Total de cartas não-comandante: ${otherCards.length}
+
+Objetivo:
+Retornar EXATAMENTE 3 opções de arquétipo com planos distintos e úteis para o jogador, priorizando consistência, plano de vitória e qualidade de curva.
+
+Regras:
+1) Não repetir o mesmo plano com nomes diferentes.
+2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spell-slinger, Reanimator, Tokens, Control).
+3) Cada descrição deve explicar o plano em no máximo 2 frases, incluindo "como vence" e "o que precisa melhorar".
+4) Dificuldade obrigatória em: Baixa, Média ou Alta.
+5) Responda SOMENTE JSON válido, sem markdown.
+
+Formato obrigatório:
+{
+  "options": [
     {
-      "options": [
-        {
-          "id": "string_curta_identificadora",
-          "title": "Nome do Arquétipo (ex: Aristocrats, Voltron)",
-          "description": "Breve explicação do foco estratégico (max 2 frases).",
-          "difficulty": "Baixa/Média/Alta"
-        }
-      ]
+      "id": "slug-curto",
+      "title": "Nome do Arquétipo",
+      "description": "Plano estratégico objetivo em até 2 frases.",
+      "difficulty": "Baixa|Média|Alta"
     }
-    ''';
+  ]
+}
+''';
 
     // 3. Call OpenAI
     final response = await http.post(
@@ -120,18 +133,31 @@ Future<Response> onRequest(RequestContext context) async {
         'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-3.5-turbo',
+        'model': aiConfig.modelFor(
+          key: 'OPENAI_MODEL_ARCHETYPES',
+          fallback: 'gpt-4o-mini',
+          devFallback: 'gpt-4o-mini',
+          stagingFallback: 'gpt-4o-mini',
+          prodFallback: 'gpt-4o-mini',
+        ),
         'messages': [
           {
             'role': 'system',
-            'content': 'Você é um especialista em construção de decks de Magic: The Gathering. Responda sempre em JSON.'
+            'content': 'Você é um deck builder competitivo de MTG focado em decisões práticas para o jogador. Seja objetivo, técnico e útil. Responda sempre em JSON válido.'
           },
           {
             'role': 'user',
             'content': prompt
           }
         ],
-        'temperature': 0.7,
+        'temperature': aiConfig.temperatureFor(
+          key: 'OPENAI_TEMP_ARCHETYPES',
+          fallback: 0.3,
+          devFallback: 0.35,
+          stagingFallback: 0.3,
+          prodFallback: 0.25,
+        ),
+        'response_format': {'type': 'json_object'},
       }),
     );
 
@@ -150,17 +176,11 @@ Future<Response> onRequest(RequestContext context) async {
       final jsonResult = jsonDecode(jsonStr);
       return Response.json(body: jsonResult);
     } else {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'error': 'OpenAI API Error: ${response.statusCode}'},
-      );
+      return internalServerError('OpenAI API Error: ${response.statusCode}');
     }
 
   } catch (e) {
     print('[ERROR] Failed to analyze archetypes: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze archetypes'},
-    );
+    return internalServerError('Failed to analyze archetypes');
   }
 }

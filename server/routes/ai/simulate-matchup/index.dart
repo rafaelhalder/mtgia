@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'dart:math';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 import '../../../lib/archetype_counters_service.dart';
+import '../../../lib/http_responses.dart';
 
 /// Endpoint para simular matchup entre dois decks
 /// 
@@ -16,7 +16,7 @@ import '../../../lib/archetype_counters_service.dart';
 /// Retorna análise de matchup com win rate estimado e recomendações
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -26,10 +26,7 @@ Future<Response> onRequest(RequestContext context) async {
     final simulationCount = body['simulations'] as int? ?? 50;
 
     if (myDeckId == null || opponentDeckId == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'my_deck_id and opponent_deck_id are required'},
-      );
+      return badRequest('my_deck_id and opponent_deck_id are required');
     }
 
     final pool = context.read<Pool>();
@@ -40,20 +37,14 @@ Future<Response> onRequest(RequestContext context) async {
     final opponentDeckData = await _getDeckData(pool, opponentDeckId);
 
     if (myDeckData == null) {
-      return Response.json(
-        statusCode: HttpStatus.notFound,
-        body: {'error': 'Your deck not found'},
-      );
+      return notFound('Your deck not found');
     }
 
     if (opponentDeckData == null) {
       // Tentar buscar de meta_decks
       final metaDeckData = await _getMetaDeckData(pool, opponentDeckId);
       if (metaDeckData == null) {
-        return Response.json(
-          statusCode: HttpStatus.notFound,
-          body: {'error': 'Opponent deck not found'},
-        );
+        return notFound('Opponent deck not found');
       }
       // Usar meta deck
       return _analyzeMatchup(
@@ -77,10 +68,7 @@ Future<Response> onRequest(RequestContext context) async {
 
   } catch (e, stack) {
     print('Erro em simulate-matchup: $e\n$stack');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to simulate matchup'},
-    );
+    return internalServerError('Failed to simulate matchup');
   }
 }
 

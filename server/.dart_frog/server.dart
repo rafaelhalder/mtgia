@@ -44,6 +44,7 @@ import '../routes/decks/[id]/cards/replace/index.dart' as decks_$id_cards_replac
 import '../routes/decks/[id]/cards/bulk/index.dart' as decks_$id_cards_bulk_index;
 import '../routes/decks/[id]/analysis/index.dart' as decks_$id_analysis_index;
 import '../routes/decks/[id]/ai-analysis/index.dart' as decks_$id_ai_analysis_index;
+import '../routes/conversations/unread-count.dart' as conversations_unread_count;
 import '../routes/conversations/index.dart' as conversations_index;
 import '../routes/conversations/[id]/read.dart' as conversations_$id_read;
 import '../routes/conversations/[id]/messages.dart' as conversations_$id_messages;
@@ -55,6 +56,7 @@ import '../routes/community/decks/[id].dart' as community_decks_$id;
 import '../routes/community/binders/[userId].dart' as community_binders_$user_id;
 import '../routes/cards/index.dart' as cards_index;
 import '../routes/cards/resolve/index.dart' as cards_resolve_index;
+import '../routes/cards/resolve/batch/index.dart' as cards_resolve_batch_index;
 import '../routes/cards/printings/index.dart' as cards_printings_index;
 import '../routes/binder/index.dart' as binder_index;
 import '../routes/binder/[id]/index.dart' as binder_$id_index;
@@ -108,6 +110,7 @@ Handler buildRootHandler() {
     ..mount('/binder/<id>', (context,id,) => buildBinder$idHandler(id,)(context))
     ..mount('/binder', (context) => buildBinderHandler()(context))
     ..mount('/cards/printings', (context) => buildCardsPrintingsHandler()(context))
+    ..mount('/cards/resolve/batch', (context) => buildCardsResolveBatchHandler()(context))
     ..mount('/cards/resolve', (context) => buildCardsResolveHandler()(context))
     ..mount('/cards', (context) => buildCardsHandler()(context))
     ..mount('/community/binders', (context) => buildCommunityBindersHandler()(context))
@@ -236,6 +239,13 @@ Handler buildCardsPrintingsHandler() {
   return pipeline.addHandler(router);
 }
 
+Handler buildCardsResolveBatchHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => cards_resolve_batch_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
 Handler buildCardsResolveHandler() {
   final pipeline = const Pipeline();
   final router = Router()
@@ -288,7 +298,7 @@ Handler buildConversations$idHandler(String id,) {
 Handler buildConversationsHandler() {
   final pipeline = const Pipeline().addMiddleware(conversations_middleware.middleware);
   final router = Router()
-    ..all('/', (context) => conversations_index.onRequest(context,));
+    ..all('/unread-count', (context) => conversations_unread_count.onRequest(context,))..all('/', (context) => conversations_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

@@ -1,15 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
 import '../../../lib/card_validation_service.dart';
+import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
+import '../../../lib/openai_runtime_config.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -18,14 +19,12 @@ Future<Response> onRequest(RequestContext context) async {
     final format = body['format'] as String? ?? 'Commander';
 
     if (prompt == null || prompt.isEmpty) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'Prompt is required'},
-      );
+      return badRequest('Prompt is required');
     }
 
     // Carregar variáveis de ambiente
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
@@ -126,20 +125,30 @@ Rules:
         'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-4o-mini', // Modelo rápido e eficiente
+        'model': aiConfig.modelFor(
+          key: 'OPENAI_MODEL_GENERATE',
+          fallback: 'gpt-4o-mini',
+          devFallback: 'gpt-4o-mini',
+          stagingFallback: 'gpt-4o-mini',
+          prodFallback: 'gpt-4o-mini',
+        ),
         'messages': [
           {'role': 'system', 'content': systemPrompt},
           {'role': 'user', 'content': userMessage},
         ],
-        'temperature': 0.7,
+        'temperature': aiConfig.temperatureFor(
+          key: 'OPENAI_TEMP_GENERATE',
+          fallback: 0.4,
+          devFallback: 0.45,
+          stagingFallback: 0.4,
+          prodFallback: 0.35,
+        ),
+        'response_format': {'type': 'json_object'},
       }),
     );
 
     if (response.statusCode != 200) {
-      return Response.json(
-        statusCode: response.statusCode,
-        body: {'error': 'OpenAI API Error: ${response.body}'},
-      );
+      return apiError(response.statusCode, 'OpenAI API Error: ${response.body}');
     }
 
     final aiData = jsonDecode(utf8.decode(response.bodyBytes));
@@ -229,10 +238,7 @@ Rules:
     return Response.json(body: responseBody);
   } catch (e) {
     print('[ERROR] Failed to generate deck: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to generate deck'},
-    );
+    return internalServerError('Failed to generate deck');
   }
 }
 
