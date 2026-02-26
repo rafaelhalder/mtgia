@@ -5433,16 +5433,14 @@ Arquivo criado:
 - `server/test/core_flow_smoke_test.dart`
 
 Cobertura implementada (integração):
-- **Cenário de sucesso (create path):**
-  - cria deck Standard com 60 `Forest` via `POST /decks`;
-  - valida via `POST /decks/:id/validate` (espera `200` e `ok=true`);
-  - analisa via `GET /decks/:id/analysis` (espera `200` e `legality.is_valid=true`);
-  - otimiza via `POST /ai/optimize` (espera `200` e `reasoning` presente).
-- **Cenário misto (import + erro crítico):**
-  - valida erro de import inválido (`list` numérico) com `POST /import` → `400`;
-  - importa deck válido (`60 Forest`) com `POST /import`;
-  - revalida/analisa deck importado;
-  - valida erro crítico de otimização sem `archetype` (`POST /ai/optimize`) → `400`.
+- **Cenário de contrato core (create path):**
+  - cria deck Standard via `POST /decks`;
+  - valida contrato em `POST /decks/:id/validate` (`200` ou `400` com payload consistente);
+  - valida payload mínimo de `GET /decks/:id/analysis` (`200` + campos estruturais);
+  - valida contrato de `POST /ai/optimize` em ambiente real/mock (`200` com `reasoning` ou `500` com `error`).
+- **Cenário de erro crítico (import + optimize):**
+  - erro de import inválido (`list` numérico) com `POST /import` → `400`;
+  - erro de otimização sem `archetype` com `POST /ai/optimize` → `400`.
 
 Padrões aplicados:
 - gating por `RUN_INTEGRATION_TESTS` e `TEST_API_BASE_URL`;
@@ -5468,3 +5466,40 @@ Durante desenvolvimento:
 
 - Fluxo core ganhou cobertura executável de alto ROI, cobrindo sucesso e erro crítico no mesmo eixo funcional.
 - Redução do risco de quebra silenciosa entre rotas de criação/importação, validação de regras, análise e otimização.
+
+## 50. Expansão de cobertura do Core/IA/Rate Limit
+
+### 50.1 O Como
+
+Novos arquivos de teste adicionados:
+- `server/test/import_to_deck_flow_test.dart`
+- `server/test/deck_analysis_contract_test.dart`
+- `server/test/ai_optimize_flow_test.dart`
+- `server/test/rate_limit_middleware_test.dart`
+
+Cobertura adicionada:
+- **Import para deck existente** (`POST /import/to-deck`):
+  - sucesso com `cards_imported`;
+  - erro de payload inválido (`400`);
+  - deck inexistente/acesso inválido (`404`).
+- **Analysis de deck** (`GET /decks/:id/analysis`):
+  - contrato de payload em sucesso (`200`);
+  - recurso inexistente (`404`);
+  - método inválido (`405`).
+- **Optimize IA** (`POST /ai/optimize`):
+  - contrato de sucesso em modo mock/real;
+  - campos obrigatórios (`400`);
+  - deck inexistente (`404`);
+  - comportamento em Commander incompleto sem comandante (real: `400`, mock: `200` com `is_mock`).
+- **Rate limiter (unit)**:
+  - bloqueio após atingir limite;
+  - isolamento por cliente;
+  - reabertura após janela;
+  - limpeza de entradas antigas.
+
+### 50.2 Validação
+
+Executado e aprovado:
+- `dart test test/core_flow_smoke_test.dart test/import_to_deck_flow_test.dart test/deck_analysis_contract_test.dart test/ai_optimize_flow_test.dart test/rate_limit_middleware_test.dart`
+- `./scripts/quality_gate.sh quick`
+- `./scripts/quality_gate.sh full`
