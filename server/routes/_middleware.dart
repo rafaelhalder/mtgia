@@ -36,8 +36,18 @@ Handler middleware(Handler handler) {
       }
 
       // Executa o handler com Pool injetado.
-      final response =
+      var response =
           await handler.use(provider<Pool>((_) => _db.connection))(context);
+
+      final contentLength = int.tryParse(response.headers['content-length'] ?? '');
+      if (response.statusCode == HttpStatus.methodNotAllowed &&
+          (contentLength == null || contentLength == 0)) {
+        response = Response.json(
+          statusCode: HttpStatus.methodNotAllowed,
+          body: {'error': 'Method not allowed'},
+          headers: response.headers,
+        );
+      }
 
       // ── Adiciona CORS nas respostas ──────────────────────
       // Evita materializar o body (performance/streaming).
