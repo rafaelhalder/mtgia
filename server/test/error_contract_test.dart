@@ -103,6 +103,35 @@ void main() {
     );
 
     test(
+      'GET /decks/:id without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId'),
+        );
+
+        expect(response.statusCode, equals(401));
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /decks/:id with missing deck returns 404 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId'),
+          headers: authHeaders(),
+        );
+
+        expect(response.statusCode, equals(404));
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
       'POST /decks without required fields returns 400 with error',
       () async {
         final response = await http.post(
@@ -131,6 +160,46 @@ void main() {
         );
 
         expect(response.statusCode, equals(401));
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /import without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/import'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'name': 'Import Unauthorized',
+            'format': 'commander',
+            'list': '1 Sol Ring',
+          }),
+        );
+
+        expect(response.statusCode, equals(401));
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /import with invalid payload returns 400 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/import'),
+          headers: authHeaders(true),
+          body: jsonEncode({
+            'name': 'Import Invalid',
+            'format': 'commander',
+            'list': 123,
+          }),
+        );
+
+        expect(response.statusCode, equals(400));
         final body = decodeJson(response);
         expect(body['error'], isA<String>());
       },

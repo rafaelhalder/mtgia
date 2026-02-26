@@ -5288,6 +5288,10 @@ Arquivo criado:
 Cobertura incluída (integração):
 - `POST /decks` sem token → `401` com `error`
 - `POST /decks` inválido → `400` com `error`
+- `GET /decks/:id` sem token → `401` com `error`
+- `GET /decks/:id` com deck inexistente → `404` com `error`
+- `POST /import` sem token → `401` com `error`
+- `POST /import` com payload inválido → `400` com `error`
 - `POST /ai/archetypes` sem token → `401` com `error`
 - `POST /ai/archetypes` inválido → `400` com `error`
 - `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`
