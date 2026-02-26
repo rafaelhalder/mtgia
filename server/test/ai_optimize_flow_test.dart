@@ -134,6 +134,11 @@ void main() {
           }
         } else {
           expect(body['error'], isA<String>());
+          expect(
+            (body['error'] as String).contains('Bad state: No element'),
+            isFalse,
+            reason: 'Regressão: optimize não deve vazar erro interno de coleção vazia.',
+          );
         }
       },
       skip: skipIntegration,

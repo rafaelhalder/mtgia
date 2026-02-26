@@ -5503,3 +5503,40 @@ Executado e aprovado:
 - `dart test test/core_flow_smoke_test.dart test/import_to_deck_flow_test.dart test/deck_analysis_contract_test.dart test/ai_optimize_flow_test.dart test/rate_limit_middleware_test.dart`
 - `./scripts/quality_gate.sh quick`
 - `./scripts/quality_gate.sh full`
+
+## 51. Hardening do `/ai/optimize` (No element + contrato de resposta)
+
+### 51.1 O Porquê
+
+Durante execução real do fluxo core, o endpoint `POST /ai/optimize` podia retornar `500` com detalhe interno `Bad state: No element`, expondo erro de runtime e quebrando o contrato esperado pelo app.
+
+Também foi identificado que, em cenários de deck vazio/sem sugestões, o campo `reasoning` podia vir `null`, enquanto o frontend/testes esperam string.
+
+### 51.2 O Como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Ajustes aplicados:
+- hardening de seleção de tema em `_detectThemeProfile`, removendo uso frágil de `reduce` e adotando busca segura do melhor score;
+- leitura de `deck format` com guarda explícita, evitando dependência implícita de acesso direto à primeira linha sem validação contextual;
+- normalização do payload de saída para garantir `reasoning` como string também no modo `optimize` (`?? ''`);
+- tratamento defensivo no catch interno de otimização para não vazar `Bad state: No element` no payload público, mantendo log completo no servidor.
+
+Arquivo de teste ajustado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Regressão coberta:
+- quando houver erro no `optimize`, a API não deve expor `Bad state: No element` ao cliente.
+
+### 51.3 Validação
+
+Executado e aprovado:
+- `dart test test/ai_optimize_flow_test.dart test/core_flow_smoke_test.dart`
+- `./scripts/quality_gate.sh quick`
+- `./scripts/quality_gate.sh full`
+
+Resultado:
+- endpoint voltou a responder com contrato estável em runtime real;
+- eliminada exposição de detalhe interno de exceção para clientes;
+- pipeline de qualidade (`quick`/`full`) verde após correção.

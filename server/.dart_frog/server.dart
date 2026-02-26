@@ -86,7 +86,7 @@ import '../routes/ai/_middleware.dart' as ai_middleware;
 
 void main() async {
   final address = InternetAddress.tryParse('') ?? InternetAddress.anyIPv6;
-  final port = int.tryParse(Platform.environment['PORT'] ?? '8081') ?? 8081;
+  final port = int.tryParse(Platform.environment['PORT'] ?? '8080') ?? 8080;
   hotReload(() => createServer(address, port));
 }
 
