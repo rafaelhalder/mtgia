@@ -97,6 +97,8 @@ class NotificationProvider extends ChangeNotifier {
     int limit = 30,
     bool unreadOnly = false,
   }) async {
+    if (_isLoading) return;
+
     _isLoading = true;
     notifyListeners();
 
@@ -125,6 +127,9 @@ class NotificationProvider extends ChangeNotifier {
       final idx = _notifications.indexWhere((n) => n.id == notificationId);
       if (idx >= 0) {
         final old = _notifications[idx];
+        if (old.isRead) {
+          return;
+        }
         _notifications[idx] = AppNotification(
           id: old.id,
           type: old.type,
@@ -145,7 +150,13 @@ class NotificationProvider extends ChangeNotifier {
   /// Marca todas como lidas
   Future<void> markAllAsRead() async {
     try {
+      final hasUnreadLocal = _notifications.any((n) => !n.isRead);
+      if (!hasUnreadLocal && _unreadCount == 0) {
+        return;
+      }
+
       await _api.put('/notifications/read-all', {});
+      var changed = false;
       for (var i = 0; i < _notifications.length; i++) {
         final old = _notifications[i];
         if (!old.isRead) {
@@ -158,10 +169,16 @@ class NotificationProvider extends ChangeNotifier {
             readAt: DateTime.now().toIso8601String(),
             createdAt: old.createdAt,
           );
+          changed = true;
         }
       }
-      _unreadCount = 0;
-      notifyListeners();
+      if (_unreadCount != 0) {
+        _unreadCount = 0;
+        changed = true;
+      }
+      if (changed) {
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('[NotificationProvider] markAllAsRead error: $e');
     }
@@ -169,6 +186,11 @@ class NotificationProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_notifications.isEmpty && _unreadCount == 0 && !_isLoading) {
+      stopPolling();
+      return;
+    }
+
     stopPolling();
     _notifications = [];
     _unreadCount = 0;

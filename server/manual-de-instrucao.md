@@ -4729,6 +4729,67 @@ Refatoração em `routes/market/movers/index.dart`:
 
 ---
 
+## 43. Otimização P1 (Flutter) — NotificationProvider e SocialProvider
+
+### 43.1 O Porquê
+
+Após otimizar decks, mensagens e comunidade, ainda existiam pontos de notify em no-op em notificações e social, especialmente em fluxos de limpar estado e marcação de leitura.
+
+### 43.2 O Como
+
+Arquivos alterados:
+- app/lib/features/notifications/providers/notification_provider.dart
+- app/lib/features/social/providers/social_provider.dart
+
+`NotificationProvider`:
+- `fetchNotifications`: retorno antecipado se já estiver carregando, evitando chamadas/notify paralelos redundantes.
+- `markAsRead`: retorno antecipado quando a notificação já estava lida.
+- `markAllAsRead`: retorno antecipado quando já não há itens não lidos; notifica somente quando houve mudança real.
+- `clearAllState`: guard clause para evitar notify quando estado já está limpo.
+
+`SocialProvider`:
+- `searchUsers`: na busca vazia, notifica apenas se havia algo a limpar.
+- `clearSearch`: evita notify quando já está limpo.
+- `clearAllState`: guard clause para evitar notify em no-op durante logout/reset repetido.
+
+### 43.3 Resultado técnico
+
+- Menos repaints em telas com badge/lista de notificações.
+- Menor ruído de rebuild em ciclos de busca/limpeza no módulo social.
+- Sem alteração de contrato de API e sem mudança de comportamento funcional.
+
+---
+
+## 44. Otimização P1 (Flutter) — TradeProvider e BinderProvider
+
+### 44.1 O Porquê
+
+Nos módulos de trade e fichário, havia notificação em cenários de no-op (estado já limpo/inalterado), além de refresh de mensagens/stats que podia notificar sem mudança real.
+
+### 44.2 O Como
+
+Arquivos alterados:
+- app/lib/features/trades/providers/trade_provider.dart
+- app/lib/features/binder/providers/binder_provider.dart
+
+`TradeProvider`:
+- `fetchMessages`: atualização de chat agora compara IDs e total antes de notificar.
+- `clearError`: retorna sem notify quando já não existe erro.
+- `clearSelectedTrade`: retorna sem notify quando já está limpo.
+- `clearAllState`: guard clause para evitar notify em no-op.
+
+`BinderProvider`:
+- `fetchStats`: notifica apenas quando os valores de estatística realmente mudam.
+- `clearAllState`: guard clause para evitar notify em no-op.
+
+### 44.3 Resultado técnico
+
+- Menos rebuilds em polling/refresh de chat de trades sem novas mensagens.
+- Menor ruído de redraw em limpeza de estado no fichário e trades.
+- Sem alteração de contrato de API e sem mudança de regra de negócio.
+
+---
+
 ## 42. Otimização P1 (Flutter) — Mensagens e Comunidade (notify mais enxuto)
 
 ### 42.1 O Porquê

@@ -309,8 +309,20 @@ class BinderProvider extends ChangeNotifier {
     try {
       final res = await _api.get('/binder/stats');
       if (res.statusCode == 200 && res.data is Map) {
-        _stats = BinderStats.fromJson(res.data as Map<String, dynamic>);
-        notifyListeners();
+        final next = BinderStats.fromJson(res.data as Map<String, dynamic>);
+        final current = _stats;
+        final changed =
+            current == null ||
+            current.totalItems != next.totalItems ||
+            current.uniqueCards != next.uniqueCards ||
+            current.forTradeCount != next.forTradeCount ||
+            current.forSaleCount != next.forSaleCount ||
+            current.estimatedValue != next.estimatedValue;
+
+        if (changed) {
+          _stats = next;
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('[❌ BinderProvider] fetchStats: $e');
@@ -602,6 +614,31 @@ class BinderProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_items.isEmpty &&
+        _stats == null &&
+        !_isLoading &&
+        _error == null &&
+        _page == 1 &&
+        _hasMore &&
+        _currentFilter == null &&
+        _currentSearch == null &&
+        _filterForTrade == null &&
+        _filterForSale == null &&
+        _currentListType == null &&
+        _marketItems.isEmpty &&
+        !_isLoadingMarket &&
+        _marketError == null &&
+        _marketPage == 1 &&
+        _hasMoreMarket &&
+        _publicItems.isEmpty &&
+        !_isLoadingPublic &&
+        _publicError == null &&
+        _publicPage == 1 &&
+        _hasMorePublic &&
+        _publicOwner == null) {
+      return;
+    }
+
     _items = [];
     _stats = null;
     _isLoading = false;

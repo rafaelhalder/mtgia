@@ -623,11 +623,22 @@ class TradeProvider extends ChangeNotifier {
       if (res.statusCode == 200) {
         final data = res.data as Map<String, dynamic>;
         final list = (data['data'] as List<dynamic>?) ?? [];
-        _chatMessages = list
+        final nextMessages = list
             .map((e) => TradeMessage.fromJson(e as Map<String, dynamic>))
             .toList();
-        _chatTotal = data['total'] as int? ?? _chatMessages.length;
-        notifyListeners();
+        final nextTotal = data['total'] as int? ?? nextMessages.length;
+
+        final currentIds = _chatMessages.map((m) => m.id).toList();
+        final nextIds = nextMessages.map((m) => m.id).toList();
+        final sameMessages =
+            currentIds.length == nextIds.length &&
+            currentIds.asMap().entries.every((entry) => nextIds[entry.key] == entry.value);
+
+        if (!sameMessages || _chatTotal != nextTotal) {
+          _chatMessages = nextMessages;
+          _chatTotal = nextTotal;
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('[TradeProvider] fetchMessages error: $e');
@@ -671,11 +682,15 @@ class TradeProvider extends ChangeNotifier {
 
   // ─── Clear ──────────────────────────────────────────────────
   void clearError() {
+    if (_errorMessage == null) return;
     _errorMessage = null;
     notifyListeners();
   }
 
   void clearSelectedTrade() {
+    if (_selectedTrade == null && _chatMessages.isEmpty && _chatTotal == 0) {
+      return;
+    }
     _selectedTrade = null;
     _chatMessages = [];
     _chatTotal = 0;
@@ -684,6 +699,17 @@ class TradeProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_trades.isEmpty &&
+        _selectedTrade == null &&
+        !_isLoading &&
+        _errorMessage == null &&
+        _totalTrades == 0 &&
+        _currentPage == 1 &&
+        _chatMessages.isEmpty &&
+        _chatTotal == 0) {
+      return;
+    }
+
     _trades = [];
     _selectedTrade = null;
     _isLoading = false;
