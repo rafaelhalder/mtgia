@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/http_responses.dart';
+
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: HttpStatus.methodNotAllowed);
+    return methodNotAllowed();
   }
 
   try {
@@ -15,10 +16,7 @@ Future<Response> onRequest(RequestContext context) async {
     final deckId = body['deck_id'] as String?;
 
     if (deckId == null) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'deck_id is required'},
-      );
+      return badRequest('deck_id is required');
     }
 
     // 1. Fetch Deck Data
@@ -31,7 +29,7 @@ Future<Response> onRequest(RequestContext context) async {
     );
     
     if (deckResult.isEmpty) {
-      return Response.json(statusCode: HttpStatus.notFound, body: {'error': 'Deck not found'});
+      return notFound('Deck not found');
     }
     
     final deckName = deckResult.first[0] as String;
@@ -150,17 +148,11 @@ Future<Response> onRequest(RequestContext context) async {
       final jsonResult = jsonDecode(jsonStr);
       return Response.json(body: jsonResult);
     } else {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'error': 'OpenAI API Error: ${response.statusCode}'},
-      );
+      return internalServerError('OpenAI API Error: ${response.statusCode}');
     }
 
   } catch (e) {
     print('[ERROR] Failed to analyze archetypes: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to analyze archetypes'},
-    );
+    return internalServerError('Failed to analyze archetypes');
   }
 }

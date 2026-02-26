@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
 import '../../../lib/database.dart';
+import '../../../lib/http_responses.dart';
 
 /// GET /ai/ml-status
 /// 
@@ -26,10 +27,7 @@ import '../../../lib/database.dart';
 /// }
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
-    return Response.json(
-      body: {'error': 'Method not allowed'},
-      statusCode: 405,
-    );
+    return methodNotAllowed();
   }
 
   final db = Database();
@@ -67,13 +65,7 @@ Future<Response> onRequest(RequestContext context) async {
     });
 
   } catch (e) {
-    return Response.json(
-      body: {
-        'status': 'error',
-        'error': e.toString(),
-      },
-      statusCode: 500,
-    );
+    return internalServerError('Failed to load ML status', details: e);
   }
   // Note: Do not close the connection - Database is a singleton and the pool 
   // should remain open for other requests

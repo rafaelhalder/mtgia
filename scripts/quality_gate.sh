@@ -24,7 +24,7 @@ run_backend_full() {
 
   if _is_backend_api_ready; then
     echo "ℹ️ API detectada em ${API_BASE_URL} — habilitando testes de integração backend."
-    RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL="$API_BASE_URL" dart test
+    RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL="$API_BASE_URL" dart test -j 1
   else
     echo "⚠️ API não detectada (ou resposta não-JSON esperada) em ${API_BASE_URL}."
     echo "   Rodando suíte backend sem integração."

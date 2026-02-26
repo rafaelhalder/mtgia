@@ -372,6 +372,71 @@ Com parâmetros:
 - **Cleanup garantido:** `trap` para encerrar processo iniciado pelo script.
 - **Compatibilidade:** reaproveita `quality_gate.sh` como fonte única de validação.
 
+---
+
+## 45. Estabilização de integração no quality gate (execução serial)
+
+### 45.1 O Porquê
+
+Durante a execução completa (`full`) com integração habilitada, a suíte backend apresentou timeout intermitente em teste incremental quando executada em paralelo com outros testes de integração.
+
+### 45.2 O Como
+
+Arquivo alterado:
+- `scripts/quality_gate.sh`
+
+Mudança:
+- quando a integração está habilitada (`RUN_INTEGRATION_TESTS=1`), o backend passa a executar:
+  - `dart test -j 1`
+
+Isso força execução serial para eliminar competição por estado/recursos compartilhados durante integração.
+
+### 45.3 Resultado esperado
+
+- menor flakiness em CI/local para cenários de integração;
+- custo: execução backend full um pouco mais lenta;
+- benefício: fechamento de sprint mais previsível (menos falso negativo).
+
+---
+
+## 46. Sprint 1 (Core) — Padronização de erros nos endpoints IA restantes
+
+### 46.1 O Porquê
+
+Após a padronização inicial em `generate/explain/optimize`, ainda havia variação de status e payload de erro em outros endpoints IA, com mistura de `Response(...)`, `statusCode` numérico e formatos diferentes.
+
+### 46.2 O Como
+
+Rotas atualizadas para usar `lib/http_responses.dart`:
+- `routes/ai/archetypes/index.dart`
+- `routes/ai/simulate/index.dart`
+- `routes/ai/simulate-matchup/index.dart`
+- `routes/ai/weakness-analysis/index.dart`
+- `routes/ai/ml-status/index.dart`
+
+Padronizações aplicadas:
+- `methodNotAllowed()` para método inválido
+- `badRequest(...)` para validação de payload
+- `notFound(...)` para recursos ausentes
+- `internalServerError(...)` para falhas inesperadas
+
+Também foi feita limpeza de imports não utilizados (`dart:io`) nas rotas afetadas.
+
+### 46.3 Resultado
+
+- Erros HTTP mais consistentes no módulo IA completo;
+- mesma semântica de sucesso preservada (payloads de sucesso sem mudanças);
+- menor custo de manutenção e testes de contrato.
+
+### 46.4 Validação
+
+Executado:
+- `./scripts/quality_gate.sh quick`
+
+Resultado:
+- backend: ok;
+- frontend analyze: apenas infos não-fatais.
+
 **Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
 
 ---
