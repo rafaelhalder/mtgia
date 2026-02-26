@@ -4790,6 +4790,90 @@ Arquivos alterados:
 
 ---
 
+## 45. Governança de documentação — README executivo + arquivo de documentos
+
+### 45.1 O Porquê
+
+Com o crescimento do projeto, múltiplos `.md` na raiz estavam gerando ruído e dificultando foco para execução de produto.
+
+Objetivo:
+- deixar a entrada do projeto mais clara para produto/demo,
+- manter histórico técnico sem perda,
+- centralizar direção estratégica em um roadmap único.
+
+### 45.2 O Como
+
+Mudanças aplicadas:
+- `README.md` da raiz foi simplificado para formato executivo (proposta de valor, quick start e links ativos).
+- documentos não essenciais do momento foram movidos para `archive_docs/`.
+- `ROADMAP.md` passou a ser a referência principal de priorização de 90 dias.
+
+### 45.3 Resultado
+
+- Menos confusão para time e stakeholders ao abrir o repositório.
+- Melhor percepção de produto na primeira leitura.
+- Histórico preservado em pasta de arquivo, sem descarte de conhecimento.
+
+---
+
+## 46. Operação de execução — Roadmap operacional + quality gate padronizado
+
+### 46.1 O Porquê
+
+Para garantir andamento contínuo com qualidade, era necessário transformar o roadmap em rotina operacional objetiva e criar um gate de testes único para cada etapa.
+
+### 46.2 O Como
+
+Mudanças aplicadas:
+- `ROADMAP.md` recebeu protocolo operacional com:
+  - Definition of Ready (DoR),
+  - ordem obrigatória de execução por item,
+  - critérios de bloqueio,
+  - política de rollback,
+  - quality gate obrigatório.
+
+- Novo script: `scripts/quality_gate.sh`
+  - `quick`: backend tests + frontend analyze.
+  - `full`: backend tests + frontend analyze + frontend tests.
+  - no `full`, se API local estiver ativa em `http://localhost:8080`, habilita automaticamente testes de integração backend (`RUN_INTEGRATION_TESTS=1`).
+
+### 46.3 Resultado
+
+- Execução mais previsível sprint a sprint.
+- Menor risco de concluir tarefas sem validação mínima.
+- Processo replicável para qualquer etapa do roadmap, com teste como requisito de fechamento.
+
+---
+
+## 47. Playbook diário — Checklist operacional de execução
+
+### 47.1 O Porquê
+
+Mesmo com roadmap e guia alinhados, faltava um artefato curto de uso diário para reduzir variação de execução entre dias e entre pessoas.
+
+### 47.2 O Como
+
+Novo arquivo criado:
+- `CHECKLIST_EXECUCAO.md`
+
+Conteúdo do checklist:
+- início do dia (foco + critério de aceite + plano de teste),
+- pré-implementação (escopo e dependências),
+- execução com gate quick,
+- fechamento com gate full + validação manual,
+- DoD e encerramento do dia,
+- regra de foco para entrada de novas tarefas.
+
+Também foi adicionado no `ROADMAP.md` o link explícito para esse checklist como referência operacional ativa.
+
+### 47.3 Resultado
+
+- Menos risco de esquecer etapas críticas.
+- Rotina de execução mais padronizada e auditável.
+- Maior consistência para manter fluxo ponta a ponta com testes em todas as entregas.
+
+---
+
 ## 42. Otimização P1 (Flutter) — Mensagens e Comunidade (notify mais enxuto)
 
 ### 42.1 O Porquê
