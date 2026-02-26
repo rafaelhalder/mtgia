@@ -6,6 +6,7 @@ import 'package:dotenv/dotenv.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
+import '../../../lib/openai_runtime_config.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -23,6 +24,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Carregar variáveis de ambiente
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
@@ -123,12 +125,19 @@ Rules:
         'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-4o-mini', // Modelo rápido e eficiente
+        'model': aiConfig.modelFor(
+          key: 'OPENAI_MODEL_GENERATE',
+          fallback: 'gpt-4o-mini',
+        ),
         'messages': [
           {'role': 'system', 'content': systemPrompt},
           {'role': 'user', 'content': userMessage},
         ],
-        'temperature': 0.7,
+        'temperature': aiConfig.temperatureFor(
+          key: 'OPENAI_TEMP_GENERATE',
+          fallback: 0.4,
+        ),
+        'response_format': {'type': 'json_object'},
       }),
     );
 

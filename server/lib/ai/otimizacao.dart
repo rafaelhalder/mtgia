@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:dotenv/dotenv.dart';
 import '../ai_log_service.dart';
 import '../logger.dart';
 import '../ml_knowledge_service.dart';
+import '../openai_runtime_config.dart';
 import 'edhrec_service.dart';
 import 'sinergia.dart';
 
@@ -512,6 +514,16 @@ class DeckOptimizerService {
     String? mlContext,
   }) async {
     final stopwatch = Stopwatch()..start();
+    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
+    final model = aiConfig.modelFor(
+      key: 'OPENAI_MODEL_OPTIMIZE',
+      fallback: 'gpt-4o',
+    );
+    final temperature = aiConfig.temperatureFor(
+      key: 'OPENAI_TEMP_OPTIMIZE',
+      fallback: 0.3,
+    );
 
     // Calcular número dinâmico de trocas baseado na qualidade do deck
     // Mais cartas fracas = mais trocas sugeridas
@@ -553,8 +565,7 @@ class DeckOptimizerService {
           'Authorization': 'Bearer $openAiKey',
         },
         body: jsonEncode({
-          'model':
-              'gpt-4o', // Recomendado GPT-4o ou 3.5-turbo-16k para melhor raciocínio
+          'model': model,
           'messages': [
             {
               'role': 'system',
@@ -562,8 +573,7 @@ class DeckOptimizerService {
             }, // Função que retorna o texto do arquivo Markdown
             {'role': 'user', 'content': userPrompt},
           ],
-          'temperature':
-              0.4, // Baixa temperatura para ser mais analítico e menos criativo
+          'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
       );
@@ -579,7 +589,7 @@ class DeckOptimizerService {
           userId: userId,
           deckId: deckId,
           endpoint: 'optimize',
-          model: 'gpt-4o',
+            model: model,
           promptSummary:
               'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Bracket: $bracket',
           responseSummary: result['summary']?.toString(),
@@ -596,7 +606,7 @@ class DeckOptimizerService {
           userId: userId,
           deckId: deckId,
           endpoint: 'optimize',
-          model: 'gpt-4o',
+            model: model,
           promptSummary:
               'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
           latencyMs: stopwatch.elapsedMilliseconds,
@@ -611,7 +621,7 @@ class DeckOptimizerService {
         userId: userId,
         deckId: deckId,
         endpoint: 'optimize',
-        model: 'gpt-4o',
+        model: model,
         promptSummary:
             'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,
@@ -660,6 +670,16 @@ class DeckOptimizerService {
     String? mlContext,
   }) async {
     final stopwatch = Stopwatch()..start();
+    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
+    final model = aiConfig.modelFor(
+      key: 'OPENAI_MODEL_COMPLETE',
+      fallback: 'gpt-4o',
+    );
+    final temperature = aiConfig.temperatureFor(
+      key: 'OPENAI_TEMP_COMPLETE',
+      fallback: 0.3,
+    );
 
     final userPrompt = jsonEncode({
       "commander": commanders.join(" & "),
@@ -689,12 +709,12 @@ class DeckOptimizerService {
           'Authorization': 'Bearer $openAiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-4o',
+          'model': model,
           'messages': [
             {'role': 'system', 'content': _getSystemPromptComplete()},
             {'role': 'user', 'content': userPrompt},
           ],
-          'temperature': 0.4,
+          'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
       );
@@ -710,7 +730,7 @@ class DeckOptimizerService {
           userId: userId,
           deckId: deckId,
           endpoint: 'complete',
-          model: 'gpt-4o',
+            model: model,
           promptSummary:
               'Commander: ${commanders.join(" & ")}, Archetype: $archetype, Additions: $targetAdditions',
           responseSummary: result['summary']?.toString(),
@@ -728,7 +748,7 @@ class DeckOptimizerService {
         userId: userId,
         deckId: deckId,
         endpoint: 'complete',
-        model: 'gpt-4o',
+        model: model,
         promptSummary:
             'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,
@@ -742,7 +762,7 @@ class DeckOptimizerService {
         userId: userId,
         deckId: deckId,
         endpoint: 'complete',
-        model: 'gpt-4o',
+        model: model,
         promptSummary:
             'Commander: ${commanders.join(" & ")}, Archetype: $archetype',
         latencyMs: stopwatch.elapsedMilliseconds,

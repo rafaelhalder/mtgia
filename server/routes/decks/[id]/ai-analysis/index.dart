@@ -5,6 +5,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:dotenv/dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
+import '../../../../lib/openai_runtime_config.dart';
 
 /// POST /decks/:id/ai-analysis
 ///
@@ -101,6 +102,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
     final metrics = _computeMetrics(cardsResult, format: format);
 
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     Map<String, dynamic> analysis;
@@ -117,6 +119,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
       try {
         analysis = await _aiAnalysis(
           apiKey: apiKey,
+          aiConfig: aiConfig,
           format: format,
           archetype: archetype,
           bracket: bracket,
@@ -403,6 +406,7 @@ int _bandScore(int value,
 
 Future<Map<String, dynamic>> _aiAnalysis({
   required String apiKey,
+  required OpenAiRuntimeConfig aiConfig,
   required String format,
   required String archetype,
   required int? bracket,
@@ -441,12 +445,18 @@ Regras:
       'Authorization': 'Bearer $apiKey',
     },
     body: jsonEncode({
-      'model': 'gpt-4o-mini',
+      'model': aiConfig.modelFor(
+        key: 'OPENAI_MODEL_AI_ANALYSIS',
+        fallback: 'gpt-4o-mini',
+      ),
       'messages': [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': jsonEncode(payload)},
       ],
-      'temperature': 0.2,
+      'temperature': aiConfig.temperatureFor(
+        key: 'OPENAI_TEMP_AI_ANALYSIS',
+        fallback: 0.2,
+      ),
       'response_format': {'type': 'json_object'},
     }),
   );

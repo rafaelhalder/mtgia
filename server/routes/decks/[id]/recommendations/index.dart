@@ -4,6 +4,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 import 'package:http/http.dart' as http;
 import 'package:dotenv/dotenv.dart';
+import '../../../../lib/openai_runtime_config.dart';
 
 Future<Response> onRequest(RequestContext context, String deckId) async {
   if (context.request.method == HttpMethod.post) {
@@ -15,6 +16,7 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
 Future<Response> _generateRecommendations(RequestContext context, String deckId) async {
   final pool = context.read<Pool>();
   final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+  final aiConfig = OpenAiRuntimeConfig(env);
   final apiKey = env['OPENAI_API_KEY'];
 
   try {
@@ -149,6 +151,7 @@ Future<Response> _generateRecommendations(RequestContext context, String deckId)
     if (apiKey != null && apiKey.isNotEmpty) {
       return _callOpenAI(
         apiKey: apiKey,
+        aiConfig: aiConfig,
         deckName: deckName,
         format: format,
         description: description,
@@ -442,6 +445,7 @@ Future<List<String>> _findStaples({
 /// Caminho com OpenAI (quando apiKey está configurada)
 Future<Response> _callOpenAI({
   required String apiKey,
+  required OpenAiRuntimeConfig aiConfig,
   required String deckName,
   required String format,
   required String description,
@@ -483,12 +487,19 @@ Future<Response> _callOpenAI({
       'Authorization': 'Bearer $apiKey',
     },
     body: jsonEncode({
-      'model': 'gpt-3.5-turbo',
+      'model': aiConfig.modelFor(
+        key: 'OPENAI_MODEL_RECOMMENDATIONS',
+        fallback: 'gpt-4o-mini',
+      ),
       'messages': [
         {'role': 'system', 'content': 'You are a helpful assistant that outputs JSON.'},
         {'role': 'user', 'content': prompt},
       ],
-      'temperature': 0.7,
+      'temperature': aiConfig.temperatureFor(
+        key: 'OPENAI_TEMP_RECOMMENDATIONS',
+        fallback: 0.3,
+      ),
+      'response_format': {'type': 'json_object'},
     }),
   );
 

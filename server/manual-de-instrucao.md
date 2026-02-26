@@ -5540,3 +5540,67 @@ Resultado:
 - endpoint voltou a responder com contrato estável em runtime real;
 - eliminada exposição de detalhe interno de exceção para clientes;
 - pipeline de qualidade (`quick`/`full`) verde após correção.
+
+## 52. Padronização de modelos e prompts IA (configuração central)
+
+### 52.1 O Porquê
+
+Os endpoints de IA estavam com seleção de modelo e temperatura hardcoded em múltiplos pontos, com mistura de `gpt-3.5-turbo`, `gpt-4o-mini` e `gpt-4o`, além de variância alta em alguns fluxos estruturados.
+
+Isso aumentava risco de inconsistência para o cliente (especialmente em payload JSON), dificultava tuning por ambiente e tornava evolução de custo/qualidade mais lenta.
+
+### 52.2 O Como
+
+Foi criada uma configuração central de runtime:
+- `server/lib/openai_runtime_config.dart`
+
+Responsabilidades do helper:
+- ler modelo por chave de ambiente com fallback seguro;
+- ler temperatura por chave de ambiente com clamp para faixa válida (`0.0..1.0`).
+
+Endpoints/serviços ajustados:
+- `server/routes/ai/generate/index.dart`
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+- `server/routes/decks/[id]/ai-analysis/index.dart`
+- `server/lib/ai/otimizacao.dart`
+- `server/lib/ai/optimization_validator.dart`
+
+Padronizações aplicadas:
+- substituição de modelos hardcoded por configuração via env (`OPENAI_MODEL_*`);
+- substituição de temperaturas hardcoded por `OPENAI_TEMP_*`;
+- reforço de `response_format: { type: "json_object" }` em fluxos com contrato JSON estrito (`generate`, `archetypes`, `recommendations`, `optimize`, `complete`, `critic`, `ai-analysis`);
+- manutenção de fallback/mock já existente para dev quando `OPENAI_API_KEY` não está configurada.
+
+Arquivo de exemplo atualizado:
+- `server/.env.example` com todas as chaves novas de modelo/temperatura por endpoint.
+
+### 52.3 Configuração recomendada
+
+Defaults adicionados no `.env.example`:
+- Modelos:
+  - `OPENAI_MODEL_OPTIMIZE=gpt-4o`
+  - `OPENAI_MODEL_COMPLETE=gpt-4o`
+  - `OPENAI_MODEL_GENERATE=gpt-4o-mini`
+  - `OPENAI_MODEL_ARCHETYPES=gpt-4o-mini`
+  - `OPENAI_MODEL_EXPLAIN=gpt-4o-mini`
+  - `OPENAI_MODEL_RECOMMENDATIONS=gpt-4o-mini`
+  - `OPENAI_MODEL_AI_ANALYSIS=gpt-4o-mini`
+  - `OPENAI_MODEL_OPTIMIZATION_CRITIC=gpt-4o-mini`
+- Temperaturas:
+  - `OPENAI_TEMP_OPTIMIZE=0.3`
+  - `OPENAI_TEMP_COMPLETE=0.3`
+  - `OPENAI_TEMP_GENERATE=0.4`
+  - `OPENAI_TEMP_ARCHETYPES=0.3`
+  - `OPENAI_TEMP_EXPLAIN=0.5`
+  - `OPENAI_TEMP_RECOMMENDATIONS=0.3`
+  - `OPENAI_TEMP_AI_ANALYSIS=0.2`
+  - `OPENAI_TEMP_OPTIMIZATION_CRITIC=0.2`
+
+### 52.4 Resultado esperado para o cliente
+
+- maior consistência de respostas em JSON nos fluxos de construção/otimização;
+- menor variância de qualidade entre endpoints IA;
+- controle fino de custo/latência por ambiente sem alteração de código;
+- manutenção mais simples para futuras trocas de modelo.

@@ -5,6 +5,7 @@ import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../../lib/http_responses.dart';
+import '../../../lib/openai_runtime_config.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -48,6 +49,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Carregar variáveis de ambiente
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
     // Se não tiver chave da API, retorna uma explicação mockada/heurística
@@ -68,7 +70,10 @@ Future<Response> onRequest(RequestContext context) async {
         'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': 'gpt-3.5-turbo',
+        'model': aiConfig.modelFor(
+          key: 'OPENAI_MODEL_EXPLAIN',
+          fallback: 'gpt-4o-mini',
+        ),
         'messages': [
           {
             'role': 'system',
@@ -79,7 +84,10 @@ Future<Response> onRequest(RequestContext context) async {
             'content': 'Carta: $cardName\nTipo: $typeLine\nTexto: $oracleText\n\nExplique esta carta.'
           }
         ],
-        'temperature': 0.7,
+        'temperature': aiConfig.temperatureFor(
+          key: 'OPENAI_TEMP_EXPLAIN',
+          fallback: 0.5,
+        ),
         'max_tokens': 500,
       }),
     );
