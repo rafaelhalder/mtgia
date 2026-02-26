@@ -4726,3 +4726,127 @@ Refatoração em `routes/market/movers/index.dart`:
 - Menos queries por requisição no endpoint de movers.
 - Menor latência média e menor carga no pool do PostgreSQL.
 - Contrato de resposta preservado (`date`, `previous_date`, `gainers`, `losers`, `total_tracked`).
+
+---
+
+## 39. Otimização P1 — Resolução de cartas em lote (criação de deck)
+
+### 39.1 O Porquê
+
+No fluxo de criação de deck, quando o payload vinha com nomes de cartas (sem `card_id`),
+o app resolvia cada nome com uma requisição individual para `/cards`.
+
+Impacto:
+- N requisições HTTP por criação de deck
+- latência acumulada
+- maior chance de timeout/intermitência em redes móveis
+
+### 39.2 O Como
+
+#### Backend
+
+Novo endpoint:
+- `POST /cards/resolve/batch`
+- Arquivo: `routes/cards/resolve/batch/index.dart`
+
+Entrada:
+```json
+{ "names": ["Sol Ring", "Arcane Signet"] }
+```
+
+Saída:
+```json
+{
+  "data": [
+    { "input_name": "Sol Ring", "card_id": "...", "matched_name": "Sol Ring" }
+  ],
+  "unresolved": [],
+  "total_input": 2,
+  "total_resolved": 2
+}
+```
+
+Implementação com SQL único usando `unnest(@names::text[])` + `LEFT JOIN LATERAL`,
+priorizando match:
+1. exato (`LOWER(name) = LOWER(input_name)`)
+2. prefixo
+3. `ILIKE` geral
+
+#### Frontend
+
+`DeckProvider._normalizeCreateDeckCards` foi alterado para:
+- agregar nomes únicos
+- fazer **uma** chamada `POST /cards/resolve/batch`
+- montar lista normalizada com `card_id`, `quantity`, `is_commander`
+
+Arquivo:
+- `app/lib/features/decks/providers/deck_provider.dart`
+
+### 39.3 Padrões aplicados
+
+- **Menos round-trips:** troca de N chamadas por 1 chamada batch.
+- **Compatibilidade de contrato:** payload final de criação de deck mantém estrutura esperada.
+- **Resiliência:** cartas não resolvidas são ignoradas na normalização (comportamento equivalente ao fluxo anterior quando não havia match).
+
+---
+
+## 40. Otimização P1 — Import/Validate com resolvedor compartilhado
+
+### 40.1 O Porquê
+
+As rotas de importação tinham lógica duplicada de lookup (3 etapas):
+- exato por nome
+- fallback com nome limpo (ex: `Forest 96` -> `Forest`)
+- fallback para split card (`name // ...`)
+
+Isso aumentava complexidade de manutenção e risco de drift entre:
+- `routes/import/validate/index.dart`
+- `routes/import/to-deck/index.dart`
+
+### 40.2 O Como
+
+Criado serviço compartilhado:
+
+- `lib/import_card_lookup_service.dart`
+
+Função principal:
+- `resolveImportCardNames(Pool pool, List<Map<String, dynamic>> parsedItems)`
+
+Fluxo interno:
+1. consulta exata em lote para nomes originais e limpos (única query)
+2. fallback em lote para split cards via `LIKE ANY(patterns)`
+3. retorna mapa resolvido para montagem final de `found_cards`/`cardsToInsert`
+
+As duas rotas de import agora reutilizam exatamente essa função, mantendo o mesmo contrato de resposta.
+
+### 40.3 Benefícios
+
+- Menos SQL repetido por arquivo
+- Menor risco de inconsistência entre validar e importar
+- Manutenção mais simples para ajustes futuros de matching
+
+---
+
+## 41. Otimização P1 (Flutter) — Redução de rebuilds no DeckProvider
+
+### 41.1 O Porquê
+
+Nos fluxos de deck havia notificações redundantes de estado em sequência. Isso aumentava rebuilds e podia gerar flicker visual durante recargas.
+
+### 41.2 O Como
+
+Arquivo alterado: app/lib/features/decks/providers/deck_provider.dart.
+
+Ajustes aplicados:
+- fetchDeckDetails: cache hit agora só notifica quando há mudança real de estado.
+- fetchDeckDetails: removido reset antecipado de selectedDeck para evitar flicker.
+- addCardToDeck: removida notificação intermediária antes do refresh final.
+- refreshAiAnalysis: unificação de duas notificações em uma única notificação final.
+- importDeckFromList: removida notificação intermediária no caminho de sucesso.
+- clearError: não notifica quando já está sem erro.
+
+### 41.3 Resultado técnico
+
+- Menos repaints desnecessários na UI de decks.
+- Menor oscilação visual ao atualizar detalhes.
+- Sem alteração de contrato de API e sem mudança de regra de negócio.

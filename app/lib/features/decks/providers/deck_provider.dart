@@ -161,10 +161,17 @@ class DeckProvider extends ChangeNotifier {
       final cacheTime = _deckDetailsCacheTime[deckId];
       if (cacheTime != null &&
           DateTime.now().difference(cacheTime) < _cacheDuration) {
-        _selectedDeck = _deckDetailsCache[deckId];
+        final cachedDeck = _deckDetailsCache[deckId];
+        final shouldNotify =
+            _selectedDeck != cachedDeck ||
+            _detailsErrorMessage != null ||
+            _detailsStatusCode != 200;
+        _selectedDeck = cachedDeck;
         _detailsErrorMessage = null;
         _detailsStatusCode = 200;
-        notifyListeners();
+        if (shouldNotify) {
+          notifyListeners();
+        }
         return;
       }
     }
@@ -172,7 +179,6 @@ class DeckProvider extends ChangeNotifier {
     _isLoading = true;
     _detailsErrorMessage = null;
     _detailsStatusCode = null;
-    _selectedDeck = null;
     notifyListeners();
 
     try {
@@ -313,37 +319,51 @@ class DeckProvider extends ChangeNotifier {
       }
     }
 
-    final lookups = aggregatedByName.values.map((card) async {
-      final name = card['name'] as String;
-      final encodedName = Uri.encodeQueryComponent(name);
-      final response = await _apiClient.get('/cards?name=$encodedName&limit=1');
+    final names = aggregatedByName.values
+        .map((card) => (card['name'] as String).trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
 
-      if (response.statusCode != 200) return null;
+    if (names.isEmpty) return const [];
 
-      final data = response.data;
-      final List results;
-      if (data is Map && data['data'] is List) {
-        results = data['data'] as List;
-      } else if (data is List) {
-        results = data;
-      } else {
-        results = const [];
-      }
+    final response = await _apiClient.post('/cards/resolve/batch', {
+      'names': names,
+    });
 
-      if (results.isEmpty) return null;
-      final cardJson = results.first as Map<String, dynamic>;
-      final cardId = cardJson['id'] as String?;
-      if (cardId == null || cardId.isEmpty) return null;
+    if (response.statusCode != 200 || response.data is! Map) {
+      return const [];
+    }
 
-      return {
+    final payload = response.data as Map<String, dynamic>;
+    final resolvedList = (payload['data'] as List?) ?? const [];
+
+    final cardIdByInputName = <String, String>{};
+    for (final item in resolvedList) {
+      if (item is! Map) continue;
+      final inputName = item['input_name']?.toString().trim();
+      final cardId = item['card_id']?.toString().trim();
+      if (inputName == null || inputName.isEmpty) continue;
+      if (cardId == null || cardId.isEmpty) continue;
+      cardIdByInputName[inputName.toLowerCase()] = cardId;
+    }
+
+    final normalized = <Map<String, dynamic>>[];
+    for (final card in aggregatedByName.values) {
+      final name = (card['name'] as String?)?.trim();
+      if (name == null || name.isEmpty) continue;
+
+      final cardId = cardIdByInputName[name.toLowerCase()];
+      if (cardId == null || cardId.isEmpty) continue;
+
+      normalized.add({
         'card_id': cardId,
         'quantity': card['quantity'] ?? 1,
         'is_commander': card['is_commander'] ?? false,
-      };
-    });
+      });
+    }
 
-    final resolved = await Future.wait(lookups);
-    return resolved.whereType<Map<String, dynamic>>().toList();
+    return normalized;
   }
 
   /// Deleta um deck
@@ -410,7 +430,6 @@ class DeckProvider extends ChangeNotifier {
             createdAt: oldDeck.createdAt,
             cardCount: oldDeck.cardCount + (isCommander ? 1 : quantity),
           );
-          notifyListeners();
         }
 
         // 5. Recarrega os detalhes para atualizar a UI de detalhes
@@ -665,6 +684,7 @@ class DeckProvider extends ChangeNotifier {
     final synergyScore = data['synergy_score'] as int?;
     final strengths = data['strengths'] as String?;
     final weaknesses = data['weaknesses'] as String?;
+    var didUpdate = false;
 
     if (_selectedDeck != null && _selectedDeck!.id == deckId) {
       _selectedDeck = _selectedDeck!.copyWith(
@@ -672,7 +692,7 @@ class DeckProvider extends ChangeNotifier {
         strengths: strengths,
         weaknesses: weaknesses,
       );
-      notifyListeners();
+      didUpdate = true;
     }
 
     final index = _decks.indexWhere((d) => d.id == deckId);
@@ -682,6 +702,10 @@ class DeckProvider extends ChangeNotifier {
         strengths: strengths,
         weaknesses: weaknesses,
       );
+      didUpdate = true;
+    }
+
+    if (didUpdate) {
       notifyListeners();
     }
 
@@ -1122,6 +1146,7 @@ class DeckProvider extends ChangeNotifier {
 
   /// Limpa o erro
   void clearError() {
+    if (_errorMessage == null) return;
     _errorMessage = null;
     notifyListeners();
   }
@@ -1178,9 +1203,6 @@ class DeckProvider extends ChangeNotifier {
         if (commander != null && commander.isNotEmpty) 'commander': commander,
       });
 
-      _isLoading = false;
-      notifyListeners();
-
       if (response.statusCode == 200) {
         // Recarrega a lista de decks
         await fetchDecks();
@@ -1205,6 +1227,8 @@ class DeckProvider extends ChangeNotifier {
                 : <String>[];
 
         _errorMessage = error;
+              _isLoading = false;
+              notifyListeners();
         return {'success': false, 'error': error, 'not_found_lines': notFound};
       }
     } catch (e) {

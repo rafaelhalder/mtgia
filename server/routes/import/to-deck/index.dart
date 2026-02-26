@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/import_card_lookup_service.dart';
+
+String _cleanLookupKey(String value) => value.replaceAll(RegExp(r'\s+\d+$'), '');
 
 int _sumQuantities(List<Map<String, dynamic>> cards) =>
     cards.fold<int>(0, (sum, c) => sum + (c['quantity'] as int? ?? 0));
@@ -75,7 +78,6 @@ Future<Response> _importToDeck(RequestContext context) async {
   final warnings = <String>[];
 
   final parsedItems = <Map<String, dynamic>>[];
-  final namesToQuery = <String>{};
 
   // 1. Parse de todas as linhas
   for (var line in lines) {
@@ -98,117 +100,21 @@ Future<Response> _importToDeck(RequestContext context) async {
         'quantity': quantity,
         'isCommanderTag': isCommanderTag,
       });
-      namesToQuery.add(cardName.toLowerCase());
     } else {
       notFoundCards.add(line);
     }
   }
 
-  // 2. Busca em lote
-  final foundCardsMap = <String, Map<String, dynamic>>{};
-
-  if (namesToQuery.isNotEmpty) {
-    final result = await pool.execute(
-      Sql.named(
-          'SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
-      parameters: {'names': TypedValue(Type.textArray, namesToQuery.toList())},
-    );
-    for (final row in result) {
-      final id = row[0] as String;
-      final name = row[1] as String;
-      final typeLine = row[2] as String;
-      foundCardsMap[name.toLowerCase()] = {
-        'id': id,
-        'name': name,
-        'type_line': typeLine
-      };
-    }
-  }
-
-  // 3. Fallback para nomes com números (ex: "Forest 96")
-  final cleanNamesToQuery = <String>{};
-
-  for (final item in parsedItems) {
-    final nameLower = (item['name'] as String).toLowerCase();
-    if (!foundCardsMap.containsKey(nameLower)) {
-      final cleanName =
-          (item['name'] as String).replaceAll(RegExp(r'\s+\d+$'), '');
-      if (cleanName != item['name']) {
-        item['cleanName'] = cleanName;
-        cleanNamesToQuery.add(cleanName.toLowerCase());
-      }
-    }
-  }
-
-  if (cleanNamesToQuery.isNotEmpty) {
-    final result = await pool.execute(
-      Sql.named(
-          'SELECT id, name, type_line FROM cards WHERE lower(name) = ANY(@names)'),
-      parameters: {
-        'names': TypedValue(Type.textArray, cleanNamesToQuery.toList())
-      },
-    );
-    for (final row in result) {
-      final id = row[0] as String;
-      final name = row[1] as String;
-      final typeLine = row[2] as String;
-      foundCardsMap[name.toLowerCase()] = {
-        'id': id,
-        'name': name,
-        'type_line': typeLine
-      };
-    }
-  }
-
-  // 4. Fallback para Split Cards / Double-Faced
-  final splitPatternsToQuery = <String>[];
-
-  for (final item in parsedItems) {
-    final nameKey = item['cleanName'] != null
-        ? (item['cleanName'] as String).toLowerCase()
-        : (item['name'] as String).toLowerCase();
-
-    if (!foundCardsMap.containsKey(nameKey)) {
-      splitPatternsToQuery.add('$nameKey // %');
-    }
-  }
-
-  if (splitPatternsToQuery.isNotEmpty) {
-    final result = await pool.execute(
-      Sql.named(
-          'SELECT id, name, type_line FROM cards WHERE lower(name) LIKE ANY(@patterns)'),
-      parameters: {
-        'patterns': TypedValue(Type.textArray, splitPatternsToQuery)
-      },
-    );
-
-    for (final row in result) {
-      final id = row[0] as String;
-      final dbName = row[1] as String;
-      final typeLine = row[2] as String;
-      final dbNameLower = dbName.toLowerCase();
-
-      final parts = dbNameLower.split(RegExp(r'\s*//\s*'));
-      if (parts.isNotEmpty) {
-        final prefix = parts[0].trim();
-        if (!foundCardsMap.containsKey(prefix)) {
-          foundCardsMap[prefix] = {
-            'id': id,
-            'name': dbName,
-            'type_line': typeLine
-          };
-        }
-      }
-    }
-  }
+  // 2) Resolve nomes em lote (exato + clean + split fallback)
+  final foundCardsMap = await resolveImportCardNames(pool, parsedItems);
 
   // 5. Montagem da lista final
   for (final item in parsedItems) {
     if (notFoundCards.contains(item['line'])) continue;
 
-    final nameKey = item['cleanName'] != null
-        ? (item['cleanName'] as String).toLowerCase()
-        : (item['name'] as String).toLowerCase();
+    final originalKey = (item['name'] as String).toLowerCase();
+    final cleanedKey = _cleanLookupKey(originalKey);
+    final nameKey = foundCardsMap.containsKey(originalKey) ? originalKey : cleanedKey;
 
     if (foundCardsMap.containsKey(nameKey)) {
       final cardData = foundCardsMap[nameKey]!;
