@@ -445,7 +445,7 @@ void main() {
     );
 
     test(
-      'POST /decks/:id/export returns 405 with error',
+      'POST /decks/:id/export returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/decks/$missingDeckId/export'),
@@ -607,7 +607,7 @@ void main() {
     );
 
     test(
-      'GET /ai/ml-status without token returns 401 with error',
+      'GET /ai/ml-status without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(Uri.parse('$baseUrl/ai/ml-status'));
 
@@ -622,7 +622,7 @@ void main() {
     );
 
     test(
-      'POST /ai/ml-status returns 405 with error',
+      'POST /ai/ml-status returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/ai/ml-status'),
@@ -767,7 +767,7 @@ void main() {
     );
 
     test(
-      'GET /cards/resolve/batch returns 405 with error',
+      'GET /cards/resolve/batch returns 405 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/cards/resolve/batch'),
@@ -784,7 +784,7 @@ void main() {
     );
 
     test(
-      'POST /cards/resolve/batch with empty body returns 400 with error',
+      'POST /cards/resolve/batch with empty body returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/cards/resolve/batch'),
@@ -803,7 +803,7 @@ void main() {
     );
 
     test(
-      'POST /cards/resolve/batch with invalid JSON returns 400 with error',
+      'POST /cards/resolve/batch with invalid JSON returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/cards/resolve/batch'),
@@ -822,7 +822,7 @@ void main() {
     );
 
     test(
-      'POST /cards/resolve/batch with names not list returns 400 with error',
+      'POST /cards/resolve/batch with names not list returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/cards/resolve/batch'),
@@ -841,7 +841,7 @@ void main() {
     );
 
     test(
-      'POST /cards/resolve/batch with empty names returns 400 with error',
+      'POST /cards/resolve/batch with empty names returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/cards/resolve/batch'),
@@ -1016,7 +1016,7 @@ void main() {
     );
 
     test(
-      'POST /community/decks/:id without token returns 401 with error',
+      'POST /community/decks/:id without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/community/decks/$missingDeckId'),
@@ -1042,7 +1042,7 @@ void main() {
     );
 
     test(
-      'PUT /community/decks/:id returns 405 with error',
+      'PUT /community/decks/:id returns 405 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/community/decks/$missingDeckId'),
@@ -1056,7 +1056,7 @@ void main() {
     );
 
     test(
-      'GET /community/users without q returns 400 with error',
+      'GET /community/users without q returns 400 (or 404 compat)',
       () async {
         final response = await http.get(Uri.parse('$baseUrl/community/users'));
 
@@ -1066,7 +1066,7 @@ void main() {
     );
 
     test(
-      'POST /community/users returns 405 with error',
+      'POST /community/users returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/community/users?q=test'),
@@ -1092,7 +1092,7 @@ void main() {
     );
 
     test(
-      'PUT /community/users/:id returns 405 with error',
+      'PUT /community/users/:id returns 405 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/community/users/$missingUserId'),
@@ -1118,7 +1118,7 @@ void main() {
     );
 
     test(
-      'POST /community/binders/:userId returns 405 with error',
+      'POST /community/binders/:userId returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/community/binders/$missingUserId'),
@@ -1132,7 +1132,7 @@ void main() {
     );
 
     test(
-      'POST /community/marketplace returns 405 with error',
+      'POST /community/marketplace returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/community/marketplace'),
@@ -1146,7 +1146,7 @@ void main() {
     );
 
     test(
-      'GET /users/:id/follow without token returns 401 with error',
+      'GET /users/:id/follow without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/users/$missingUserId/follow'),
@@ -1158,7 +1158,7 @@ void main() {
     );
 
     test(
-      'POST /users/:id/follow without token returns 401 with error',
+      'POST /users/:id/follow without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/users/$missingUserId/follow'),
@@ -1186,7 +1186,7 @@ void main() {
     );
 
     test(
-      'POST /users/:id/follow self returns 400 with error',
+      'POST /users/:id/follow self returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/users/$authUserId/follow'),
@@ -1200,7 +1200,7 @@ void main() {
     );
 
     test(
-      'GET /users/:id/followers without token returns 401 with error',
+      'GET /users/:id/followers without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/users/$missingUserId/followers'),
@@ -1212,7 +1212,7 @@ void main() {
     );
 
     test(
-      'POST /users/:id/followers returns 405 with error',
+      'POST /users/:id/followers returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/users/$missingUserId/followers'),
@@ -1226,7 +1226,7 @@ void main() {
     );
 
     test(
-      'GET /users/:id/following without token returns 401 with error',
+      'GET /users/:id/following without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/users/$missingUserId/following'),
@@ -1238,7 +1238,7 @@ void main() {
     );
 
     test(
-      'POST /users/:id/following returns 405 with error',
+      'POST /users/:id/following returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/users/$missingUserId/following'),
@@ -1252,7 +1252,7 @@ void main() {
     );
 
     test(
-      'GET /notifications without token returns 401 with error',
+      'GET /notifications without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(Uri.parse('$baseUrl/notifications'));
 
@@ -1262,7 +1262,7 @@ void main() {
     );
 
     test(
-      'POST /notifications returns 405 with error',
+      'POST /notifications returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/notifications'),
@@ -1276,7 +1276,7 @@ void main() {
     );
 
     test(
-      'GET /notifications/count without token returns 401 with error',
+      'GET /notifications/count without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/notifications/count'),
@@ -1288,7 +1288,7 @@ void main() {
     );
 
     test(
-      'POST /notifications/count returns 405 with error',
+      'POST /notifications/count returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/notifications/count'),
@@ -1302,7 +1302,7 @@ void main() {
     );
 
     test(
-      'PUT /notifications/read-all without token returns 401 with error',
+      'PUT /notifications/read-all without token returns 401 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/notifications/read-all'),
@@ -1316,7 +1316,7 @@ void main() {
     );
 
     test(
-      'GET /notifications/read-all returns 405 with error',
+      'GET /notifications/read-all returns 405 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/notifications/read-all'),
@@ -1329,7 +1329,7 @@ void main() {
     );
 
     test(
-      'PUT /notifications/:id/read without token returns 401 with error',
+      'PUT /notifications/:id/read without token returns 401 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/notifications/$missingNotificationId/read'),
@@ -1343,7 +1343,7 @@ void main() {
     );
 
     test(
-      'GET /notifications/:id/read returns 405 with error',
+      'GET /notifications/:id/read returns 405 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/notifications/$missingNotificationId/read'),
@@ -1370,7 +1370,7 @@ void main() {
     );
 
     test(
-      'GET /trades without token returns 401 with error',
+      'GET /trades without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(Uri.parse('$baseUrl/trades'));
 
@@ -1380,7 +1380,7 @@ void main() {
     );
 
     test(
-      'PUT /trades returns 405 with error',
+      'PUT /trades returns 405 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/trades'),
@@ -1394,7 +1394,7 @@ void main() {
     );
 
     test(
-      'POST /trades without token returns 401 with error',
+      'POST /trades without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades'),
@@ -1408,7 +1408,7 @@ void main() {
     );
 
     test(
-      'POST /trades with empty payload returns 400 with error',
+      'POST /trades with empty payload returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades'),
@@ -1422,7 +1422,7 @@ void main() {
     );
 
     test(
-      'POST /trades with invalid type returns 400 with error',
+      'POST /trades with invalid type returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades'),
@@ -1441,7 +1441,7 @@ void main() {
     );
 
     test(
-      'GET /trades/:id without token returns 401 with error',
+      'GET /trades/:id without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/trades/$missingTradeId'),
@@ -1466,7 +1466,7 @@ void main() {
     );
 
     test(
-      'POST /trades/:id returns 405 with error',
+      'POST /trades/:id returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades/$missingTradeId'),
@@ -1480,7 +1480,7 @@ void main() {
     );
 
     test(
-      'PUT /trades/:id/respond without token returns 401 with error',
+      'PUT /trades/:id/respond without token returns 401 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/trades/$missingTradeId/respond'),
@@ -1494,7 +1494,7 @@ void main() {
     );
 
     test(
-      'PUT /trades/:id/respond invalid action returns 400 with error',
+      'PUT /trades/:id/respond invalid action returns 400 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/trades/$missingTradeId/respond'),
@@ -1508,7 +1508,7 @@ void main() {
     );
 
     test(
-      'PUT /trades/:id/status without token returns 401 with error',
+      'PUT /trades/:id/status without token returns 401 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/trades/$missingTradeId/status'),
@@ -1522,7 +1522,7 @@ void main() {
     );
 
     test(
-      'PUT /trades/:id/status missing status returns 400 with error',
+      'PUT /trades/:id/status missing status returns 400 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/trades/$missingTradeId/status'),
@@ -1536,7 +1536,7 @@ void main() {
     );
 
     test(
-      'GET /trades/:id/messages without token returns 401 with error',
+      'GET /trades/:id/messages without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
@@ -1561,7 +1561,7 @@ void main() {
     );
 
     test(
-      'POST /trades/:id/messages without token returns 401 with error',
+      'POST /trades/:id/messages without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
@@ -1575,7 +1575,7 @@ void main() {
     );
 
     test(
-      'POST /trades/:id/messages invalid payload returns 400 with error',
+      'POST /trades/:id/messages invalid payload returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/trades/$missingTradeId/messages'),
@@ -1589,7 +1589,7 @@ void main() {
     );
 
     test(
-      'GET /conversations without token returns 401 with error',
+      'GET /conversations without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(Uri.parse('$baseUrl/conversations'));
 
@@ -1599,7 +1599,7 @@ void main() {
     );
 
     test(
-      'PUT /conversations returns 405 with error',
+      'PUT /conversations returns 405 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/conversations'),
@@ -1613,7 +1613,7 @@ void main() {
     );
 
     test(
-      'POST /conversations without token returns 401 with error',
+      'POST /conversations without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/conversations'),
@@ -1627,7 +1627,7 @@ void main() {
     );
 
     test(
-      'POST /conversations missing user_id returns 400 with error',
+      'POST /conversations missing user_id returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/conversations'),
@@ -1641,7 +1641,7 @@ void main() {
     );
 
     test(
-      'GET /conversations/unread-count without token returns 401 with error',
+      'GET /conversations/unread-count without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/conversations/unread-count'),
@@ -1653,7 +1653,7 @@ void main() {
     );
 
     test(
-      'POST /conversations/unread-count returns 405 with error',
+      'POST /conversations/unread-count returns 405 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/conversations/unread-count'),
@@ -1667,7 +1667,7 @@ void main() {
     );
 
     test(
-      'GET /conversations/:id/messages without token returns 401 with error',
+      'GET /conversations/:id/messages without token returns 401 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
@@ -1692,7 +1692,7 @@ void main() {
     );
 
     test(
-      'POST /conversations/:id/messages without token returns 401 with error',
+      'POST /conversations/:id/messages without token returns 401 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
@@ -1706,7 +1706,7 @@ void main() {
     );
 
     test(
-      'POST /conversations/:id/messages missing message returns 400 with error',
+      'POST /conversations/:id/messages missing message returns 400 (or 404 compat)',
       () async {
         final response = await http.post(
           Uri.parse('$baseUrl/conversations/$missingConversationId/messages'),
@@ -1720,7 +1720,7 @@ void main() {
     );
 
     test(
-      'PUT /conversations/:id/read without token returns 401 with error',
+      'PUT /conversations/:id/read without token returns 401 (or 404 compat)',
       () async {
         final response = await http.put(
           Uri.parse('$baseUrl/conversations/$missingConversationId/read'),
@@ -1734,7 +1734,7 @@ void main() {
     );
 
     test(
-      'GET /conversations/:id/read returns 405 with error',
+      'GET /conversations/:id/read returns 405 (or 404 compat)',
       () async {
         final response = await http.get(
           Uri.parse('$baseUrl/conversations/$missingConversationId/read'),
