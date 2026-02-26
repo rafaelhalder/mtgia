@@ -4729,6 +4729,38 @@ Refatoração em `routes/market/movers/index.dart`:
 
 ---
 
+## 42. Otimização P1 (Flutter) — Mensagens e Comunidade (notify mais enxuto)
+
+### 42.1 O Porquê
+
+Após reduzir rebuilds no módulo de decks, ainda havia custo de repaint em fluxos de mensagens por polling e em resets repetidos de estado da comunidade.
+
+Objetivo: manter o mesmo comportamento funcional, com menos notificações redundantes.
+
+### 42.2 O Como
+
+Arquivos alterados:
+- app/lib/features/messages/providers/message_provider.dart
+- app/lib/features/community/providers/community_provider.dart
+
+`MessageProvider`:
+- `fetchMessages`: no modo incremental, só notifica quando houve mudança real (novas mensagens, cursor atualizado ou erro). No modo completo, mantém o ciclo padrão de loading.
+- `fetchMessages`: atualização de `_lastMessageAtByConversation` agora compara valor anterior para evitar notify por escrita idempotente.
+- `sendMessage`: removida notificação intermediária de sucesso; mantém notificação no início (`isSending=true`) e no fim (`isSending=false`) com lista já atualizada.
+- `markAsRead`: retorno antecipado quando a conversa já está com `unreadCount = 0`.
+- `clearAllState`: guard clause para evitar `notifyListeners()` quando o provider já está totalmente limpo.
+
+`CommunityProvider`:
+- `clearAllState`: guard clause para evitar `notifyListeners()` em logout/reset repetido sem mudança de estado.
+
+### 42.3 Resultado técnico
+
+- Menos rebuilds durante polling incremental de chat.
+- Menos repaints em ciclos de logout/login com estado já limpo.
+- Sem alteração de contrato de API, sem mudança de regras de negócio e sem impacto de UX funcional.
+
+---
+
 ## 39. Otimização P1 — Resolução de cartas em lote (criação de deck)
 
 ### 39.1 O Porquê

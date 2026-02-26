@@ -230,6 +230,7 @@ class MessageProvider extends ChangeNotifier {
     int limit = 50,
     bool incremental = false,
   }) async {
+    var didChange = false;
     if (!incremental) {
       _isLoadingMessages = true;
       _error = null;
@@ -253,6 +254,7 @@ class MessageProvider extends ChangeNotifier {
         if (!incremental || since == null) {
           _messages = fetched;
           _totalMessages = data['total'] as int? ?? list.length;
+          didChange = true;
         } else if (fetched.isNotEmpty) {
           // Evita duplicatas ao mesclar com lista local (DESC)
           final existingIds = _messages.map((m) => m.id).toSet();
@@ -260,21 +262,29 @@ class MessageProvider extends ChangeNotifier {
           if (toInsert.isNotEmpty) {
             _messages.insertAll(0, toInsert);
             _totalMessages += toInsert.length;
+            didChange = true;
           }
         }
 
         if (_messages.isNotEmpty) {
-          _lastMessageAtByConversation[conversationId] = _messages.first.createdAt;
+          final latest = _messages.first.createdAt;
+          if (_lastMessageAtByConversation[conversationId] != latest) {
+            _lastMessageAtByConversation[conversationId] = latest;
+            didChange = true;
+          }
         }
       }
     } catch (e) {
       _error = '$e';
+      didChange = true;
       debugPrint('[MessageProvider] fetchMessages error: $e');
     } finally {
       if (!incremental) {
         _isLoadingMessages = false;
+        notifyListeners();
+      } else if (didChange) {
+        notifyListeners();
       }
-      notifyListeners();
     }
   }
 
@@ -291,7 +301,7 @@ class MessageProvider extends ChangeNotifier {
       if (resp.statusCode == 201 && resp.data is Map) {
         final dm = DirectMessage.fromJson(resp.data as Map<String, dynamic>);
         _messages.insert(0, dm); // Mensagens em DESC, nova no topo
-        notifyListeners();
+        _totalMessages += 1;
         return true;
       }
     } catch (e) {
@@ -311,6 +321,9 @@ class MessageProvider extends ChangeNotifier {
       final idx = _conversations.indexWhere((c) => c.id == conversationId);
       if (idx >= 0) {
         final old = _conversations[idx];
+        if (old.unreadCount == 0) {
+          return;
+        }
         _conversations[idx] = Conversation(
           id: old.id,
           otherUser: old.otherUser,
@@ -335,6 +348,20 @@ class MessageProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_conversations.isEmpty &&
+        _messages.isEmpty &&
+        !_isLoading &&
+        !_isLoadingMessages &&
+        !_isSending &&
+        _error == null &&
+        _totalConversations == 0 &&
+        _totalMessages == 0 &&
+        _unreadCount == 0 &&
+        _lastMessageAtByConversation.isEmpty) {
+      stopPolling();
+      return;
+    }
+
     stopPolling();
     _conversations = [];
     _messages = [];

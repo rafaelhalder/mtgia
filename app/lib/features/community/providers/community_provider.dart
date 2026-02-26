@@ -153,6 +153,17 @@ class CommunityProvider extends ChangeNotifier {
 
   /// Limpa todo o estado do provider (chamado no logout)
   void clearAllState() {
+    if (_decks.isEmpty &&
+        !_isLoading &&
+        _errorMessage == null &&
+        _page == 1 &&
+        _total == 0 &&
+        _hasMore &&
+        _searchQuery == null &&
+        _formatFilter == null) {
+      return;
+    }
+
     _decks = [];
     _isLoading = false;
     _errorMessage = null;
