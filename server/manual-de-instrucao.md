@@ -5267,3 +5267,50 @@ Ajustes aplicados:
 - Menos repaints desnecessários na UI de decks.
 - Menor oscilação visual ao atualizar detalhes.
 - Sem alteração de contrato de API e sem mudança de regra de negócio.
+
+---
+
+## 48. Testes de contrato de erro (integração)
+
+### 48.1 O Porquê
+
+Após padronizar os helpers de erro HTTP (`error` + status consistente), era necessário
+blindar regressão de contrato para endpoints core e IA já ajustados.
+
+Sem esse teste, pequenas alterações de rota poderiam voltar a retornar formatos
+inconsistentes (ex.: body vazio em 405 ou payload sem campo `error`).
+
+### 48.2 O Como
+
+Arquivo criado:
+- `test/error_contract_test.dart`
+
+Cobertura incluída (integração):
+- `POST /decks` sem token → `401` com `error`
+- `POST /decks` inválido → `400` com `error`
+- `POST /ai/archetypes` sem token → `401` com `error`
+- `POST /ai/archetypes` inválido → `400` com `error`
+- `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/simulate` inválido → `400` com `error`
+- `POST /ai/simulate` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/simulate-matchup` inválido → `400` com `error`
+- `POST /ai/simulate-matchup` com deck inexistente → `404` com `error`
+- `POST /ai/weakness-analysis` inválido → `400` com `error`
+- `POST /ai/weakness-analysis` com `deck_id` inexistente → `404` com `error`
+
+Padrões técnicos aplicados:
+- mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
+- autenticação real de usuário de teste para rotas protegidas;
+- asserção de contrato mínima e objetiva: `statusCode` + presença de `error` textual.
+
+Execução:
+```bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/error_contract_test.dart
+```
+
+### 48.3 Resultado
+
+- Contrato de erro padronizado agora tem cobertura automatizada dedicada.
+- Redução de risco de regressão silenciosa em handlers core/IA.
+- Base pronta para expandir cobertura de contrato para novos endpoints.
