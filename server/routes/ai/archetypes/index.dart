@@ -123,6 +123,9 @@ Future<Response> onRequest(RequestContext context) async {
         'model': aiConfig.modelFor(
           key: 'OPENAI_MODEL_ARCHETYPES',
           fallback: 'gpt-4o-mini',
+          devFallback: 'gpt-4o-mini',
+          stagingFallback: 'gpt-4o-mini',
+          prodFallback: 'gpt-4o-mini',
         ),
         'messages': [
           {
@@ -137,6 +140,9 @@ Future<Response> onRequest(RequestContext context) async {
         'temperature': aiConfig.temperatureFor(
           key: 'OPENAI_TEMP_ARCHETYPES',
           fallback: 0.3,
+          devFallback: 0.35,
+          stagingFallback: 0.3,
+          prodFallback: 0.25,
         ),
         'response_format': {'type': 'json_object'},
       }),

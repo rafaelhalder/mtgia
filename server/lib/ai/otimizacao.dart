@@ -519,10 +519,16 @@ class DeckOptimizerService {
     final model = aiConfig.modelFor(
       key: 'OPENAI_MODEL_OPTIMIZE',
       fallback: 'gpt-4o',
+      devFallback: 'gpt-4o-mini',
+      stagingFallback: 'gpt-4o-mini',
+      prodFallback: 'gpt-4o',
     );
     final temperature = aiConfig.temperatureFor(
       key: 'OPENAI_TEMP_OPTIMIZE',
       fallback: 0.3,
+      devFallback: 0.35,
+      stagingFallback: 0.3,
+      prodFallback: 0.25,
     );
 
     // Calcular número dinâmico de trocas baseado na qualidade do deck
@@ -675,10 +681,16 @@ class DeckOptimizerService {
     final model = aiConfig.modelFor(
       key: 'OPENAI_MODEL_COMPLETE',
       fallback: 'gpt-4o',
+      devFallback: 'gpt-4o-mini',
+      stagingFallback: 'gpt-4o-mini',
+      prodFallback: 'gpt-4o',
     );
     final temperature = aiConfig.temperatureFor(
       key: 'OPENAI_TEMP_COMPLETE',
       fallback: 0.3,
+      devFallback: 0.35,
+      stagingFallback: 0.3,
+      prodFallback: 0.25,
     );
 
     final userPrompt = jsonEncode({

@@ -368,10 +368,16 @@ class OptimizationValidator {
     final model = aiConfig.modelFor(
       key: 'OPENAI_MODEL_OPTIMIZATION_CRITIC',
       fallback: 'gpt-4o-mini',
+      devFallback: 'gpt-4o-mini',
+      stagingFallback: 'gpt-4o-mini',
+      prodFallback: 'gpt-4o-mini',
     );
     final temperature = aiConfig.temperatureFor(
       key: 'OPENAI_TEMP_OPTIMIZATION_CRITIC',
       fallback: 0.2,
+      devFallback: 0.25,
+      stagingFallback: 0.2,
+      prodFallback: 0.15,
     );
 
     try {

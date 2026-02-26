@@ -5604,3 +5604,54 @@ Defaults adicionados no `.env.example`:
 - menor variância de qualidade entre endpoints IA;
 - controle fino de custo/latência por ambiente sem alteração de código;
 - manutenção mais simples para futuras trocas de modelo.
+
+## 53. Presets de IA por ambiente (dev / staging / prod)
+
+### 53.1 O Porquê
+
+Após centralizar modelo/temperatura por endpoint, ainda faltava uma estratégia operacional clara por ambiente.
+
+Objetivo: evitar tuning manual repetitivo e garantir que:
+- development priorize custo/velocidade;
+- staging valide comportamento próximo de produção;
+- production maximize qualidade nos fluxos críticos (`optimize`/`complete`).
+
+### 53.2 O Como
+
+Arquivo evoluído:
+- `server/lib/openai_runtime_config.dart`
+
+Novidades:
+- suporte a `OPENAI_PROFILE` (`dev`, `staging`, `prod`);
+- fallback automático para perfil via `ENVIRONMENT` quando `OPENAI_PROFILE` não estiver definido;
+- seleção de fallback por perfil para `model` e `temperature`;
+- clamp de temperatura em faixa segura (`0.0..1.0`).
+
+Aplicado nos pontos de IA:
+- `server/lib/ai/otimizacao.dart`
+- `server/lib/ai/optimization_validator.dart`
+- `server/routes/ai/generate/index.dart`
+- `server/routes/ai/archetypes/index.dart`
+- `server/routes/ai/explain/index.dart`
+- `server/routes/decks/[id]/recommendations/index.dart`
+- `server/routes/decks/[id]/ai-analysis/index.dart`
+
+### 53.3 Estratégia de preset
+
+- **dev**: majoritariamente `gpt-4o-mini`, temperaturas levemente maiores para iteração.
+- **staging**: mesma família de modelos com temperaturas mais estáveis para validação.
+- **prod**: `gpt-4o` em `optimize/complete`; `gpt-4o-mini` nos demais fluxos, com menor temperatura.
+
+### 53.4 Configuração
+
+Arquivo atualizado:
+- `server/.env.example`
+
+Campos relevantes:
+- `OPENAI_PROFILE=dev|staging|prod`
+- `OPENAI_MODEL_*`
+- `OPENAI_TEMP_*`
+
+Regra prática:
+- se `OPENAI_MODEL_*`/`OPENAI_TEMP_*` estiverem definidos, eles prevalecem;
+- se não estiverem, aplica fallback por perfil automaticamente.

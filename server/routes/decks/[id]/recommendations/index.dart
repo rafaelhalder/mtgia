@@ -490,6 +490,9 @@ Future<Response> _callOpenAI({
       'model': aiConfig.modelFor(
         key: 'OPENAI_MODEL_RECOMMENDATIONS',
         fallback: 'gpt-4o-mini',
+        devFallback: 'gpt-4o-mini',
+        stagingFallback: 'gpt-4o-mini',
+        prodFallback: 'gpt-4o-mini',
       ),
       'messages': [
         {'role': 'system', 'content': 'You are a helpful assistant that outputs JSON.'},
@@ -498,6 +501,9 @@ Future<Response> _callOpenAI({
       'temperature': aiConfig.temperatureFor(
         key: 'OPENAI_TEMP_RECOMMENDATIONS',
         fallback: 0.3,
+        devFallback: 0.35,
+        stagingFallback: 0.3,
+        prodFallback: 0.25,
       ),
       'response_format': {'type': 'json_object'},
     }),

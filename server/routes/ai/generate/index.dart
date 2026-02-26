@@ -128,6 +128,9 @@ Rules:
         'model': aiConfig.modelFor(
           key: 'OPENAI_MODEL_GENERATE',
           fallback: 'gpt-4o-mini',
+          devFallback: 'gpt-4o-mini',
+          stagingFallback: 'gpt-4o-mini',
+          prodFallback: 'gpt-4o-mini',
         ),
         'messages': [
           {'role': 'system', 'content': systemPrompt},
@@ -136,6 +139,9 @@ Rules:
         'temperature': aiConfig.temperatureFor(
           key: 'OPENAI_TEMP_GENERATE',
           fallback: 0.4,
+          devFallback: 0.45,
+          stagingFallback: 0.4,
+          prodFallback: 0.35,
         ),
         'response_format': {'type': 'json_object'},
       }),
