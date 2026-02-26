@@ -5308,7 +5308,7 @@ Cobertura incluída (integração):
 Padrões técnicos aplicados:
 - mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
 - autenticação real de usuário de teste para rotas protegidas;
-- asserção de contrato mínima e objetiva: `statusCode` + presença de `error` textual.
+- asserção de contrato de erro: `statusCode` + header `content-type` JSON + presença de `error` textual.
 
 Observação técnica sobre `405`:
 - para os endpoints core cobertos, foram adicionados handlers explícitos de método inválido;

@@ -82,10 +82,16 @@ void main() {
     authToken = await getAuthToken();
   });
 
-  void expect405Contract(http.Response response) {
-    expect(response.statusCode, equals(405));
+  void expectJsonErrorContract(http.Response response, int statusCode) {
+    expect(response.statusCode, equals(statusCode));
+    final contentType = response.headers['content-type'] ?? '';
+    expect(contentType.toLowerCase(), contains('application/json'));
     final body = decodeJson(response);
     expect(body['error'], isA<String>());
+  }
+
+  void expect405Contract(http.Response response) {
+    expectJsonErrorContract(response, 405);
   }
 
   group('Error contract | Core + AI', () {
@@ -101,9 +107,7 @@ void main() {
           }),
         );
 
-        expect(response.statusCode, equals(401));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 401);
       },
       skip: skipIntegration,
     );
@@ -129,9 +133,7 @@ void main() {
           Uri.parse('$baseUrl/decks/$missingDeckId'),
         );
 
-        expect(response.statusCode, equals(401));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 401);
       },
       skip: skipIntegration,
     );
@@ -144,9 +146,7 @@ void main() {
           headers: authHeaders(),
         );
 
-        expect(response.statusCode, equals(404));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 404);
       },
       skip: skipIntegration,
     );
@@ -162,9 +162,8 @@ void main() {
           }),
         );
 
-        expect(response.statusCode, equals(400));
+        expectJsonErrorContract(response, 400);
         final body = decodeJson(response);
-        expect(body['error'], isA<String>());
         expect((body['error'] as String).isNotEmpty, isTrue);
       },
       skip: skipIntegration,
@@ -179,9 +178,7 @@ void main() {
           body: jsonEncode({'deck_id': missingDeckId}),
         );
 
-        expect(response.statusCode, equals(401));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 401);
       },
       skip: skipIntegration,
     );
@@ -199,9 +196,7 @@ void main() {
           }),
         );
 
-        expect(response.statusCode, equals(401));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 401);
       },
       skip: skipIntegration,
     );
@@ -219,9 +214,7 @@ void main() {
           }),
         );
 
-        expect(response.statusCode, equals(400));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 400);
       },
       skip: skipIntegration,
     );
@@ -248,9 +241,7 @@ void main() {
           body: jsonEncode({}),
         );
 
-        expect(response.statusCode, equals(400));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 400);
       },
       skip: skipIntegration,
     );
@@ -278,9 +269,7 @@ void main() {
           body: jsonEncode({'deck_id': missingDeckId}),
         );
 
-        expect(response.statusCode, equals(404));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 404);
       },
       skip: skipIntegration,
     );
@@ -294,9 +283,7 @@ void main() {
           body: jsonEncode({}),
         );
 
-        expect(response.statusCode, equals(400));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 400);
       },
       skip: skipIntegration,
     );
@@ -310,9 +297,7 @@ void main() {
           body: jsonEncode({'deck_id': missingDeckId}),
         );
 
-        expect(response.statusCode, equals(404));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 404);
       },
       skip: skipIntegration,
     );
@@ -326,9 +311,7 @@ void main() {
           body: jsonEncode({}),
         );
 
-        expect(response.statusCode, equals(400));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 400);
       },
       skip: skipIntegration,
     );
@@ -345,9 +328,7 @@ void main() {
           }),
         );
 
-        expect(response.statusCode, equals(404));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 404);
       },
       skip: skipIntegration,
     );
@@ -361,9 +342,7 @@ void main() {
           body: jsonEncode({}),
         );
 
-        expect(response.statusCode, equals(400));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 400);
       },
       skip: skipIntegration,
     );
@@ -377,9 +356,7 @@ void main() {
           body: jsonEncode({'deck_id': missingDeckId}),
         );
 
-        expect(response.statusCode, equals(404));
-        final body = decodeJson(response);
-        expect(body['error'], isA<String>());
+        expectJsonErrorContract(response, 404);
       },
       skip: skipIntegration,
     );
