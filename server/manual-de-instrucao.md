@@ -4698,3 +4698,31 @@ Cria (idempotente):
 - **Performance por desenho:** reduzir subqueries por linha
 - **Compatibilidade:** contrato de resposta mantido
 - **Migração explícita:** ajustes de índice fora do request path
+
+---
+
+## 38. Otimização P1 — `GET /market/movers`
+
+### 38.1 O Porquê
+
+O endpoint de movers fazia seleção de `previous_date` com múltiplas consultas em loop:
+
+- 1 query para amostra de cartas do dia atual
+- N queries (até 6) para comparar preço por data candidata
+
+Isso aumentava latência e round-trips ao banco, principalmente em períodos de maior tráfego.
+
+### 38.2 O Como
+
+Refatoração em `routes/market/movers/index.dart`:
+
+- Substituição do loop por **uma única query SQL** com `EXISTS`.
+- A query busca a data mais recente `< today` que possua ao menos uma variação significativa
+  (diferença > 0.5%) para cartas com preço > 1.0.
+- Mantido fallback para a segunda data mais recente quando não houver candidata válida.
+
+### 38.3 Resultado técnico
+
+- Menos queries por requisição no endpoint de movers.
+- Menor latência média e menor carga no pool do PostgreSQL.
+- Contrato de resposta preservado (`date`, `previous_date`, `gainers`, `losers`, `total_tracked`).
