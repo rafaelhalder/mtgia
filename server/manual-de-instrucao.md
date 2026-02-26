@@ -5416,3 +5416,55 @@ RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/e
 - Contrato de erro padronizado agora tem cobertura automatizada dedicada.
 - Redução de risco de regressão silenciosa em handlers core/IA/Auth.
 - Cobertura expandida para `cards/*`, `rules`, `community/*`, `users/*`, `notifications/*`, `trades/*` e `conversations/*`, incluindo cenários de compatibilidade entre runtimes.
+
+## 49. Consolidação do Core — Smoke E2E de fluxo principal
+
+### 49.1 O Porquê
+
+O projeto já possuía testes de contrato de erro e testes de integração pontuais de decks, porém faltava um **smoke único de ponta a ponta** para o funil principal do produto:
+
+`criar/importar → validar → analisar → otimizar`.
+
+Sem esse smoke, uma regressão em qualquer etapa do fluxo poderia passar despercebida até QA manual tardio.
+
+### 49.2 O Como
+
+Arquivo criado:
+- `server/test/core_flow_smoke_test.dart`
+
+Cobertura implementada (integração):
+- **Cenário de sucesso (create path):**
+  - cria deck Standard com 60 `Forest` via `POST /decks`;
+  - valida via `POST /decks/:id/validate` (espera `200` e `ok=true`);
+  - analisa via `GET /decks/:id/analysis` (espera `200` e `legality.is_valid=true`);
+  - otimiza via `POST /ai/optimize` (espera `200` e `reasoning` presente).
+- **Cenário misto (import + erro crítico):**
+  - valida erro de import inválido (`list` numérico) com `POST /import` → `400`;
+  - importa deck válido (`60 Forest`) com `POST /import`;
+  - revalida/analisa deck importado;
+  - valida erro crítico de otimização sem `archetype` (`POST /ai/optimize`) → `400`.
+
+Padrões aplicados:
+- gating por `RUN_INTEGRATION_TESTS` e `TEST_API_BASE_URL`;
+- helpers de autenticação e cleanup automático de decks criados;
+- asserts de contrato mínimo em payload de sucesso/erro.
+
+### 49.3 Execução
+
+Smoke focado:
+
+````bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/core_flow_smoke_test.dart
+````
+
+Durante desenvolvimento:
+
+````bash
+./scripts/quality_gate.sh quick
+````
+
+### 49.4 Resultado
+
+- Fluxo core ganhou cobertura executável de alto ROI, cobrindo sucesso e erro crítico no mesmo eixo funcional.
+- Redução do risco de quebra silenciosa entre rotas de criação/importação, validação de regras, análise e otimização.
