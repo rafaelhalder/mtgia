@@ -5295,6 +5295,14 @@ Cobertura incluída (integração):
 - `PUT /decks` (método inválido) → `405`
 - `GET /import` (método inválido) → `405`
 - `POST /decks/:id` (método inválido) → `405`
+- `POST /decks/:id/validate` sem token → `401` com `error`
+- `GET /decks/:id/validate` (método inválido) → `405`
+- `POST /decks/:id/pricing` sem token → `401` com `error`
+- `GET /decks/:id/pricing` (método inválido) → `405`
+- `POST /decks/:id/pricing` com deck inexistente → `404` com `error`
+- `GET /decks/:id/export` sem token → `401` com `error`
+- `POST /decks/:id/export` (método inválido) → `405`
+- `GET /decks/:id/export` com deck inexistente → `404` com `error`
 - `POST /ai/archetypes` sem token → `401` com `error`
 - `POST /ai/archetypes` inválido → `400` com `error`
 - `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`

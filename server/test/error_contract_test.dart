@@ -152,6 +152,113 @@ void main() {
     );
 
     test(
+      'POST /decks/:id/validate without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/decks/$missingDeckId/validate'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({}),
+        );
+
+        expectJsonErrorContract(response, 401);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /decks/:id/validate returns 405 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId/validate'),
+          headers: authHeaders(),
+        );
+
+        expect405Contract(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /decks/:id/pricing without token returns 401 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/decks/$missingDeckId/pricing'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({}),
+        );
+
+        expectJsonErrorContract(response, 401);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /decks/:id/pricing returns 405 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId/pricing'),
+          headers: authHeaders(),
+        );
+
+        expect405Contract(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /decks/:id/pricing with missing deck returns 404 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/decks/$missingDeckId/pricing'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expectJsonErrorContract(response, 404);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /decks/:id/export without token returns 401 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId/export'),
+        );
+
+        expectJsonErrorContract(response, 401);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'POST /decks/:id/export returns 405 with error',
+      () async {
+        final response = await http.post(
+          Uri.parse('$baseUrl/decks/$missingDeckId/export'),
+          headers: authHeaders(true),
+          body: jsonEncode({}),
+        );
+
+        expect405Contract(response);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'GET /decks/:id/export with missing deck returns 404 with error',
+      () async {
+        final response = await http.get(
+          Uri.parse('$baseUrl/decks/$missingDeckId/export'),
+          headers: authHeaders(),
+        );
+
+        expectJsonErrorContract(response, 404);
+      },
+      skip: skipIntegration,
+    );
+
+    test(
       'POST /decks without required fields returns 400 with error',
       () async {
         final response = await http.post(
