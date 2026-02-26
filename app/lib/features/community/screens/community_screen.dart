@@ -3,7 +3,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cached_network_image/cached_network_image.dart' show CachedNetworkImage;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/cached_card_image.dart';
 import '../providers/community_provider.dart';

@@ -444,8 +444,9 @@ class _BinderListViewState extends State<_BinderListView>
 
     return RefreshIndicator(
       onRefresh: () async {
+        final binderProvider = context.read<BinderProvider>();
         await _fetchItems(reset: true);
-        await context.read<BinderProvider>().fetchStats();
+        await binderProvider.fetchStats();
       },
       color: AppTheme.manaViolet,
       child: ListView.builder(
