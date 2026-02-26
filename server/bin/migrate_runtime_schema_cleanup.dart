@@ -34,9 +34,52 @@ Future<void> main() async {
   ''');
   await pool.execute('''
     ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS location_state VARCHAR(2)
+  ''');
+  await pool.execute('''
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS location_city VARCHAR(100)
+  ''');
+  await pool.execute('''
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS trade_notes TEXT
+  ''');
+  await pool.execute('''
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  ''');
+  await pool.execute('''
+    ALTER TABLE users
     ADD COLUMN IF NOT EXISTS fcm_token TEXT
   ''');
-  print('  ✅ users.display_name/avatar_url/fcm_token');
+  print('  ✅ users.profile fields + fcm_token');
+
+  // Sets + sync state usados por rotas de consulta (sem DDL em runtime)
+  await pool.execute('''
+    CREATE TABLE IF NOT EXISTS sets (
+      code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      release_date DATE,
+      type TEXT,
+      block TEXT,
+      is_online_only BOOLEAN,
+      is_foreign_only BOOLEAN,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  ''');
+  await pool.execute('''
+    CREATE INDEX IF NOT EXISTS idx_sets_name
+    ON sets (name)
+  ''');
+  await pool.execute('''
+    CREATE TABLE IF NOT EXISTS sync_state (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )
+  ''');
+  print('  ✅ sets + sync_state');
 
   // Social follows
   await pool.execute('''

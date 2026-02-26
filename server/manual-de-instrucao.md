@@ -4729,6 +4729,45 @@ Refatoração em `routes/market/movers/index.dart`:
 
 ---
 
+## 48. Sprint 1 — Remoção de DDL em request path (hardening backend)
+
+### 48.1 O Porquê
+
+Ainda existiam rotas executando `ALTER TABLE` / `CREATE TABLE` durante requisições HTTP. Isso aumenta latência, pode causar lock desnecessário e mistura responsabilidade de runtime com provisionamento de schema.
+
+### 48.2 O Como
+
+Rotas ajustadas para remover DDL em runtime:
+- `server/routes/users/me/index.dart`
+- `server/routes/sets/index.dart`
+- `server/routes/rules/index.dart`
+
+Mudanças aplicadas:
+- removido `_ensureUserProfileColumns(pool)` de `GET/PATCH /users/me`.
+- removido `_ensureSetsTable(pool)` de `GET /sets`.
+- removido `CREATE TABLE IF NOT EXISTS sync_state` da leitura de metadados em `GET /rules`.
+
+Garantia de schema movida para migração idempotente:
+- `server/bin/migrate_runtime_schema_cleanup.dart`
+
+Objetos adicionados/garantidos na migração:
+- colunas de perfil em `users` (`location_state`, `location_city`, `trade_notes`, `updated_at`),
+- `sets` + índice `idx_sets_name`,
+- `sync_state`.
+
+### 48.3 Validação
+
+- Migração executada com sucesso localmente (`dart run bin/migrate_runtime_schema_cleanup.dart`).
+- Quality gate quick executado com sucesso (`./scripts/quality_gate.sh quick`).
+
+### 48.4 Resultado técnico
+
+- Menos trabalho no caminho de requisição.
+- Menor risco de lock/latência por DDL em runtime.
+- Separação mais limpa entre inicialização de schema e lógica de API.
+
+---
+
 ## 43. Otimização P1 (Flutter) — NotificationProvider e SocialProvider
 
 ### 43.1 O Porquê

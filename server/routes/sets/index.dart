@@ -9,7 +9,6 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   final pool = context.read<Pool>();
-  await _ensureSetsTable(pool);
   final params = context.request.uri.queryParameters;
 
   final query = params['q']?.trim();
@@ -79,23 +78,4 @@ Future<Response> onRequest(RequestContext context) async {
       body: {'error': 'Erro interno ao buscar sets'},
     );
   }
-}
-
-Future<void> _ensureSetsTable(Pool pool) async {
-  await pool.execute(
-    Sql.named('''
-      CREATE TABLE IF NOT EXISTS sets (
-        code TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        release_date DATE,
-        type TEXT,
-        block TEXT,
-        is_online_only BOOLEAN,
-        is_foreign_only BOOLEAN,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    '''),
-  );
-  await pool.execute(Sql.named('CREATE INDEX IF NOT EXISTS idx_sets_name ON sets (name)'));
 }
