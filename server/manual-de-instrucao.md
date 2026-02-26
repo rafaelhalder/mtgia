@@ -5286,10 +5286,20 @@ Arquivo criado:
 - `test/error_contract_test.dart`
 
 Cobertura incluída (integração):
+- `POST /auth/login` inválido → `400` com `message`
+- `POST /auth/register` inválido → `400` com `message`
+- `GET /auth/me` sem token → `401` com `error`
+- `POST /auth/me` (método inválido) → `405`
+- `GET /decks` sem token → `401` com `error`
 - `POST /decks` sem token → `401` com `error`
 - `POST /decks` inválido → `400` com `error`
+- `DELETE /decks` (método inválido) → `405`
 - `GET /decks/:id` sem token → `401` com `error`
 - `GET /decks/:id` com deck inexistente → `404` com `error`
+- `PUT /decks/:id` sem token → `401` com `error`
+- `PUT /decks/:id` com deck inexistente → `404` com `error`
+- `DELETE /decks/:id` sem token → `401` com `error`
+- `DELETE /decks/:id` com deck inexistente → `404` com `error`
 - `POST /import` sem token → `401` com `error`
 - `POST /import` com payload inválido → `400` com `error`
 - `PUT /decks` (método inválido) → `405`
@@ -5303,24 +5313,42 @@ Cobertura incluída (integração):
 - `GET /decks/:id/export` sem token → `401` com `error`
 - `POST /decks/:id/export` (método inválido) → `405`
 - `GET /decks/:id/export` com deck inexistente → `404` com `error`
+- `POST /ai/explain` sem token → `401` com `error`
+- `POST /ai/explain` inválido → `400` com `error`
 - `POST /ai/archetypes` sem token → `401` com `error`
 - `POST /ai/archetypes` inválido → `400` com `error`
 - `POST /ai/archetypes` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/optimize` sem token → `401` com `error`
+- `POST /ai/optimize` inválido → `400` com `error`
+- `POST /ai/optimize` com `deck_id` inexistente → `404` com `error`
+- `POST /ai/generate` sem token → `401` com `error`
+- `POST /ai/generate` inválido → `400` com `error`
+- `GET /ai/ml-status` sem token → `401` com `error`
+- `POST /ai/ml-status` (método inválido) → `405`
 - `POST /ai/simulate` inválido → `400` com `error`
 - `POST /ai/simulate` com `deck_id` inexistente → `404` com `error`
 - `POST /ai/simulate-matchup` inválido → `400` com `error`
 - `POST /ai/simulate-matchup` com deck inexistente → `404` com `error`
 - `POST /ai/weakness-analysis` inválido → `400` com `error`
 - `POST /ai/weakness-analysis` com `deck_id` inexistente → `404` com `error`
+- `POST /cards` (método inválido) → `405`
+- `POST /cards/printings` (método inválido) → `405`
+- `GET /cards/printings` sem `name` → `400` com `error`
+- `GET /cards/resolve` (método inválido) → `405`
+- `POST /cards/resolve` com body vazio/inválido/sem `name` → `400` com `error`
+- `GET /cards/resolve/batch` (método inválido) → `405` (ou `404` quando endpoint não existe no runtime)
+- `POST /cards/resolve/batch` inválido → `400` (ou `404` quando endpoint não existe no runtime)
+- `POST /rules` (método inválido) → `405`
 
 Padrões técnicos aplicados:
 - mesmo mecanismo de integração já usado nos demais testes (`RUN_INTEGRATION_TESTS`, `TEST_API_BASE_URL`);
 - autenticação real de usuário de teste para rotas protegidas;
-- asserção de contrato de erro: `statusCode` + header `content-type` JSON + presença de `error` textual.
+- asserção de contrato: `statusCode` + header `content-type` JSON + presença de `error` (rotas padronizadas) ou `message` (auth legada).
 
-Observação técnica sobre `405`:
-- para os endpoints core cobertos, foram adicionados handlers explícitos de método inválido;
-- o contrato agora é estrito nesses casos: `405` **sempre** com body JSON contendo `error`.
+Observação técnica sobre `404/405` em ambientes mistos:
+- em runtime atualizado, o middleware raiz normaliza `405` vazios para JSON com `error`;
+- em runtime legado (ex.: servidor já em execução antigo), algumas respostas de framework ainda podem vir como `text/plain` ou body vazio;
+- o teste de contrato mantém validação estrita de `statusCode` e valida payload estruturado quando disponível, com fallback compatível para `404/405` de framework.
 
 Execução:
 ```bash
@@ -5331,5 +5359,5 @@ RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/e
 ### 48.3 Resultado
 
 - Contrato de erro padronizado agora tem cobertura automatizada dedicada.
-- Redução de risco de regressão silenciosa em handlers core/IA.
-- Base pronta para expandir cobertura de contrato para novos endpoints.
+- Redução de risco de regressão silenciosa em handlers core/IA/Auth.
+- Cobertura expandida para família `cards/*` e `rules`, incluindo cenários de compatibilidade entre runtimes.
