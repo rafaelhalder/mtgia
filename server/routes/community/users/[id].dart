@@ -20,25 +20,41 @@ Future<Response> _getUserProfile(RequestContext context, String userId) async {
   try {
     final conn = context.read<Pool>();
 
-    // Idempotente: garante colunas de perfil
-    await conn.execute(Sql.named(
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT'));
-    await conn.execute(Sql.named(
-        'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT'));
-
-    // Buscar usuário
+    // Buscar usuário com contadores agregados (sem subqueries correlacionadas)
     final userResult = await conn.execute(
       Sql.named('''
+        WITH follower_counts AS (
+          SELECT uf.following_id AS user_id, COUNT(*)::int AS follower_count
+          FROM user_follows uf
+          WHERE uf.following_id = @userId
+          GROUP BY uf.following_id
+        ),
+        following_counts AS (
+          SELECT uf.follower_id AS user_id, COUNT(*)::int AS following_count
+          FROM user_follows uf
+          WHERE uf.follower_id = @userId
+          GROUP BY uf.follower_id
+        ),
+        public_deck_counts AS (
+          SELECT d.user_id, COUNT(*)::int AS public_deck_count
+          FROM decks d
+          WHERE d.user_id = @userId
+            AND d.is_public = true
+          GROUP BY d.user_id
+        )
         SELECT
           u.id,
           u.username,
           u.display_name,
           u.avatar_url,
           u.created_at,
-          (SELECT COUNT(*)::int FROM user_follows WHERE following_id = u.id) as follower_count,
-          (SELECT COUNT(*)::int FROM user_follows WHERE follower_id = u.id) as following_count,
-          (SELECT COUNT(*)::int FROM decks WHERE user_id = u.id AND is_public = true) as public_deck_count
+          COALESCE(fc.follower_count, 0) AS follower_count,
+          COALESCE(flc.following_count, 0) AS following_count,
+          COALESCE(pdc.public_deck_count, 0) AS public_deck_count
         FROM users u
+        LEFT JOIN follower_counts fc ON fc.user_id = u.id
+        LEFT JOIN following_counts flc ON flc.user_id = u.id
+        LEFT JOIN public_deck_counts pdc ON pdc.user_id = u.id
         WHERE u.id = @userId
       '''),
       parameters: {'userId': userId},

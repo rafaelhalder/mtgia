@@ -102,6 +102,7 @@ class DirectMessage {
 
 class MessageProvider extends ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final Map<String, String> _lastMessageAtByConversation = {};
 
   List<Conversation> _conversations = [];
   List<Conversation> get conversations => _conversations;
@@ -154,17 +155,13 @@ class MessageProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Busca contagem de mensagens não-lidas (leve — só GET /conversations com limit pequeno)
+  /// Busca contagem de mensagens não-lidas (endpoint dedicado e leve)
   Future<void> fetchUnreadCount() async {
     try {
-      final resp = await _api.get('/conversations?page=1&limit=50');
+      final resp = await _api.get('/conversations/unread-count');
       if (resp.statusCode == 200 && resp.data is Map) {
         final data = resp.data as Map<String, dynamic>;
-        final list = (data['data'] as List?) ?? [];
-        int count = 0;
-        for (final item in list) {
-          count += (item['unread_count'] as int? ?? 0);
-        }
+        final count = data['unread'] as int? ?? 0;
         if (count != _unreadCount) {
           _unreadCount = count;
           notifyListeners();
@@ -223,29 +220,60 @@ class MessageProvider extends ChangeNotifier {
     return null;
   }
 
-  /// Busca mensagens de uma conversa
-  Future<void> fetchMessages(String conversationId, {int page = 1, int limit = 50}) async {
-    _isLoadingMessages = true;
-    _error = null;
-    notifyListeners();
+  /// Busca mensagens de uma conversa.
+  ///
+  /// - `incremental = false` (default): carrega página completa (DESC)
+  /// - `incremental = true`: busca apenas mensagens novas com `since`
+  Future<void> fetchMessages(
+    String conversationId, {
+    int page = 1,
+    int limit = 50,
+    bool incremental = false,
+  }) async {
+    if (!incremental) {
+      _isLoadingMessages = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
-      final resp = await _api.get(
-        '/conversations/$conversationId/messages?page=$page&limit=$limit',
-      );
+      final since = _lastMessageAtByConversation[conversationId];
+      final endpoint = incremental && since != null
+          ? '/conversations/$conversationId/messages?since=${Uri.encodeQueryComponent(since)}&limit=$limit'
+          : '/conversations/$conversationId/messages?page=$page&limit=$limit';
+
+      final resp = await _api.get(endpoint);
       if (resp.statusCode == 200 && resp.data is Map) {
         final data = resp.data as Map<String, dynamic>;
         final list = (data['data'] as List?) ?? [];
-        _messages = list
+        final fetched = list
             .map((e) => DirectMessage.fromJson(e as Map<String, dynamic>))
             .toList();
-        _totalMessages = data['total'] as int? ?? list.length;
+
+        if (!incremental || since == null) {
+          _messages = fetched;
+          _totalMessages = data['total'] as int? ?? list.length;
+        } else if (fetched.isNotEmpty) {
+          // Evita duplicatas ao mesclar com lista local (DESC)
+          final existingIds = _messages.map((m) => m.id).toSet();
+          final toInsert = fetched.where((m) => !existingIds.contains(m.id)).toList();
+          if (toInsert.isNotEmpty) {
+            _messages.insertAll(0, toInsert);
+            _totalMessages += toInsert.length;
+          }
+        }
+
+        if (_messages.isNotEmpty) {
+          _lastMessageAtByConversation[conversationId] = _messages.first.createdAt;
+        }
       }
     } catch (e) {
       _error = '$e';
       debugPrint('[MessageProvider] fetchMessages error: $e');
     } finally {
-      _isLoadingMessages = false;
+      if (!incremental) {
+        _isLoadingMessages = false;
+      }
       notifyListeners();
     }
   }
@@ -317,6 +345,7 @@ class MessageProvider extends ChangeNotifier {
     _totalConversations = 0;
     _totalMessages = 0;
     _unreadCount = 0;
+    _lastMessageAtByConversation.clear();
     notifyListeners();
   }
 }

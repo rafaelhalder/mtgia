@@ -34,7 +34,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     // Polling a cada 5 segundos para novas mensagens
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted) _loadMessages();
+      if (mounted) _loadMessages(incremental: true);
     });
   }
 
@@ -46,8 +46,11 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _loadMessages() {
-    context.read<MessageProvider>().fetchMessages(widget.conversationId);
+  void _loadMessages({bool incremental = false}) {
+    context.read<MessageProvider>().fetchMessages(
+          widget.conversationId,
+          incremental: incremental,
+        );
   }
 
   void _markAsRead() {

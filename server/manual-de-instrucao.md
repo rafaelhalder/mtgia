@@ -4541,3 +4541,160 @@ Se EDHREC retornar erro (403, 404, timeout):
 - Log de warning
 - Usa Scryfall como fallback (comportamento anterior)
 - Não quebra o fluxo de otimização
+
+---
+
+## 36. Hardening de Performance (P0) — DDL fora de runtime + chat incremental
+
+### 36.1 O Porquê
+
+Foram identificados gargalos no fluxo de requisição:
+
+1. **DDL em runtime** (`ALTER TABLE`, `CREATE INDEX`, `CREATE TABLE`) no middleware/rotas.
+   - Mesmo idempotente, DDL no caminho de request pode causar lock, latência e comportamento inconsistente em múltiplas instâncias.
+2. **Contagem de mensagens não lidas via endpoint pesado**.
+   - O app consultava lista de conversas completa para calcular badge.
+3. **Polling do chat recarregando histórico inteiro** a cada ciclo.
+   - Requisições maiores e renderizações desnecessárias.
+
+Objetivo: reduzir latência e carga de banco sem alterar UX.
+
+### 36.2 O Como
+
+#### A) Remoção de DDL do caminho de requisição
+
+- Removido bootstrap de schema em:
+  - `routes/_middleware.dart`
+  - `routes/community/users/index.dart`
+  - `routes/community/users/[id].dart`
+
+Essas rotinas foram substituídas por migração explícita:
+
+- **Novo script:** `bin/migrate_runtime_schema_cleanup.dart`
+
+Execução:
+
+```bash
+dart run bin/migrate_runtime_schema_cleanup.dart
+```
+
+Esse script garante, de forma idempotente:
+- `cards.color_identity` + índice GIN
+- `users.display_name`, `users.avatar_url`, `users.fcm_token`
+- `user_follows` + índices
+- `conversations` + índice funcional único `uq_conversation_pair`
+- `direct_messages` + índices
+- `notifications` + índices
+
+#### B) Endpoint dedicado para unread de mensagens
+
+- **Novo endpoint:** `GET /conversations/unread-count`
+- Implementação em: `routes/conversations/unread-count.dart`
+
+Query usada:
+
+```sql
+SELECT COUNT(*)::int
+FROM direct_messages dm
+JOIN conversations c ON c.id = dm.conversation_id
+WHERE dm.read_at IS NULL
+  AND dm.sender_id != @userId
+  AND (c.user_a_id = @userId OR c.user_b_id = @userId)
+```
+
+No app, `MessageProvider.fetchUnreadCount()` passou a usar esse endpoint, eliminando a necessidade de baixar conversas para computar badge.
+
+#### C) Polling incremental no chat
+
+- Backend: `GET /conversations/:id/messages` agora aceita `?since=<ISO8601>`.
+- Quando `since` existe, retorna apenas mensagens novas (`created_at > since`) mantendo ordenação DESC.
+- Frontend:
+  - `MessageProvider.fetchMessages(..., incremental: true)` faz merge sem recarregar lista inteira.
+  - `ChatScreen` usa polling incremental no timer.
+
+Resultado: menor payload por ciclo e menos churn de UI.
+
+### 36.3 Correção de consistência (conversations)
+
+Foi removida dependência de nome fixo de constraint no upsert de conversas.
+
+Antes:
+```sql
+ON CONFLICT ON CONSTRAINT uq_conversation
+```
+
+Depois (compatível com índice funcional):
+```sql
+ON CONFLICT (LEAST(user_a_id, user_b_id), GREATEST(user_a_id, user_b_id))
+```
+
+Arquivo: `routes/conversations/index.dart`.
+
+### 36.4 Padrões aplicados (Clean Code / Clean Architecture)
+
+- **Separação de responsabilidades:** schema evolui por migration (camada operacional), não por handler HTTP.
+- **Single Responsibility:** endpoint de unread faz uma única tarefa, com query dedicada.
+- **Performance by design:** polling incremental baseado em cursor temporal (`since`).
+- **Backward compatibility:** sem `since`, endpoint de mensagens mantém comportamento paginado anterior.
+
+### 36.5 Bibliotecas envolvidas
+
+- `postgres`: execução de SQL e parâmetros tipados.
+- `dart_frog`: roteamento e handlers.
+
+Nenhuma dependência nova foi adicionada nesse pacote de melhorias.
+
+---
+
+## 37. Otimização P1 — Consultas Sociais (`/community/users`)
+
+### 37.1 O Porquê
+
+As rotas sociais utilizavam contadores com subqueries correlacionadas por linha:
+
+- seguidores
+- seguindo
+- decks públicos
+
+Esse padrão escala pior em páginas com muitos usuários, pois reexecuta contagens para cada linha retornada.
+
+### 37.2 O Como
+
+Refatoramos para **paginar primeiro** e **agregar em lote** usando CTEs:
+
+- `routes/community/users/index.dart`
+  - `paged_users` (subset paginado)
+  - `follower_counts`, `following_counts`, `public_deck_counts` agregados apenas para os IDs da página
+  - `LEFT JOIN` dos agregados no resultado final
+
+- `routes/community/users/[id].dart`
+  - mesmo princípio para perfil público: contadores agregados em CTEs e join único
+
+Benefícios:
+- menos round-trips lógicos no planner
+- menor custo para páginas com muitos resultados
+- query mais previsível para tuning/EXPLAIN
+
+### 37.3 Índices adicionados
+
+Novo script:
+
+- `bin/migrate_social_query_indexes.dart`
+
+Executa:
+
+```bash
+dart run bin/migrate_social_query_indexes.dart
+```
+
+Cria (idempotente):
+- `idx_users_username_lower`
+- `idx_users_display_name_lower`
+- `idx_decks_user_public`
+- reforço de `idx_user_follows_follower` e `idx_user_follows_following`
+
+### 37.4 Padrões aplicados
+
+- **Performance por desenho:** reduzir subqueries por linha
+- **Compatibilidade:** contrato de resposta mantido
+- **Migração explícita:** ajustes de índice fora do request path
