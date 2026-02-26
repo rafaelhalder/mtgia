@@ -14,7 +14,8 @@ void main() {
       ? null
       : 'Requer servidor rodando (defina RUN_INTEGRATION_TESTS=1).';
 
-  const baseUrl = 'http://localhost:8080';
+  final baseUrl =
+      Platform.environment['TEST_API_BASE_URL'] ?? 'http://localhost:8080';
 
   const testUser = {
     'email': 'test_deck_incremental@example.com',

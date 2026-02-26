@@ -326,6 +326,52 @@ Resultado:
 - backend e frontend passaram;
 - integração backend foi corretamente desabilitada quando o probe JSON não confirmou API válida em `localhost`.
 
+---
+
+## 44. Automação de validação local — script único para integração
+
+### 44.1 O Porquê
+
+Mesmo com `quality_gate.sh` robusto, ainda era necessário coordenar manualmente:
+1. subir API local;
+2. esperar readiness;
+3. rodar `quality_gate.sh full`;
+4. encerrar processo local.
+
+Isso aumentava atrito operacional no fechamento de tarefas.
+
+### 44.2 O Como
+
+Novo script criado:
+- `scripts/dev_full_with_integration.sh`
+
+Fluxo automatizado:
+- verifica se a API já está pronta em `API_BASE_URL`;
+- se não estiver, sobe `dart_frog dev` local;
+- aguarda readiness via probe JSON em `POST /auth/login`;
+- executa `quality_gate.sh full` com integração habilitada;
+- encerra automaticamente o processo da API quando ele foi iniciado pelo script.
+
+Variáveis suportadas:
+- `PORT` (default: `8080`)
+- `API_BASE_URL` (default: `http://localhost:$PORT`)
+- `SERVER_START_TIMEOUT` (default: `45` segundos)
+
+### 44.3 Como usar
+
+Comando padrão:
+- `./scripts/dev_full_with_integration.sh`
+
+Com parâmetros:
+- `PORT=8081 ./scripts/dev_full_with_integration.sh`
+- `API_BASE_URL=http://localhost:8081 PORT=8081 ./scripts/dev_full_with_integration.sh`
+
+### 44.4 Padrões aplicados
+
+- **Fail-fast:** aborta com mensagem clara em caso de timeout/queda do servidor.
+- **Cleanup garantido:** `trap` para encerrar processo iniciado pelo script.
+- **Compatibilidade:** reaproveita `quality_gate.sh` como fonte única de validação.
+
 **Documentação Completa:** Ver `server/test/README.md` para detalhes sobre cada teste.
 
 ---
