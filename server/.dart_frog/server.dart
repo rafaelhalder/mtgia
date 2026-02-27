@@ -75,6 +75,7 @@ import '../routes/ai/optimize/telemetry/index.dart' as ai_optimize_telemetry_ind
 import '../routes/ai/ml-status/index.dart' as ai_ml_status_index;
 import '../routes/ai/generate/index.dart' as ai_generate_index;
 import '../routes/ai/explain/index.dart' as ai_explain_index;
+import '../routes/ai/commander-reference/index.dart' as ai_commander_reference_index;
 import '../routes/ai/archetypes/index.dart' as ai_archetypes_index;
 
 import '../routes/_middleware.dart' as middleware;
@@ -104,6 +105,7 @@ Handler buildRootHandler() {
   final pipeline = const Pipeline().addMiddleware(middleware.middleware);
   final router = Router()
     ..mount('/ai/archetypes', (context) => buildAiArchetypesHandler()(context))
+    ..mount('/ai/commander-reference', (context) => buildAiCommanderReferenceHandler()(context))
     ..mount('/ai/explain', (context) => buildAiExplainHandler()(context))
     ..mount('/ai/generate', (context) => buildAiGenerateHandler()(context))
     ..mount('/ai/ml-status', (context) => buildAiMlStatusHandler()(context))
@@ -169,6 +171,13 @@ Handler buildAiArchetypesHandler() {
   final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
   final router = Router()
     ..all('/', (context) => ai_archetypes_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAiCommanderReferenceHandler() {
+  final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => ai_commander_reference_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

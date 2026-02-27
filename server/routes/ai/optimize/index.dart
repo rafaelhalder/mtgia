@@ -905,6 +905,20 @@ Future<Response> onRequest(RequestContext context) async {
       final cardId = row[9] as String;
 
       currentTotalCards += quantity;
+
+    if (commanders.isNotEmpty && commanderColorIdentity.isEmpty) {
+      final inferredFromDeck = normalizeColorIdentity(deckColors.toList());
+      if (inferredFromDeck.isNotEmpty) {
+        commanderColorIdentity.addAll(inferredFromDeck);
+      } else {
+        commanderColorIdentity.addAll(const {'W', 'U', 'B', 'R', 'G'});
+      }
+      Log.w(
+        'Commander sem color_identity detectável; aplicando identidade fallback '
+        'para evitar complete degradado. commanders=${commanders.join(' | ')} '
+        'identity=${commanderColorIdentity.join(',')}',
+      );
+    }
       originalCountsById[cardId] = (originalCountsById[cardId] ?? 0) + quantity;
 
       // Coletar cores do deck
@@ -1021,10 +1035,33 @@ Future<Response> onRequest(RequestContext context) async {
         final filteredByIdentityAll = <String>[];
         final invalidAll = <String>[];
         final aiSuggestedNames = <String>{};
+        final commanderMetaPriorityNames = <String>{};
+        final targetAdditionsForComplete = maxTotal - currentTotalCards;
+        final maxBasicAdditions = targetAdditionsForComplete >= 40
+          ? (targetAdditionsForComplete * 0.65).floor()
+          : 999;
 
         var aiStageUsed = false;
         var deterministicStageUsed = false;
         var guaranteedBasicsStageUsed = false;
+        var competitiveModelStageUsed = false;
+        var basicAddedDuringBuild = 0;
+
+        if (commanders.isNotEmpty) {
+          final commanderName = commanders.first.trim();
+          if (commanderName.isNotEmpty) {
+            final priorityNames = await _loadCommanderCompetitivePriorities(
+              pool: pool,
+              commanderName: commanderName,
+              limit: 120,
+            );
+            if (priorityNames.isNotEmpty) {
+              competitiveModelStageUsed = true;
+              commanderMetaPriorityNames.addAll(priorityNames);
+              aiSuggestedNames.addAll(priorityNames.map((e) => e.toLowerCase()));
+            }
+          }
+        }
 
         var iterations = 0;
         var virtualTotal = currentTotalCards;
@@ -1341,6 +1378,8 @@ Future<Response> onRequest(RequestContext context) async {
             });
 
             var landsToAdd = (idealLands - currentLandsAfterSpells).clamp(0, maxTotal - virtualTotal);
+            final remainingBasicBudget = (maxBasicAdditions - basicAddedDuringBuild).clamp(0, 999);
+            landsToAdd = landsToAdd.clamp(0, remainingBasicBudget);
             final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
             final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
             if (basicsWithIds.isNotEmpty) {
@@ -1353,6 +1392,7 @@ Future<Response> onRequest(RequestContext context) async {
                 addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
                 virtualTotal += 1;
                 landsToAdd--;
+                basicAddedDuringBuild += 1;
                 i++;
               }
             }
@@ -1423,6 +1463,67 @@ Future<Response> onRequest(RequestContext context) async {
                 };
               }
             }
+
+            if (virtualTotal < maxTotal) {
+              final emergencyRemaining = maxTotal - virtualTotal;
+              final emergencyFillers = await _loadEmergencyNonBasicFillers(
+                pool: pool,
+                excludeNames: virtualDeck
+                    .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+                    .where((n) => n.isNotEmpty)
+                    .toSet(),
+                bracket: bracket,
+                limit: emergencyRemaining,
+              );
+              if (emergencyFillers.isNotEmpty) deterministicStageUsed = true;
+
+              for (final filler in emergencyFillers) {
+                if (virtualTotal >= maxTotal) break;
+                final id = filler['id'] as String;
+                final name = filler['name'] as String;
+                final nameLower = name.toLowerCase();
+                final maxCopies = _maxCopiesForFormat(
+                  deckFormat: deckFormat,
+                  typeLine: filler['type_line'] as String? ?? '',
+                  name: name,
+                );
+
+                if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+                  continue;
+                }
+
+                virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+                virtualCountsByName[nameLower] =
+                    (virtualCountsByName[nameLower] ?? 0) + 1;
+                addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+                virtualTotal += 1;
+
+                final existingIndex = virtualDeck.indexWhere(
+                  (e) => (e['card_id'] as String?) == id,
+                );
+
+                if (existingIndex == -1) {
+                  virtualDeck.add({
+                    'card_id': id,
+                    'name': name,
+                    'type_line': filler['type_line'] ?? '',
+                    'oracle_text': filler['oracle_text'] ?? '',
+                    'colors': filler['colors'] ?? <String>[],
+                    'color_identity': filler['color_identity'] ?? <String>[],
+                    'quantity': 1,
+                    'is_commander': false,
+                    'mana_cost': '',
+                    'cmc': 0.0,
+                  });
+                } else {
+                  final existing = virtualDeck[existingIndex];
+                  virtualDeck[existingIndex] = {
+                    ...existing,
+                    'quantity': (existing['quantity'] as int? ?? 1) + 1,
+                  };
+                }
+              }
+            }
           }
 
           // Garantia local de fechamento do tamanho do deck.
@@ -1434,7 +1535,7 @@ Future<Response> onRequest(RequestContext context) async {
               guaranteedBasicsStageUsed = true;
               final keys = basicsWithIds.keys.toList();
               var i = 0;
-              while (virtualTotal < maxTotal) {
+              while (virtualTotal < maxTotal && basicAddedDuringBuild < maxBasicAdditions) {
                 final name = keys[i % keys.length];
                 final id = basicsWithIds[name]!;
 
@@ -1443,6 +1544,7 @@ Future<Response> onRequest(RequestContext context) async {
                     (virtualCountsByName[name.toLowerCase()] ?? 0) + 1;
                 addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
                 virtualTotal += 1;
+                basicAddedDuringBuild += 1;
                 i++;
               }
             }
@@ -1500,7 +1602,7 @@ Future<Response> onRequest(RequestContext context) async {
             'basic_added': basicAdded,
             'non_basic_added': nonBasicAdded,
           };
-        } else if (targetTotal >= 40 && basicAdded > 50) {
+        } else if (targetTotal >= 40 && basicAdded > (targetTotal * 0.65).floor()) {
           qualityError = {
             'code': 'COMPLETE_QUALITY_BASIC_OVERFLOW',
             'message':
@@ -1544,6 +1646,7 @@ Future<Response> onRequest(RequestContext context) async {
           'consistency_slo': {
             'completed_target': addedTotal >= targetTotal,
             'ai_stage_used': aiStageUsed,
+            'competitive_model_stage_used': competitiveModelStageUsed,
             'deterministic_stage_used': deterministicStageUsed,
             'guaranteed_basics_stage_used': guaranteedBasicsStageUsed,
             'added_total': addedTotal,
@@ -3403,6 +3506,120 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
       .toList();
 }
 
+Future<List<String>> _loadCommanderCompetitivePriorities({
+  required Pool pool,
+  required String commanderName,
+  required int limit,
+}) async {
+  if (commanderName.trim().isEmpty || limit <= 0) return const [];
+
+  var result = await pool.execute(
+    Sql.named('''
+      SELECT card_list
+      FROM meta_decks
+      WHERE format IN ('EDH', 'cEDH')
+        AND card_list ILIKE @commanderPattern
+      ORDER BY created_at DESC
+      LIMIT 200
+    '''),
+    parameters: {
+      'commanderPattern': '%${commanderName.replaceAll('%', '')}%',
+    },
+  );
+
+  if (result.isEmpty) {
+    final commanderToken = commanderName.split(',').first.trim();
+    if (commanderToken.isNotEmpty) {
+      result = await pool.execute(
+        Sql.named('''
+          SELECT card_list
+          FROM meta_decks
+          WHERE format IN ('EDH', 'cEDH')
+            AND archetype ILIKE @archetypePattern
+          ORDER BY created_at DESC
+          LIMIT 200
+        '''),
+        parameters: {
+          'archetypePattern': '%${commanderToken.replaceAll('%', '')}%',
+        },
+      );
+    }
+  }
+
+  if (result.isEmpty) {
+    List<dynamic> fallback = const [];
+    try {
+      fallback = await pool.execute(
+        Sql.named('''
+          SELECT card_name, usage_count, meta_deck_count
+          FROM card_meta_insights
+          WHERE @commander = ANY(common_commanders)
+          ORDER BY meta_deck_count DESC, usage_count DESC, card_name ASC
+          LIMIT @limit
+        '''),
+        parameters: {
+          'commander': commanderName,
+          'limit': limit,
+        },
+      );
+    } catch (_) {
+      fallback = const [];
+    }
+
+    if (fallback.isEmpty) return const [];
+
+    return fallback
+        .map((row) => (row[0] as String?) ?? '')
+        .where((name) => name.trim().isNotEmpty)
+        .take(limit)
+        .toList();
+  }
+
+  final commanderLower = commanderName.trim().toLowerCase();
+  final counts = <String, int>{};
+
+  for (final row in result) {
+    final raw = (row[0] as String?) ?? '';
+    if (raw.trim().isEmpty) continue;
+
+    var inSideboard = false;
+    final lines = raw.split('\n');
+    for (final lineRaw in lines) {
+      final line = lineRaw.trim();
+      if (line.isEmpty) continue;
+      if (line.toLowerCase().contains('sideboard')) {
+        inSideboard = true;
+        continue;
+      }
+      if (inSideboard) continue;
+
+      final match = RegExp(r'^(\d+)x?\s+(.+)$').firstMatch(line);
+      if (match == null) continue;
+
+      final quantity = int.tryParse(match.group(1) ?? '1') ?? 1;
+      var cardName = (match.group(2) ?? '').trim();
+      if (cardName.isEmpty) continue;
+
+      cardName = cardName.replaceAll(RegExp(r'\s*\([^)]+\)\s*$'), '').trim();
+      if (cardName.isEmpty) continue;
+
+      final lower = cardName.toLowerCase();
+      if (lower == commanderLower || _isBasicLandName(lower)) continue;
+
+      counts[cardName] = (counts[cardName] ?? 0) + quantity;
+    }
+  }
+
+  final sorted = counts.entries.toList()
+    ..sort((a, b) {
+      final byCount = b.value.compareTo(a.value);
+      if (byCount != 0) return byCount;
+      return a.key.compareTo(b.key);
+    });
+
+  return sorted.take(limit).map((e) => e.key).toList();
+}
+
 String _inferFunctionalRole({
   required String name,
   required String typeLine,
@@ -3656,6 +3873,93 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
       .toList();
 }
 
+Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
+  required Pool pool,
+  required Set<String> commanderColorIdentity,
+  required Set<String> excludeNames,
+  required int? bracket,
+  required int limit,
+}) async {
+  if (limit <= 0) return const [];
+
+  final identity = commanderColorIdentity.toList();
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
+      FROM cards c
+      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+        AND c.type_line NOT ILIKE '%land%'
+        AND c.name NOT LIKE 'A-%'
+        AND c.name NOT LIKE '\_%' ESCAPE '\\'
+        AND c.name NOT LIKE '%World Champion%'
+        AND c.name NOT LIKE '%Heroes of the Realm%'
+        AND c.oracle_text IS NOT NULL
+        AND (
+          (
+            c.color_identity IS NOT NULL
+            AND (
+              c.color_identity <@ @identity::text[]
+              OR c.color_identity = '{}'
+            )
+          )
+          OR (
+            c.color_identity IS NULL
+            AND (
+              c.colors <@ @identity::text[]
+              OR c.colors = '{}'
+              OR c.colors IS NULL
+            )
+          )
+        )
+      ORDER BY c.name ASC
+      LIMIT @limit
+    '''),
+    parameters: {
+      'exclude': excludeNames.toList(),
+      'identity': identity,
+      'limit': limit,
+    },
+  );
+
+  var candidates = result
+      .map((row) => {
+            'id': row[0] as String,
+            'name': row[1] as String,
+            'type_line': (row[2] as String?) ?? '',
+            'oracle_text': (row[3] as String?) ?? '',
+            'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
+            'color_identity':
+                (row[5] as List?)?.cast<String>() ?? const <String>[],
+          })
+      .toList();
+
+  if (bracket != null && candidates.isNotEmpty) {
+    final decision = applyBracketPolicyToAdditions(
+      bracket: bracket,
+      currentDeckCards: const [],
+      additionsCardsData: candidates.map((c) {
+        return {
+          'name': c['name'],
+          'type_line': c['type_line'],
+          'oracle_text': c['oracle_text'],
+          'quantity': 1,
+        };
+      }),
+    );
+    final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
+    final filtered = candidates
+        .where((c) => allowedSet.contains((c['name'] as String).toLowerCase()))
+        .toList();
+    if (filtered.isNotEmpty) {
+      candidates = filtered;
+    }
+  }
+
+  return candidates.take(limit).toList();
+}
+
 Future<List<Map<String, dynamic>>> _loadGuaranteedNonBasicFillers({
   required Pool pool,
   required List<Map<String, dynamic>> currentDeckCards,
@@ -3715,6 +4019,28 @@ Future<List<Map<String, dynamic>>> _loadGuaranteedNonBasicFillers({
       limit: limit - aggregated.length,
     );
     addUnique(metaFillers);
+  }
+
+  if (aggregated.length < limit) {
+    final broadWithBracket = await _loadBroadCommanderNonLandFillers(
+      pool: pool,
+      commanderColorIdentity: commanderColorIdentity,
+      excludeNames: excludeNames.union(seen),
+      bracket: bracket,
+      limit: limit - aggregated.length,
+    );
+    addUnique(broadWithBracket);
+  }
+
+  if (aggregated.length < limit) {
+    final broadNoBracket = await _loadBroadCommanderNonLandFillers(
+      pool: pool,
+      commanderColorIdentity: commanderColorIdentity,
+      excludeNames: excludeNames.union(seen),
+      bracket: null,
+      limit: limit - aggregated.length,
+    );
+    addUnique(broadNoBracket);
   }
 
   return aggregated.take(limit).toList();
@@ -3857,6 +4183,72 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
     // Se o filtro do bracket zerar tudo nesta etapa de emergência,
     // preferimos manter pool válido (identidade/legalidade) para evitar
     // completar com básicos em excesso.
+    if (filtered.isNotEmpty) {
+      candidates = filtered;
+    }
+  }
+
+  return candidates.take(limit).toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
+  required Pool pool,
+  required Set<String> excludeNames,
+  required int? bracket,
+  required int limit,
+}) async {
+  if (limit <= 0) return const [];
+
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
+      FROM cards c
+      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+        AND c.type_line NOT ILIKE '%land%'
+        AND c.name NOT LIKE 'A-%'
+        AND c.name NOT LIKE '\_%' ESCAPE '\\'
+        AND c.name NOT LIKE '%World Champion%'
+        AND c.name NOT LIKE '%Heroes of the Realm%'
+      ORDER BY c.name ASC
+      LIMIT @limit
+    '''),
+    parameters: {
+      'exclude': excludeNames.toList(),
+      'limit': limit * 3,
+    },
+  );
+
+  var candidates = result
+      .map((row) => {
+            'id': row[0] as String,
+            'name': row[1] as String,
+            'type_line': (row[2] as String?) ?? '',
+            'oracle_text': (row[3] as String?) ?? '',
+            'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
+            'color_identity':
+                (row[5] as List?)?.cast<String>() ?? const <String>[],
+          })
+      .toList();
+
+  if (bracket != null && candidates.isNotEmpty) {
+    final decision = applyBracketPolicyToAdditions(
+      bracket: bracket,
+      currentDeckCards: const [],
+      additionsCardsData: candidates.map((c) {
+        return {
+          'name': c['name'],
+          'type_line': c['type_line'],
+          'oracle_text': c['oracle_text'],
+          'quantity': 1,
+        };
+      }),
+    );
+    final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
+    final filtered = candidates
+        .where((c) => allowedSet.contains((c['name'] as String).toLowerCase()))
+        .toList();
     if (filtered.isNotEmpty) {
       candidates = filtered;
     }

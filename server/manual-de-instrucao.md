@@ -7037,3 +7037,155 @@ Novos helpers:
 
 Mesmo com reforço de fallback, se o acervo elegível local for insuficiente para o caso, a API prefere reprovar com diagnóstico explícito em vez de aceitar um output inconsistente.
 
+## 80. Gate exclusivo do carro-chefe (temporário)
+
+### 80.1 O porquê
+
+Durante a fase de correção intensiva do fluxo `optimize/complete`, o gate geral do projeto não é o melhor sinal para evolução rápida do carro-chefe.
+
+Foi criado um gate dedicado para validar sempre o cenário real da otimização com artefato.
+
+### 80.2 O como
+
+Arquivo novo:
+- `scripts/quality_gate_carro_chefe.sh`
+
+Esse script:
+- executa apenas o teste crítico de regressão do fluxo de otimização;
+- força integração (`RUN_INTEGRATION_TESTS=1`);
+- aceita `SOURCE_DECK_ID` para validar deck-alvo explícito;
+- confirma geração de artefato em `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`.
+
+Uso:
+- `./scripts/quality_gate_carro_chefe.sh`
+- `SOURCE_DECK_ID=<uuid> ./scripts/quality_gate_carro_chefe.sh`
+
+Complemento técnico no teste:
+- `server/test/ai_optimize_flow_test.dart` passou a ler `SOURCE_DECK_ID` via variável de ambiente (fallback para o deck padrão de regressão).
+
+### 80.3 Resultado
+
+- Gate dedicado validado com sucesso em execução real.
+- Mantém foco total no comportamento funcional do carro-chefe sem perder rastreabilidade.
+
+### 80.4 Endurecimento aplicado (modo estrito)
+
+O `quality_gate_carro_chefe.sh` foi endurecido para refletir critério real de funcionalidade:
+
+- sobe backend temporário automaticamente quando `localhost:8080` não está ativo;
+- executa o teste crítico de regressão;
+- valida o artefato `source_deck_optimize_latest.json` em modo estrito;
+- **falha** se `optimize_status != 200` ou se existir `quality_error`.
+
+Resultado prático: cenários com `COMPLETE_QUALITY_BASIC_OVERFLOW` (ex.: excesso de básicos) não passam mais no gate exclusivo, mesmo quando o teste de contrato em si conclui sem erro técnico.
+
+## 81. Referência competitiva por comandante (endpoint + uso no optimize)
+
+### 81.1 O porquê
+
+Para reduzir decisões baseadas apenas em heurística genérica, foi necessário introduzir um caminho explícito para buscar referências competitivas por comandante e usar esse sinal dentro do fluxo `optimize/complete`.
+
+### 81.2 O como
+
+Novo endpoint criado:
+- `GET /ai/commander-reference?commander=<nome>&limit=<n>`
+- arquivo: `server/routes/ai/commander-reference/index.dart`
+
+Comportamento:
+- busca decks em `meta_decks` (formatos `EDH` e `cEDH`) contendo o comandante no `card_list`;
+- fallback por `archetype ILIKE` com token do comandante quando não houver match direto no `card_list`;
+- gera modelo de referência com cartas mais frequentes (não-básicas), taxa de aparição e amostra de decks fonte;
+- fallback resiliente para schema parcial (quando coluna `common_commanders` não existe), sem quebrar a rota.
+
+Integração no `optimize/complete`:
+- arquivo: `server/routes/ai/optimize/index.dart`
+- adição de `_loadCommanderCompetitivePriorities(...)` com mesma lógica de fallback (`card_list` -> `archetype` -> `card_meta_insights` quando disponível);
+- nomes prioritários do modelo competitivo entram no solver como preferência (boost de ranking), tornando as sugestões menos arbitrárias e mais ancoradas no acervo competitivo local.
+
+### 81.3 Validação
+
+Teste funcional via API:
+- para `commander=Kinnan`, endpoint retornou `meta_decks_found > 0` e lista de referência;
+- para comandantes sem cobertura no acervo atual, retorna vazio sem erro (comportamento esperado e auditável).
+
+## 82. Sync on-demand por comandante (MTGTop8) no endpoint de referência
+
+### 82.1 O porquê
+
+Mesmo com coleta periódica, alguns comandantes podem ficar sem cobertura imediata no acervo local (`meta_decks`). Para reduzir esse gap no fluxo crítico de otimização, foi adicionado um modo de atualização sob demanda por comandante, acionado na própria rota de referência.
+
+### 82.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/commander-reference/index.dart`
+
+Contrato novo no endpoint:
+- `GET /ai/commander-reference?commander=<nome>&limit=<n>&refresh=true`
+
+Comportamento quando `refresh=true`:
+- executa varredura controlada no MTGTop8 para formatos `EDH` e `cEDH`;
+- lê eventos recentes por formato e tenta importar decks ainda não presentes em `meta_decks`;
+- baixa decklist (`/mtgo?d=<id>`) e só persiste decks com match no nome do comandante solicitado;
+- mantém idempotência via `ON CONFLICT (source_url) DO NOTHING`;
+- retorna resumo de atualização em `refresh` (importados, eventos/decks escaneados, se encontrou comandante).
+
+Estratégia de segurança/performance:
+- escopo de coleta limitado (amostra de eventos e decks por evento) para não degradar a latência da API;
+- atualização é opt-in por query param, preservando comportamento rápido padrão quando `refresh` não é enviado.
+
+### 82.3 Exemplo de uso
+
+```bash
+curl -s "http://localhost:8080/ai/commander-reference?commander=Kinnan&limit=30&refresh=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+Resposta inclui:
+- `meta_decks_found`
+- `references`
+- `model`
+- `refresh` (quando o modo on-demand foi acionado)
+
+## 83. Hardening do complete: fallback de emergência não-básico
+
+### 83.1 O porquê
+
+Em alguns cenários de deck mínimo (ex.: regressão com deck-base muito pequeno), o pipeline de preenchimento podia ficar com pool insuficiente de não-básicas após filtros, resultando em `COMPLETE_QUALITY_PARTIAL` e bloqueio `422`.
+
+### 83.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças aplicadas:
+- fallback de identidade quando comandante chega sem `color_identity` detectável:
+  - tenta inferir por `deckColors`;
+  - se ainda vazio, usa identidade ampla (`W/U/B/R/G`) para evitar starvation;
+- novo estágio `_loadEmergencyNonBasicFillers(...)` no fluxo `complete`:
+  - consulta cartas legais, não-terreno e não duplicadas;
+  - aplica filtro de bracket quando possível (sem zerar pool);
+  - preenche lacunas restantes antes do fallback final de básicos.
+
+Resultado esperado:
+- reduzir `422` por adições insuficientes;
+- manter a qualidade mínima do complete (menos degeneração em básicos) mesmo em decks de entrada muito pequenos.
+
+## 84. Correção de identidade de cor composta (root cause de starvation)
+
+### 84.1 O porquê
+
+Foi identificado um cenário em que a identidade de cor podia chegar em formato composto (ex.: `"{W}{U}"`, `"W,U"`), e a normalização literal tratava isso como token único. Resultado: filtros de identidade passavam quase só cartas incolores, degradando o `complete`.
+
+### 84.2 O como
+
+Arquivo alterado:
+- `server/lib/color_identity.dart`
+
+Mudança:
+- `normalizeColorIdentity(...)` passou a extrair símbolos válidos via regex (`W/U/B/R/G/C`) em vez de manter strings compostas intactas.
+
+Impacto:
+- `isWithinCommanderIdentity(...)` passa a comparar conjuntos reais de cores;
+- aumenta o pool elegível de cartas não-básicas no fluxo `optimize/complete`;
+- reduz risco de fallback degenerado causado por identidade mal normalizada.
+

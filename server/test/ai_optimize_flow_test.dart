@@ -17,7 +17,8 @@ void main() {
     'password': 'TestPassword123!',
     'username': 'test_optimize_flow_user',
   };
-  const sourceDeckId = '0b163477-2e8a-488a-8883-774fcd05281f';
+  final sourceDeckId =
+      Platform.environment['SOURCE_DECK_ID'] ?? '0b163477-2e8a-488a-8883-774fcd05281f';
 
   final createdDeckIds = <String>[];
   String? authToken;
@@ -674,11 +675,12 @@ void main() {
             );
 
             // Guardrail de qualidade: não aceitar enchimento degenerado de básicos.
+            final maxAllowedBasics = (targetAdditions * 0.65).floor();
             expect(
-              basicAdded <= 50,
+              basicAdded <= maxAllowedBasics,
               isTrue,
               reason:
-                  'Complete mode retornou básicos demais ($basicAdded de $totalAdded adições).',
+                  'Complete mode retornou básicos demais ($basicAdded de $totalAdded adições, limite=$maxAllowedBasics).',
             );
           }
         }

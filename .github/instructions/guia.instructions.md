@@ -12,12 +12,28 @@ Para manter o projeto organizado e executável ponta a ponta, seguir SEMPRE:
 1. **Roadmap único:** usar `ROADMAP.md` como fonte principal de priorização e ordem de execução.
 2. **Histórico técnico:** registrar mudanças relevantes em `server/manual-de-instrucao.md`.
 3. **Documentos arquivados:** materiais não prioritários ficam em `archive_docs/`.
-4. **Quality Gate obrigatório:** antes de concluir qualquer etapa, executar:
+4. **Quality Gate obrigatório (regra geral):** antes de concluir qualquer etapa, executar:
     - `./scripts/quality_gate.sh quick` (durante implementação)
     - `./scripts/quality_gate.sh full` (fechamento de item/sprint)
 5. **Definição de pronto (DoD):** nenhuma tarefa é concluída sem critério de aceite + testes + documentação.
 
 > Regra: se uma mudança não melhora fluxo core, não reduz risco crítico, e não aumenta valor percebido, ela vai para backlog.
+
+## 🎯 Exceção Temporária — Foco no Carro-Chefe (Otimização de Deck)
+
+**Válido temporariamente enquanto o foco estiver em estabilizar o fluxo `optimize/complete`.**
+
+Durante esta janela:
+- fica **desativada a obrigatoriedade** de rodar o gate geral (`quality_gate.sh quick/full`) para cada iteração;
+- passa a ser **obrigatório** rodar o gate exclusivo do carro-chefe:
+    - `./scripts/quality_gate_carro_chefe.sh`
+    - ou com deck-alvo explícito: `SOURCE_DECK_ID=<uuid> ./scripts/quality_gate_carro_chefe.sh`
+
+Objetivo da exceção:
+- acelerar ciclo de correção no fluxo crítico;
+- validar sempre o cenário real de otimização ponta a ponta com artefato.
+
+Encerrado o foco do carro-chefe, a regra geral de `quality_gate.sh quick/full` volta a ser obrigatória em todas as etapas.
 
 ## ⚠️ Estado Atual (importante para manutenção)
 Este repositório é **full-stack**:
@@ -181,8 +197,8 @@ O `manual-de-instrucao.md` deve conter:
 2.  **Planejar execução mínima correta:** listar arquivos afetados e ordem de implementação.
 3.  **Executar com foco:** implementar somente o necessário para a etapa.
 4.  **Validar obrigatoriamente:**
-    - rodar `./scripts/quality_gate.sh quick` durante o desenvolvimento;
-    - rodar `./scripts/quality_gate.sh full` antes de concluir.
+    - regra geral: `./scripts/quality_gate.sh quick` durante o desenvolvimento e `./scripts/quality_gate.sh full` no fechamento;
+    - exceção temporária em foco do carro-chefe: usar `./scripts/quality_gate_carro_chefe.sh` como gate principal.
 5.  **Testar fluxo funcional impactado:** validar manualmente o caminho principal afetado (happy path + erro crítico).
 6.  **Documentar:** atualizar IMEDIATAMENTE o `server/manual-de-instrucao.md` com o que mudou.
 7.  **Fechar etapa:** somente com DoD atendida (aceite + testes + documentação + impacto explícito).
@@ -215,8 +231,9 @@ Ao bloquear:
 ## 8.1 Gate de qualidade e validação contínua
 
 Checklist mínimo por entrega:
-- [ ] `./scripts/quality_gate.sh quick` executado durante implementação.
-- [ ] `./scripts/quality_gate.sh full` executado no fechamento.
+- [ ] Gate de qualidade executado conforme modo ativo:
+    - geral: `./scripts/quality_gate.sh quick` + `./scripts/quality_gate.sh full`, ou
+    - foco carro-chefe (temporário): `./scripts/quality_gate_carro_chefe.sh`.
 - [ ] Sem erros de compilação/lint relevantes.
 - [ ] Teste manual do fluxo impactado documentado.
 
