@@ -62,6 +62,11 @@ void main() async {
         'id', 'deck_id', 'weakness_type', 'severity', 'description', 
         'recommendations', 'auto_detected', 'addressed', 'created_at'
       ],
+      'ai_optimize_fallback_telemetry': [
+        'id', 'user_id', 'deck_id', 'mode', 'recognized_format', 'triggered',
+        'applied', 'no_candidate', 'no_replacement', 'candidate_count',
+        'replacement_count', 'pair_count', 'created_at'
+      ],
     };
 
     // Busca todas as colunas do banco

@@ -11,6 +11,31 @@ import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/edh_bracket_policy.dart';
 
+int _optimizeRequestCount = 0;
+int _emptySuggestionFallbackTriggeredCount = 0;
+int _emptySuggestionFallbackAppliedCount = 0;
+int _emptySuggestionFallbackNoCandidateCount = 0;
+int _emptySuggestionFallbackNoReplacementCount = 0;
+
+Map<String, dynamic> _buildEmptyFallbackAggregate() {
+  final triggered = _emptySuggestionFallbackTriggeredCount;
+  final applied = _emptySuggestionFallbackAppliedCount;
+  final triggerRate = _optimizeRequestCount > 0
+      ? (triggered / _optimizeRequestCount)
+      : 0.0;
+  final applyRate = triggered > 0 ? (applied / triggered) : 0.0;
+
+  return {
+    'request_count': _optimizeRequestCount,
+    'triggered_count': triggered,
+    'applied_count': applied,
+    'no_candidate_count': _emptySuggestionFallbackNoCandidateCount,
+    'no_replacement_count': _emptySuggestionFallbackNoReplacementCount,
+    'trigger_rate': triggerRate,
+    'apply_rate': applyRate,
+  };
+}
+
 /// Classe para análise de arquétipo do deck
 /// Implementa detecção automática baseada em curva de mana, tipos de cartas e cores
 class DeckArchetypeAnalyzer {
@@ -751,6 +776,13 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   try {
+    String? userId;
+    try {
+      userId = context.read<String>();
+    } catch (_) {
+      userId = null;
+    }
+
     final body = await context.request.json() as Map<String, dynamic>;
     final deckId = body['deck_id'] as String?;
     final archetype = body['archetype'] as String?;
@@ -758,6 +790,8 @@ Future<Response> onRequest(RequestContext context) async {
     final bracket =
         bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
     final keepTheme = body['keep_theme'] as bool? ?? true;
+
+    _optimizeRequestCount++;
 
     if (deckId == null || archetype == null) {
       return badRequest('deck_id and archetype are required');
@@ -1254,7 +1288,7 @@ Future<Response> onRequest(RequestContext context) async {
           detectedTheme: themeProfile.theme,
           coreCards: themeProfile.coreCards,
         );
-        jsonResponse['mode'] = 'optimize';
+        jsonResponse['mode'] ??= 'optimize';
       }
     } catch (e, stackTrace) {
       Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
@@ -1264,6 +1298,11 @@ Future<Response> onRequest(RequestContext context) async {
       }
       return internalServerError('Optimization failed', details: e);
     }
+
+    jsonResponse = _normalizeOptimizePayload(
+      jsonResponse,
+      defaultMode: 'optimize',
+    );
 
     // Se o modo complete já veio “determinístico” (com card_id/quantity),
     // devolve diretamente sem passar pelo fluxo antigo de validação por nomes.
@@ -1397,52 +1436,130 @@ Future<Response> onRequest(RequestContext context) async {
 
     List<String> removals = [];
     List<String> additions = [];
+    var emptySuggestionFallbackTriggered = false;
+    var emptySuggestionFallbackApplied = false;
+    String? emptySuggestionFallbackReason;
+    var emptySuggestionFallbackCandidateCount = 0;
+    var emptySuggestionFallbackReplacementCount = 0;
+    var emptySuggestionFallbackPairCount = 0;
 
-    // Suporte ao formato "swaps" (retornado pelo prompt.md)
-    if (jsonResponse.containsKey('swaps')) {
-      final swaps = jsonResponse['swaps'] as List;
-      for (var swap in swaps) {
-        if (swap is Map) {
-          final out = (swap['out'] as String?) ?? '';
-          final inCard = (swap['in'] as String?) ?? '';
-          if (out.isNotEmpty) removals.add(out);
-          if (inCard.isNotEmpty) additions.add(inCard);
+    final parsedSuggestions = parseOptimizeSuggestions(jsonResponse);
+    removals = parsedSuggestions['removals'] as List<String>;
+    additions = parsedSuggestions['additions'] as List<String>;
+    final recognizedSuggestionFormat =
+      parsedSuggestions['recognized_format'] as bool? ?? false;
+
+    final deckNamesLower = allCardData
+      .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+      .where((n) => n.isNotEmpty)
+      .toSet();
+    final commanderLower = commanders.map((c) => c.toLowerCase()).toSet();
+    final coreLower =
+      themeProfile.coreCards.map((c) => c.toLowerCase()).toSet();
+    final blockedByTheme = <String>[];
+
+    final isComplete = jsonResponse['mode'] == 'complete';
+
+    if (removals.isEmpty && additions.isEmpty && !isComplete) {
+      emptySuggestionFallbackTriggered = true;
+      _emptySuggestionFallbackTriggeredCount++;
+      final fallbackRemovalCandidates = <String>[];
+      final seenLower = <String>{};
+
+      void collectCandidates({required bool preferNonLand}) {
+        for (final card in allCardData) {
+          final name = ((card['name'] as String?) ?? '').trim();
+          if (name.isEmpty) continue;
+
+          final lower = name.toLowerCase();
+          if (seenLower.contains(lower)) continue;
+          if (commanderLower.contains(lower)) continue;
+          if (coreLower.contains(lower)) continue;
+
+          final typeLine =
+              ((card['type_line'] as String?) ?? '').toLowerCase();
+          final isLand = typeLine.contains('land');
+          if (preferNonLand && isLand) continue;
+
+          seenLower.add(lower);
+          fallbackRemovalCandidates.add(name);
+          if (fallbackRemovalCandidates.length >= 2) break;
         }
       }
-    }
-    // Suporte ao formato "changes" (alternativo)
-    else if (jsonResponse.containsKey('changes')) {
-      final changes = jsonResponse['changes'] as List;
-      for (var change in changes) {
-        if (change is Map) {
-          final rem = (change['remove'] as String?) ?? '';
-          final add = (change['add'] as String?) ?? '';
-          if (rem.isNotEmpty) removals.add(rem);
-          if (add.isNotEmpty) additions.add(add);
+
+      collectCandidates(preferNonLand: true);
+      if (fallbackRemovalCandidates.isEmpty) {
+        collectCandidates(preferNonLand: false);
+      }
+      emptySuggestionFallbackCandidateCount = fallbackRemovalCandidates.length;
+
+      if (fallbackRemovalCandidates.isNotEmpty) {
+        final replacements = await _findSynergyReplacements(
+          pool: pool,
+          optimizer: optimizer,
+          commanders: commanders,
+          commanderColorIdentity: commanderColorIdentity,
+          targetArchetype: targetArchetype,
+          bracket: bracket,
+          keepTheme: keepTheme,
+          detectedTheme: themeProfile.theme,
+          coreCards: themeProfile.coreCards,
+          missingCount: fallbackRemovalCandidates.length,
+          removedCards: fallbackRemovalCandidates,
+          excludeNames: deckNamesLower,
+          allCardData: allCardData,
+        );
+        emptySuggestionFallbackReplacementCount = replacements.length;
+
+        if (replacements.isNotEmpty) {
+          final fallbackAdditions = replacements
+              .map((r) => (r['name'] as String?)?.trim() ?? '')
+              .where((n) => n.isNotEmpty)
+              .toList();
+
+          final pairCount = fallbackRemovalCandidates.length < fallbackAdditions.length
+              ? fallbackRemovalCandidates.length
+              : fallbackAdditions.length;
+          emptySuggestionFallbackPairCount = pairCount;
+
+          if (pairCount > 0) {
+            removals = fallbackRemovalCandidates.take(pairCount).toList();
+            additions = fallbackAdditions.take(pairCount).toList();
+            emptySuggestionFallbackApplied = true;
+            _emptySuggestionFallbackAppliedCount++;
+            emptySuggestionFallbackReason =
+                'IA retornou sugestões vazias; aplicado fallback heurístico orientado a sinergia.';
+            Log.i(
+                '✅ [AI Optimize] Fallback aplicado com $pairCount swap(s) após retorno vazio da IA.');
+          }
         }
       }
-    }
-    // Suporte ao formato "suggestions" (fallback genérico)
-    else if (jsonResponse.containsKey('suggestions')) {
-      final suggestions = jsonResponse['suggestions'] as List;
-      for (var sug in suggestions) {
-        if (sug is Map) {
-          final out = (sug['out'] ?? sug['remove'] ?? '') as String;
-          final inCard = (sug['in'] ?? sug['add'] ?? '') as String;
-          if (out.isNotEmpty) removals.add(out);
-          if (inCard.isNotEmpty) additions.add(inCard);
+
+      if (!emptySuggestionFallbackApplied) {
+        if (fallbackRemovalCandidates.isEmpty) {
+          _emptySuggestionFallbackNoCandidateCount++;
+          emptySuggestionFallbackReason =
+              'IA retornou sugestões vazias e o deck não possui candidatas seguras para remoção.';
+        } else if (emptySuggestionFallbackReplacementCount == 0) {
+          _emptySuggestionFallbackNoReplacementCount++;
+          emptySuggestionFallbackReason =
+              'IA retornou sugestões vazias e não foi possível encontrar substitutas válidas no fallback.';
+        } else {
+        emptySuggestionFallbackReason =
+            'IA retornou sugestões vazias e não foi possível gerar fallback seguro.';
         }
       }
-    } else {
-      // Fallback para formato antigo
-      removals = (jsonResponse['removals'] as List?)?.cast<String>() ?? [];
-      additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
     }
 
     // WARN: Se parsing resultou em listas vazias, logar para diagnóstico
-    final isComplete = jsonResponse['mode'] == 'complete';
     if (removals.isEmpty && additions.isEmpty && !isComplete) {
-      Log.w('⚠️ [AI Optimize] IA retornou formato não reconhecido. Keys: ${jsonResponse.keys.toList()}');
+      if (recognizedSuggestionFormat) {
+        Log.d(
+            'ℹ️ [AI Optimize] Payload reconhecido, mas sem sugestões úteis (provável filtro/retorno vazio). Keys: ${jsonResponse.keys.toList()}');
+      } else {
+        Log.w(
+            '⚠️ [AI Optimize] IA retornou formato não reconhecido. Keys: ${jsonResponse.keys.toList()}');
+      }
     }
 
     // Suporte ao modo "complete"
@@ -1481,15 +1598,6 @@ Future<Response> onRequest(RequestContext context) async {
         removals.map(CardValidationService.sanitizeCardName).toList();
     var sanitizedAdditions =
         additions.map(CardValidationService.sanitizeCardName).toList();
-
-    final deckNamesLower = allCardData
-        .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
-        .where((n) => n.isNotEmpty)
-        .toSet();
-    final commanderLower = commanders.map((c) => c.toLowerCase()).toSet();
-    final coreLower =
-        themeProfile.coreCards.map((c) => c.toLowerCase()).toSet();
-    final blockedByTheme = <String>[];
 
     // Remoções devem existir no deck (evita no-ops e contagem final errada).
     sanitizedRemovals = sanitizedRemovals
@@ -1994,6 +2102,31 @@ Future<Response> onRequest(RequestContext context) async {
     final invalidCards = validation['invalid'] as List<String>;
     final suggestions = validation['suggestions'] as Map<String, List<String>>;
 
+    Map<String, dynamic>? persistedFallbackAggregate;
+    try {
+      await _recordOptimizeFallbackTelemetry(
+        pool: pool,
+        userId: userId,
+        deckId: deckId,
+        mode: jsonResponse['mode']?.toString() ?? 'optimize',
+        recognizedFormat: recognizedSuggestionFormat,
+        triggered: emptySuggestionFallbackTriggered,
+        applied: emptySuggestionFallbackApplied,
+        noCandidate: emptySuggestionFallbackTriggered &&
+            emptySuggestionFallbackCandidateCount == 0,
+        noReplacement: emptySuggestionFallbackTriggered &&
+            emptySuggestionFallbackCandidateCount > 0 &&
+            emptySuggestionFallbackReplacementCount == 0,
+        candidateCount: emptySuggestionFallbackCandidateCount,
+        replacementCount: emptySuggestionFallbackReplacementCount,
+        pairCount: emptySuggestionFallbackPairCount,
+      );
+      persistedFallbackAggregate =
+          await _loadPersistedEmptyFallbackAggregate(pool);
+    } catch (e) {
+      Log.w('Persisted fallback telemetry unavailable: $e');
+    }
+
     final responseBody = {
       'mode': jsonResponse['mode'],
       'constraints': {
@@ -2002,13 +2135,26 @@ Future<Response> onRequest(RequestContext context) async {
       'theme': themeProfile.toJson(),
       'removals': validRemovals,
       'additions': validAdditions,
-      'reasoning': jsonResponse['reasoning'] ?? '',
+      'reasoning': _normalizeReasoning(jsonResponse['reasoning']),
       'deck_analysis': deckAnalysis,
       'post_analysis':
           postAnalysis, // Retorna a análise futura para o front mostrar
       'validation_warnings': validationWarnings,
       'bracket': bracket,
       'target_additions': jsonResponse['target_additions'],
+      'optimize_diagnostics': {
+        'empty_suggestions_fallback': {
+          'triggered': emptySuggestionFallbackTriggered,
+          'applied': emptySuggestionFallbackApplied,
+          'candidate_count': emptySuggestionFallbackCandidateCount,
+          'replacement_count': emptySuggestionFallbackReplacementCount,
+          'pair_count': emptySuggestionFallbackPairCount,
+        },
+        'empty_suggestions_fallback_aggregate': _buildEmptyFallbackAggregate(),
+        if (persistedFallbackAggregate != null)
+          'empty_suggestions_fallback_aggregate_persisted':
+              persistedFallbackAggregate,
+      },
       // Validação EDHREC
       if (edhrecValidationData != null) 'edhrec_validation': {
         'commander': commanders.firstOrNull ?? "",
@@ -2146,6 +2292,14 @@ Future<Response> onRequest(RequestContext context) async {
       };
     }
 
+    if (emptySuggestionFallbackReason != null) {
+      warnings['empty_suggestions_handling'] = {
+        'recognized_format': recognizedSuggestionFormat,
+        'fallback_applied': emptySuggestionFallbackApplied,
+        'message': emptySuggestionFallbackReason,
+      };
+    }
+
     if (warnings.isNotEmpty) {
       responseBody['warnings'] = warnings;
     }
@@ -2155,6 +2309,293 @@ Future<Response> onRequest(RequestContext context) async {
     Log.e('handler: $e\nStack trace:\n$stackTrace');
     return internalServerError('Failed to optimize deck', details: e);
   }
+}
+
+Map<String, dynamic> _normalizeOptimizePayload(
+  Map<String, dynamic> payload, {
+  required String defaultMode,
+}) {
+  final normalized = Map<String, dynamic>.from(payload);
+  normalized['mode'] = _resolveOptimizeMode(normalized, defaultMode);
+  normalized['reasoning'] = _normalizeReasoning(normalized['reasoning']);
+  return normalized;
+}
+
+String _resolveOptimizeMode(Map<String, dynamic> payload, String defaultMode) {
+  final rawCandidates = [
+    payload['mode'],
+    payload['modde'],
+    payload['type'],
+    payload['operation_mode'],
+    payload['strategy_mode'],
+  ];
+
+  for (final raw in rawCandidates) {
+    if (raw is! String) continue;
+    final normalized = raw.trim().toLowerCase();
+    if (normalized.contains('complete')) return 'complete';
+    if (normalized.contains('opt')) return 'optimize';
+  }
+
+  if (payload['additions_detailed'] is List) {
+    final additionsDetailed = payload['additions_detailed'] as List;
+    if (additionsDetailed.isNotEmpty) return 'complete';
+  }
+
+  return defaultMode;
+}
+
+Map<String, dynamic> parseOptimizeSuggestions(Map<String, dynamic> payload) {
+  final removals = <String>[];
+  final additions = <String>[];
+  var recognizedFormat = false;
+
+  final collections = [
+    payload['swaps'],
+    payload['swap'],
+    payload['changes'],
+    payload['suggestions'],
+    payload['recommendations'],
+    payload['replacements'],
+  ];
+
+  for (final collection in collections) {
+    if (collection is! List) continue;
+    recognizedFormat = true;
+    for (final entry in collection) {
+      if (entry is String) {
+        final raw = entry.trim();
+        if (raw.isEmpty) continue;
+        final arrows = ['->', '=>', '→'];
+        String? left;
+        String? right;
+        for (final arrow in arrows) {
+          if (!raw.contains(arrow)) continue;
+          final parts = raw.split(arrow);
+          if (parts.length >= 2) {
+            left = parts.first.trim();
+            right = parts.sublist(1).join(arrow).trim();
+          }
+          break;
+        }
+        if ((left ?? '').isNotEmpty) removals.add(left!);
+        if ((right ?? '').isNotEmpty) additions.add(right!);
+        continue;
+      }
+
+      if (entry is! Map) continue;
+      final map = entry.cast<dynamic, dynamic>();
+      final nested = map['swap'] ?? map['change'] ?? map['suggestion'];
+      final sourceMap = nested is Map ? nested.cast<dynamic, dynamic>() : map;
+
+      final outRaw = sourceMap['out'] ??
+          sourceMap['remove'] ??
+          sourceMap['from'] ??
+          map['out'] ??
+          map['remove'] ??
+          map['from'];
+      final inRaw = sourceMap['in'] ??
+          sourceMap['add'] ??
+          sourceMap['to'] ??
+          map['in'] ??
+          map['add'] ??
+          map['to'];
+
+      final out = outRaw?.toString().trim() ?? '';
+      final inCard = inRaw?.toString().trim() ?? '';
+
+      if (out.isNotEmpty) removals.add(out);
+      if (inCard.isNotEmpty) additions.add(inCard);
+    }
+
+    if (removals.isNotEmpty || additions.isNotEmpty) {
+      return {
+        'removals': removals,
+        'additions': additions,
+        'recognized_format': true,
+      };
+    }
+  }
+
+  final rawRemovals = payload['removals'];
+  final rawAdditions = payload['additions'];
+
+  if (rawRemovals is List) {
+    recognizedFormat = true;
+    removals.addAll(rawRemovals
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty));
+  } else if (rawRemovals is String && rawRemovals.trim().isNotEmpty) {
+    recognizedFormat = true;
+    removals.add(rawRemovals.trim());
+  } else if (payload.containsKey('removals')) {
+    recognizedFormat = true;
+  }
+
+  if (rawAdditions is List) {
+    recognizedFormat = true;
+    additions.addAll(rawAdditions
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty));
+  } else if (rawAdditions is String && rawAdditions.trim().isNotEmpty) {
+    recognizedFormat = true;
+    additions.add(rawAdditions.trim());
+  } else if (payload.containsKey('additions')) {
+    recognizedFormat = true;
+  }
+
+  return {
+    'removals': removals,
+    'additions': additions,
+    'recognized_format': recognizedFormat,
+  };
+}
+
+String _normalizeReasoning(dynamic value) {
+  if (value == null) return '';
+  if (value is String) return value;
+  return value.toString();
+}
+
+Future<void> _recordOptimizeFallbackTelemetry({
+  required Pool pool,
+  required String? userId,
+  required String? deckId,
+  required String mode,
+  required bool recognizedFormat,
+  required bool triggered,
+  required bool applied,
+  required bool noCandidate,
+  required bool noReplacement,
+  required int candidateCount,
+  required int replacementCount,
+  required int pairCount,
+}) async {
+  await pool.execute(
+    Sql.named('''
+      INSERT INTO ai_optimize_fallback_telemetry (
+        user_id,
+        deck_id,
+        mode,
+        recognized_format,
+        triggered,
+        applied,
+        no_candidate,
+        no_replacement,
+        candidate_count,
+        replacement_count,
+        pair_count
+      ) VALUES (
+        CAST(@user_id AS uuid),
+        CAST(@deck_id AS uuid),
+        @mode,
+        @recognized_format,
+        @triggered,
+        @applied,
+        @no_candidate,
+        @no_replacement,
+        @candidate_count,
+        @replacement_count,
+        @pair_count
+      )
+    '''),
+    parameters: {
+      'user_id': userId,
+      'deck_id': deckId,
+      'mode': mode,
+      'recognized_format': recognizedFormat,
+      'triggered': triggered,
+      'applied': applied,
+      'no_candidate': noCandidate,
+      'no_replacement': noReplacement,
+      'candidate_count': candidateCount,
+      'replacement_count': replacementCount,
+      'pair_count': pairCount,
+    },
+  );
+}
+
+Future<Map<String, dynamic>> _loadPersistedEmptyFallbackAggregate(
+    Pool pool) async {
+  final result = await pool.execute('''
+    SELECT
+      COUNT(*)::int AS total_requests,
+      SUM(CASE WHEN triggered THEN 1 ELSE 0 END)::int AS triggered_count,
+      SUM(CASE WHEN applied THEN 1 ELSE 0 END)::int AS applied_count,
+      SUM(CASE WHEN no_candidate THEN 1 ELSE 0 END)::int AS no_candidate_count,
+      SUM(CASE WHEN no_replacement THEN 1 ELSE 0 END)::int AS no_replacement_count,
+      COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS total_requests_24h,
+      SUM(CASE WHEN triggered AND created_at >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END)::int AS triggered_count_24h,
+      SUM(CASE WHEN applied AND created_at >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END)::int AS applied_count_24h,
+      SUM(CASE WHEN no_candidate AND created_at >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END)::int AS no_candidate_count_24h,
+      SUM(CASE WHEN no_replacement AND created_at >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END)::int AS no_replacement_count_24h
+    FROM ai_optimize_fallback_telemetry
+  ''');
+
+  if (result.isEmpty) {
+    return {
+      'all_time': {
+        'request_count': 0,
+        'triggered_count': 0,
+        'applied_count': 0,
+        'no_candidate_count': 0,
+        'no_replacement_count': 0,
+        'trigger_rate': 0.0,
+        'apply_rate': 0.0,
+      },
+      'last_24h': {
+        'request_count': 0,
+        'triggered_count': 0,
+        'applied_count': 0,
+        'no_candidate_count': 0,
+        'no_replacement_count': 0,
+        'trigger_rate': 0.0,
+        'apply_rate': 0.0,
+      },
+    };
+  }
+
+  final row = result.first.toColumnMap();
+
+  final allRequests = _toInt(row['total_requests']);
+  final allTriggered = _toInt(row['triggered_count']);
+  final allApplied = _toInt(row['applied_count']);
+  final allNoCandidate = _toInt(row['no_candidate_count']);
+  final allNoReplacement = _toInt(row['no_replacement_count']);
+
+  final requests24h = _toInt(row['total_requests_24h']);
+  final triggered24h = _toInt(row['triggered_count_24h']);
+  final applied24h = _toInt(row['applied_count_24h']);
+  final noCandidate24h = _toInt(row['no_candidate_count_24h']);
+  final noReplacement24h = _toInt(row['no_replacement_count_24h']);
+
+  return {
+    'all_time': {
+      'request_count': allRequests,
+      'triggered_count': allTriggered,
+      'applied_count': allApplied,
+      'no_candidate_count': allNoCandidate,
+      'no_replacement_count': allNoReplacement,
+      'trigger_rate': allRequests > 0 ? allTriggered / allRequests : 0.0,
+      'apply_rate': allTriggered > 0 ? allApplied / allTriggered : 0.0,
+    },
+    'last_24h': {
+      'request_count': requests24h,
+      'triggered_count': triggered24h,
+      'applied_count': applied24h,
+      'no_candidate_count': noCandidate24h,
+      'no_replacement_count': noReplacement24h,
+      'trigger_rate': requests24h > 0 ? triggered24h / requests24h : 0.0,
+      'apply_rate': triggered24h > 0 ? applied24h / triggered24h : 0.0,
+    },
+  };
+}
+
+int _toInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString()) ?? 0;
 }
 
 List<String> _basicLandNamesForIdentity(Set<String> identity) {

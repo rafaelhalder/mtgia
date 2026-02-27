@@ -127,6 +127,12 @@ void main() {
         expect(response.statusCode, anyOf(200, 500), reason: response.body);
         final body = decodeJson(response);
         if (response.statusCode == 200) {
+          expect(body['mode'], isA<String>(), reason: response.body);
+          expect(
+            ['optimize', 'complete'].contains(body['mode']),
+            isTrue,
+            reason: 'mode deve ser normalizado para optimize|complete',
+          );
           expect(body['reasoning'], isA<String>(), reason: response.body);
           if (body['is_mock'] == true) {
             expect(body['additions'], isA<List>());

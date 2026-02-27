@@ -68,9 +68,10 @@ O sistema busca dados de três fontes para garantir informações sempre atualiz
 2. **Scryfall API (fallback):** Dados em tempo real quando o cache está desatualizado
 3. **Banlist Sincronizado:** Lista de cartas banidas atualizada automaticamente via sync_staples.dart
 
-DIRETRIZES DE OTIMIZAÇÃO (CHAIN OF THOUGHT)
+DIRETRIZES DE OTIMIZAÇÃO (PROCESSO DE DECISÃO)
 
-Ao analisar o deck, siga estritamente este processo mental:
+Ao analisar o deck, siga estritamente este processo de decisão.
+Não exponha raciocínio interno; retorne apenas o JSON final no formato solicitado.
 
 Análise de Curva de Mana (CMC):
 
@@ -131,9 +132,6 @@ NÃO SUGIRA CARTAS BANIDAS. A lista de banidas é obtida dinamicamente via:
 - Tabela format_staples (is_banned = TRUE)
 - Tabela card_legalities (status = 'banned')
 - Scryfall API (-is:banned filter)
-
-Exemplos atuais de cartas banidas em Commander (lista atualizada automaticamente):
-- Mana Crypt, Jeweled Lotus, Dockside Extortionist, Nadu, Primeval Titan, etc.
 
 Se a lista de "Candidatas Fracas" contiver terrenos básicos, ignore-os. Não corte terrenos básicos a menos que esteja corrigindo a base de mana para Dual/Shock Lands.
 

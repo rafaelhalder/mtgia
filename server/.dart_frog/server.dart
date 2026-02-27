@@ -67,6 +67,7 @@ import '../routes/ai/weakness-analysis/index.dart' as ai_weakness_analysis_index
 import '../routes/ai/simulate-matchup/index.dart' as ai_simulate_matchup_index;
 import '../routes/ai/simulate/index.dart' as ai_simulate_index;
 import '../routes/ai/optimize/index.dart' as ai_optimize_index;
+import '../routes/ai/optimize/telemetry/index.dart' as ai_optimize_telemetry_index;
 import '../routes/ai/ml-status/index.dart' as ai_ml_status_index;
 import '../routes/ai/generate/index.dart' as ai_generate_index;
 import '../routes/ai/explain/index.dart' as ai_explain_index;
@@ -102,6 +103,7 @@ Handler buildRootHandler() {
     ..mount('/ai/explain', (context) => buildAiExplainHandler()(context))
     ..mount('/ai/generate', (context) => buildAiGenerateHandler()(context))
     ..mount('/ai/ml-status', (context) => buildAiMlStatusHandler()(context))
+    ..mount('/ai/optimize/telemetry', (context) => buildAiOptimizeTelemetryHandler()(context))
     ..mount('/ai/optimize', (context) => buildAiOptimizeHandler()(context))
     ..mount('/ai/simulate', (context) => buildAiSimulateHandler()(context))
     ..mount('/ai/simulate-matchup', (context) => buildAiSimulateMatchupHandler()(context))
@@ -180,6 +182,13 @@ Handler buildAiMlStatusHandler() {
   final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
   final router = Router()
     ..all('/', (context) => ai_ml_status_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildAiOptimizeTelemetryHandler() {
+  final pipeline = const Pipeline().addMiddleware(ai_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => ai_optimize_telemetry_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

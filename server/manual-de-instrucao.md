@@ -5683,3 +5683,414 @@ Melhorias aplicadas:
 - respostas mais úteis para tomada de decisão do jogador;
 - menor variância de qualidade entre endpoints de IA;
 - melhor alinhamento com o objetivo do produto: construir, entender e melhorar decks com consistência.
+
+## 55. Prompt otimizado para performance e robustez (optimize)
+
+### 55.1 O Porquê
+
+Mesmo com o fluxo de otimização estável, o prompt principal ainda tinha dois pontos que aumentavam custo e risco operacional:
+
+- texto explícito de "chain of thought", desnecessário para o contrato final;
+- exemplos estáticos de cartas banidas, sujeitos a desatualização com mudanças de banlist.
+
+Objetivo: reduzir tokens por chamada, evitar drift de conteúdo e manter foco no contrato JSON estrito.
+
+### 55.2 O Como
+
+Arquivo ajustado:
+- `server/lib/ai/prompt.md`
+
+Mudanças aplicadas:
+- seção renomeada de `CHAIN OF THOUGHT` para `PROCESSO DE DECISÃO`;
+- instrução explícita para **não expor raciocínio interno** e retornar apenas JSON final;
+- remoção da lista de exemplos estáticos de banidas;
+- manutenção da regra dinâmica de banlist via `format_staples`, `card_legalities` e filtro da Scryfall.
+
+### 55.3 Resultado esperado
+
+- menor custo médio de prompt (menos tokens estáticos);
+- menor risco de sugestão enviesada por exemplos desatualizados;
+- maior aderência ao roadmap atual (IA com ROI, consistência e manutenção simples).
+
+## 56. Hardening do parser do `/ai/optimize` (contrato resiliente)
+
+### 56.1 O Porquê
+
+Durante validação real, o endpoint de otimização ainda registrava warnings de formato não reconhecido em alguns retornos do modelo, mesmo com resposta JSON válida. Isso reduzia previsibilidade operacional e podia degradar qualidade das sugestões aplicadas.
+
+Objetivo: tornar o parser resiliente a variações comuns de payload sem quebrar contrato para o app.
+
+### 56.2 O Como
+
+Arquivo ajustado:
+- `server/routes/ai/optimize/index.dart`
+
+Melhorias aplicadas:
+- normalização central de payload da IA (`_normalizeOptimizePayload`);
+- normalização de `mode` com fallback robusto (`mode`, `modde`, `type`, `operation_mode`, `strategy_mode`);
+- normalização de `reasoning` para string em todos os caminhos;
+- parser resiliente de sugestões (`_parseOptimizeSuggestions`) com suporte a formatos:
+  - `swaps`/`swap`
+  - `changes`
+  - `suggestions`
+  - `recommendations`
+  - `replacements`
+  - fallback em `removals`/`additions` (lista ou string única)
+- suporte a aliases de campos por item: `out/remove/from` e `in/add/to`.
+
+### 56.3 Teste de regressão
+
+Arquivo ajustado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Novas asserções em sucesso (`200`):
+- `mode` obrigatório e normalizado para `optimize|complete`;
+- `reasoning` sempre string.
+
+### 56.4 Resultado esperado
+
+- menos falsos warnings de formato da IA;
+- maior estabilidade do contrato de resposta;
+- melhor robustez contra pequenas variações de output do modelo sem necessidade de ajuste manual frequente.
+
+### 56.5 Refino de observabilidade (formato vs vazio)
+
+Foi aplicado um ajuste adicional no parser para diferenciar dois cenários:
+
+- **formato não reconhecido** (warning): payload realmente fora dos formatos suportados;
+- **formato reconhecido, sem sugestões úteis** (info/debug): payload válido porém vazio após geração/filtros.
+
+Arquivo:
+- `server/routes/ai/optimize/index.dart`
+
+Resultado:
+- redução de ruído de logs de warning;
+- diagnóstico mais preciso para operação sem mascarar falhas reais de formato.
+
+### 56.6 Fallback extra de parsing (swaps aninhado/string)
+
+Para reduzir perda de sugestões por variações de serialização do modelo, o parser do optimize também passou a aceitar:
+
+- itens de lista em formato string: `"Card A -> Card B"`, `"Card A => Card B"`, `"Card A → Card B"`;
+- itens aninhados em objetos como `{ "swap": { "out": "...", "in": "..." } }` (ou `change`/`suggestion`).
+
+Resultado:
+- maior tolerância a pequenas variações de output sem necessidade de retrabalho de prompt;
+- menor chance de cair em resposta vazia por incompatibilidade superficial de estrutura.
+
+## 57. Quality Gate nativo para Windows (PowerShell)
+
+### 57.1 O Porquê
+
+O gate oficial em `scripts/quality_gate.sh` depende de Bash/WSL. Em ambientes Windows sem Bash, isso gerava falha operacional e obrigava execução manual dos passos, aumentando chance de erro humano.
+
+Objetivo: ter um gate equivalente, executável diretamente em PowerShell, mantendo o mesmo fluxo quick/full.
+
+### 57.2 O Como
+
+Arquivo criado:
+- `scripts/quality_gate.ps1`
+
+Capacidades implementadas:
+- modos `quick` e `full` com paridade funcional ao script shell;
+- validação de pré-requisitos (`dart`, `flutter`);
+- probe de API (`/health/ready` com fallback em `POST /auth/login`) para decidir integração no backend full;
+- backend full com integração automática (`RUN_INTEGRATION_TESTS=1`, `TEST_API_BASE_URL`) quando API válida;
+- frontend quick/full com `flutter analyze` e `flutter test`;
+- mensagens operacionais e help de uso.
+
+Compatibilidade:
+- ajustes para PowerShell 5.1 (sem uso de operador `??`).
+
+### 57.3 Validação
+
+Execução realizada:
+- `./scripts/quality_gate.ps1 quick`
+
+Resultado:
+- backend quick: suíte passou;
+- frontend quick: analyze sem issues;
+- gate concluído com sucesso em Windows.
+
+### 57.4 Resultado esperado
+
+- padronização do processo de qualidade em ambiente Windows sem dependência de WSL;
+- menos fricção operacional para fechamento de tarefas/sprints;
+- maior previsibilidade de execução do DoD no dia a dia.
+
+## 58. `/ai/optimize` — fallback para sugestões vazias + regressão do parser
+
+### 58.1 O Porquê
+
+Mesmo com parser resiliente, ainda havia cenários em que a IA retornava formato reconhecido porém sem sugestões úteis (`swaps` vazio ou filtrado), resultando em otimização sem alterações.
+
+Objetivo: preservar valor ao usuário com fallback seguro e rastreável quando a resposta da IA vier vazia.
+
+### 58.2 O Como
+
+Arquivo ajustado:
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças principais:
+- fallback automático quando `mode=optimize` e não há removals/additions:
+  - seleciona até 2 candidatas de remoção do deck (prioriza não-terrenos, exclui commander/core cards);
+  - busca substitutas via `_findSynergyReplacements` respeitando identidade de cor e contexto de tema/bracket;
+  - aplica swaps apenas se houver pares válidos;
+- diagnóstico estruturado em `warnings.empty_suggestions_handling` com:
+  - `recognized_format`,
+  - `fallback_applied`,
+  - `message`.
+
+### 58.3 Cobertura de teste
+
+Novo arquivo:
+- `server/test/optimize_payload_parser_test.dart`
+
+Cenários cobertos:
+- payload reconhecido porém vazio (`swaps: []`) marca `recognized_format=true`;
+- parsing de swaps em string (`A -> B`, `A => B`, `A → B`);
+- parsing de payload aninhado (`{ swap: { out, in } }`).
+
+### 58.4 Validação
+
+Execução realizada:
+- `dart test test/optimize_payload_parser_test.dart test/ai_optimize_flow_test.dart test/core_flow_smoke_test.dart`
+
+Resultado:
+- suíte focada passou (`All tests passed`).
+
+### 58.5 Hardening para cenários extremos + telemetria
+
+Ajuste adicional aplicado em `server/routes/ai/optimize/index.dart` para melhorar diagnóstico quando o fallback não consegue gerar swaps:
+
+- classificação explícita dos motivos de não aplicação do fallback:
+  - sem candidatas seguras para remoção,
+  - sem substitutas válidas encontradas,
+  - fallback genérico não aplicável.
+
+- inclusão de telemetria de eficácia no payload de resposta:
+
+```json
+"optimize_diagnostics": {
+  "empty_suggestions_fallback": {
+    "triggered": true,
+    "applied": false,
+    "candidate_count": 0,
+    "replacement_count": 0,
+    "pair_count": 0
+  }
+}
+```
+
+Benefício:
+- observabilidade objetiva para medir taxa de aplicação real do fallback e priorizar próximos ajustes de qualidade do optimize.
+
+## 59. Quality gate Windows UTF-8 + agregação contínua de fallback no `/ai/optimize`
+
+### 59.1 O Porquê
+
+Foram identificados dois pontos operacionais para melhorar fechamento de ciclo no Windows:
+
+- ruído de encoding no console do PowerShell (`quality_gate.ps1`) em mensagens com acentuação;
+- necessidade de visão agregada da eficácia do fallback de sugestões vazias no `/ai/optimize` sem depender de análise manual de logs.
+
+Objetivo: manter observabilidade prática e execução estável do gate em ambiente Windows, com baixa fricção para QA diário.
+
+### 59.2 O Como
+
+Arquivos ajustados:
+- `scripts/quality_gate.ps1`
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças aplicadas:
+
+1) `quality_gate.ps1` (PowerShell)
+- configuração explícita de UTF-8 no início do script:
+  - `[Console]::InputEncoding`
+  - `[Console]::OutputEncoding`
+  - `$OutputEncoding`
+- bloco protegido com `try/catch` para não bloquear o gate em hosts/terminais com limitações.
+
+2) `/ai/optimize` (telemetria agregada em memória de processo)
+- criação de contadores rolling:
+  - total de requests;
+  - total de `fallback triggered`;
+  - total de `fallback applied`;
+  - total sem candidatas;
+  - total sem substitutas.
+- inclusão de agregado no payload:
+
+```json
+"optimize_diagnostics": {
+  "empty_suggestions_fallback": { ... },
+  "empty_suggestions_fallback_aggregate": {
+    "request_count": 123,
+    "triggered_count": 8,
+    "applied_count": 5,
+    "no_candidate_count": 2,
+    "no_replacement_count": 1,
+    "trigger_rate": 0.065,
+    "apply_rate": 0.625
+  }
+}
+```
+
+Observação técnica:
+- o agregado é por instância de processo (in-memory), adequado para diagnóstico operacional rápido em dev/staging;
+- para histórico persistente cross-restart, evoluir para storage/observabilidade externa em etapa futura.
+
+### 59.3 Validação
+
+Validação prevista para fechamento:
+- `dart test test/optimize_payload_parser_test.dart test/ai_optimize_flow_test.dart test/core_flow_smoke_test.dart`
+- `./scripts/quality_gate.ps1 quick`
+- `./scripts/quality_gate.ps1 full`
+
+### 59.4 Resultado esperado
+
+- mensagens de gate mais consistentes no console Windows;
+- leitura imediata da eficácia do fallback sem inspeção manual de logs;
+- base pronta para instrumentação histórica posterior (telemetria persistente).
+
+## 60. `/ai/optimize` — telemetria persistente do fallback (histórico real)
+
+### 60.1 O Porquê
+
+O agregado em memória de processo era útil para diagnóstico imediato, mas tinha limitações operacionais:
+
+- zerava em restart/deploy;
+- não consolidava múltiplas instâncias;
+- não fornecia histórico confiável para acompanhar tendência.
+
+Objetivo: persistir eventos de fallback para análise contínua de qualidade e decisão orientada por dados.
+
+### 60.2 O Como
+
+Arquivos alterados:
+- `server/bin/migrate.dart`
+- `server/database_setup.sql`
+- `server/routes/ai/optimize/index.dart`
+- `server/bin/verify_schema.dart`
+
+Schema criado:
+- tabela: `ai_optimize_fallback_telemetry`
+- campos principais:
+  - contexto: `user_id`, `deck_id`, `mode`, `recognized_format`
+  - resultado: `triggered`, `applied`, `no_candidate`, `no_replacement`
+  - volumetria: `candidate_count`, `replacement_count`, `pair_count`
+  - `created_at`
+- índices:
+  - `created_at DESC`
+  - `user_id`
+  - `deck_id`
+  - `(triggered, applied)`
+
+Integração no endpoint `/ai/optimize`:
+- a cada request, o endpoint registra um evento de fallback na tabela;
+- o payload de resposta passa a incluir agregado persistido em:
+
+```json
+"optimize_diagnostics": {
+  "empty_suggestions_fallback": { ... },
+  "empty_suggestions_fallback_aggregate": { ... },
+  "empty_suggestions_fallback_aggregate_persisted": {
+    "all_time": {
+      "request_count": 0,
+      "triggered_count": 0,
+      "applied_count": 0,
+      "no_candidate_count": 0,
+      "no_replacement_count": 0,
+      "trigger_rate": 0.0,
+      "apply_rate": 0.0
+    },
+    "last_24h": {
+      "request_count": 0,
+      "triggered_count": 0,
+      "applied_count": 0,
+      "no_candidate_count": 0,
+      "no_replacement_count": 0,
+      "trigger_rate": 0.0,
+      "apply_rate": 0.0
+    }
+  }
+}
+```
+
+Resiliência:
+- persistência é tratada como `non-blocking`; se a tabela ainda não existir no ambiente, o optimize não quebra e segue com resposta normal.
+
+### 60.3 Migração
+
+Nova migração versionada:
+- `007_create_ai_optimize_fallback_telemetry`
+
+Aplicação:
+- `cd server`
+- `dart run bin/migrate.dart`
+
+Validação de schema:
+- `dart run bin/verify_schema.dart`
+
+### 60.4 Resultado esperado
+
+- histórico contínuo de eficácia do fallback por ambiente;
+- base para alertas e comparação antes/depois de mudanças de prompt/modelo;
+- suporte a análise confiável em cenários com restart e múltiplas instâncias.
+
+## 61. Endpoint dedicado de monitoramento: `GET /ai/optimize/telemetry`
+
+### 61.1 O Porquê
+
+Mesmo com telemetria persistida no `/ai/optimize`, faltava um endpoint dedicado para consumo por painel/monitoramento sem depender de acionar fluxo de otimização.
+
+Objetivo: disponibilizar leitura operacional de métricas de fallback com contrato estável e baixo acoplamento.
+
+### 61.2 O Como
+
+Arquivo criado:
+- `server/routes/ai/optimize/telemetry/index.dart`
+
+Contrato:
+- método: `GET`
+- autenticação: JWT obrigatória (middleware de `/ai/*`)
+- query opcional: `days` (1..90, default 7)
+
+Resposta (`200`):
+
+```json
+{
+  "status": "ok",
+  "source": "persisted_db",
+  "window_days": 7,
+  "global": {
+    "request_count": 0,
+    "triggered_count": 0,
+    "applied_count": 0,
+    "no_candidate_count": 0,
+    "no_replacement_count": 0,
+    "trigger_rate": 0.0,
+    "apply_rate": 0.0
+  },
+  "window": { "...": "agregado dos últimos N dias" },
+  "current_user_window": { "...": "agregado dos últimos N dias do usuário autenticado" }
+}
+```
+
+Comportamento quando migração não aplicada:
+- retorna `200` com `status = "not_initialized"` e métricas zeradas;
+- mensagem instrui executar `dart run bin/migrate.dart`.
+
+### 61.3 Teste de contrato
+
+Arquivo criado:
+- `server/test/ai_optimize_telemetry_contract_test.dart`
+
+Cenários cobertos:
+- `401` sem token;
+- `200` com token e estrutura esperada (`ok` ou `not_initialized`).
+
+### 61.4 Resultado esperado
+
+- endpoint único para dashboard/observabilidade do optimize;
+- leitura rápida de tendência global, janela operacional e recorte do usuário autenticado;
+- menor dependência de logs e menor atrito para operação diária.

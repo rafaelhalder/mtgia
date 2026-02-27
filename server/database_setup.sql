@@ -304,6 +304,29 @@ CREATE INDEX IF NOT EXISTS idx_ai_logs_endpoint ON ai_logs (endpoint);
 CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_logs (success);
 
+-- 14.1 Telemetria de fallback do /ai/optimize (persistente)
+-- Registra eficácia do fallback de sugestões vazias para análise histórica.
+CREATE TABLE IF NOT EXISTS ai_optimize_fallback_telemetry (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    deck_id UUID REFERENCES decks(id) ON DELETE SET NULL,
+    mode TEXT NOT NULL DEFAULT 'optimize',
+    recognized_format BOOLEAN NOT NULL DEFAULT FALSE,
+    triggered BOOLEAN NOT NULL DEFAULT FALSE,
+    applied BOOLEAN NOT NULL DEFAULT FALSE,
+    no_candidate BOOLEAN NOT NULL DEFAULT FALSE,
+    no_replacement BOOLEAN NOT NULL DEFAULT FALSE,
+    candidate_count INTEGER NOT NULL DEFAULT 0,
+    replacement_count INTEGER NOT NULL DEFAULT 0,
+    pair_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_opt_fallback_created ON ai_optimize_fallback_telemetry (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_opt_fallback_user ON ai_optimize_fallback_telemetry (user_id);
+CREATE INDEX IF NOT EXISTS idx_opt_fallback_deck ON ai_optimize_fallback_telemetry (deck_id);
+CREATE INDEX IF NOT EXISTS idx_opt_fallback_triggered ON ai_optimize_fallback_telemetry (triggered, applied);
+
 -- ============================================================
 -- SOCIAL: Sistema de Follows
 -- ============================================================
