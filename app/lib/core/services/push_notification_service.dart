@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../firebase_options.dart';
@@ -8,6 +9,9 @@ import '../api/api_client.dart';
 /// Handler de background — precisa ser top-level function.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (kIsWeb) {
+    return;
+  }
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('[Push] Background message: ${message.messageId}');
 }
@@ -39,6 +43,11 @@ class PushNotificationService {
   /// Chamar uma vez no app startup.
   Future<void> init() async {
     try {
+      if (kIsWeb) {
+        debugPrint('[Push] Web detectado: push Firebase desabilitado neste build.');
+        return;
+      }
+
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
@@ -114,9 +123,16 @@ class PushNotificationService {
   /// Remove o token do server (chamar no logout).
   Future<void> unregister() async {
     try {
-      await _api.delete('/users/me/fcm-token');
+      final response = await _api.delete('/users/me/fcm-token');
       _currentToken = null;
-      debugPrint('[Push] Token removido do server');
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('[Push] Token removido do server');
+      } else if (response.statusCode == 401) {
+        debugPrint('[Push] Logout sem sessão ativa no server (401 ao remover token)');
+      } else {
+        debugPrint('[Push] Falha ao remover token no server (status=${response.statusCode})');
+      }
     } catch (e) {
       debugPrint('[Push] Erro ao remover token: $e');
     }

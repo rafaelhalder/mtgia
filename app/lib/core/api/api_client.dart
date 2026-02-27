@@ -31,6 +31,7 @@ class ApiClient {
 
   /// Instância singleton do http.Client para reutilizar conexões TCP.
   static final http.Client _httpClient = http.Client();
+  static bool _performanceUnavailable = false;
 
   // Retorna a URL correta dependendo do ambiente
   static String get baseUrl {
@@ -63,10 +64,15 @@ class ApiClient {
 
   /// Cria um HttpMetric para rastrear a requisição no Firebase Performance
   HttpMetric? _createMetric(String url, HttpMethod method) {
+    if (kIsWeb || _performanceUnavailable) {
+      return null;
+    }
+
     try {
       return FirebasePerformance.instance.newHttpMetric(url, method);
     } catch (e) {
-      debugPrint('[⚠️ ApiClient] Firebase Performance não disponível: $e');
+      _performanceUnavailable = true;
+      debugPrint('[⚠️ ApiClient] Firebase Performance indisponível; métricas HTTP desativadas nesta sessão. Detalhe: $e');
       return null;
     }
   }

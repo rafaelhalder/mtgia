@@ -179,6 +179,50 @@ final migrations = <Migration>[
       DROP TABLE IF EXISTS rate_limit_events CASCADE;
     ''',
   ),
+  Migration(
+    version: '009',
+    name: 'create_ai_optimize_v2_tables',
+    up: '''
+      CREATE TABLE IF NOT EXISTS ai_user_preferences (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        preferred_archetype TEXT,
+        preferred_bracket INTEGER,
+        keep_theme_default BOOLEAN NOT NULL DEFAULT TRUE,
+        preferred_colors TEXT[] NOT NULL DEFAULT '{}',
+        budget_tier TEXT NOT NULL DEFAULT 'mid',
+        playstyle TEXT NOT NULL DEFAULT 'balanced',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_user_preferences_archetype
+      ON ai_user_preferences (preferred_archetype);
+
+      CREATE TABLE IF NOT EXISTS ai_optimize_cache (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        cache_key TEXT NOT NULL UNIQUE,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        deck_id UUID REFERENCES decks(id) ON DELETE SET NULL,
+        deck_signature TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_optimize_cache_expires_at
+      ON ai_optimize_cache (expires_at);
+      CREATE INDEX IF NOT EXISTS idx_ai_optimize_cache_user
+      ON ai_optimize_cache (user_id);
+      CREATE INDEX IF NOT EXISTS idx_ai_optimize_cache_deck
+      ON ai_optimize_cache (deck_id);
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_ai_optimize_cache_deck;
+      DROP INDEX IF EXISTS idx_ai_optimize_cache_user;
+      DROP INDEX IF EXISTS idx_ai_optimize_cache_expires_at;
+      DROP TABLE IF EXISTS ai_optimize_cache CASCADE;
+      DROP INDEX IF EXISTS idx_ai_user_preferences_archetype;
+      DROP TABLE IF EXISTS ai_user_preferences CASCADE;
+    ''',
+  ),
 ];
 
 class Migration {

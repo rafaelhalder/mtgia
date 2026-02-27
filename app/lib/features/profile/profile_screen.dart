@@ -272,13 +272,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       // Estado dropdown
                       SizedBox(
-                        width: 100,
+                        width: 116,
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedState,
+                          isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Estado',
-                            prefixIcon: Icon(Icons.location_on, size: 20),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 14),
                           ),
                           dropdownColor: AppTheme.surfaceSlate,
                           items: [

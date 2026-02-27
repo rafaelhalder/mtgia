@@ -179,11 +179,11 @@ Para cada item de sprint:
 ## Sprint 1 (Semanas 1-2) — Estabilidade do Core
 
 ### Entregas
-- [ ] Refatorar endpoints críticos para camada de serviço (decks/import/ai optimize).
-- [ ] Eliminar DDL residual em request path.
-- [ ] Padronizar tratamento de erro backend + códigos HTTP.
-- [ ] Instrumentar métricas básicas (latência p95, erro por endpoint).
-- [ ] Melhorar fluxo de criação/importação com feedback claro de falhas.
+- [x] Refatorar endpoints críticos para camada de serviço (decks/import/ai optimize).
+- [x] Eliminar DDL residual em request path.
+- [x] Padronizar tratamento de erro backend + códigos HTTP.
+- [x] Instrumentar métricas básicas (latência p95, erro por endpoint).
+- [x] Melhorar fluxo de criação/importação com feedback claro de falhas.
 
 ### Critério de aceite
 - Sem regressões no fluxo `criar -> analisar -> otimizar`.
@@ -192,11 +192,11 @@ Para cada item de sprint:
 ## Sprint 2 (Semanas 3-4) — Segurança + Observabilidade
 
 ### Entregas
-- [ ] Rate limiting distribuído para produção.
-- [ ] Política de logs sem segredos + revisão de variáveis sensíveis.
-- [ ] Health checks e readiness consistentes.
-- [ ] Dashboard mínimo (erro, latência, custo IA, throughput).
-- [ ] Hardening checklist por ambiente (dev/staging/prod).
+- [x] Rate limiting distribuído para produção.
+- [x] Política de logs sem segredos + revisão de variáveis sensíveis.
+- [x] Health checks e readiness consistentes.
+- [x] Dashboard mínimo (erro, latência, custo IA, throughput).
+- [x] Hardening checklist por ambiente (dev/staging/prod).
 
 ### Critério de aceite
 - Nenhum endpoint core sem monitoramento.
@@ -205,11 +205,11 @@ Para cada item de sprint:
 ## Sprint 3 (Semanas 5-6) — IA v2 (valor real)
 
 ### Entregas
-- [ ] Sugestão explicável por carta (entrada/saída + impacto).
-- [ ] Score de confiança por recomendação.
-- [ ] Memória de preferência do usuário.
-- [ ] Cache de IA por assinatura de deck + prompt.
-- [ ] Comparação clara “antes vs depois” na UI.
+- [x] Sugestão explicável por carta (entrada/saída + impacto).
+- [x] Score de confiança por recomendação.
+- [x] Memória de preferência do usuário.
+- [x] Cache de IA por assinatura de deck + prompt.
+- [x] Comparação clara “antes vs depois” na UI.
 
 ### Critério de aceite
 - Usuário entende por que cada mudança foi sugerida.

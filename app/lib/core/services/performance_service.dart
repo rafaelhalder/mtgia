@@ -1,4 +1,5 @@
 import 'package:firebase_performance/firebase_performance.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 /// Serviço para monitoramento de performance usando Firebase Performance.
@@ -36,6 +37,13 @@ class PerformanceService {
   
   /// Inicializa o Firebase Performance
   Future<void> init() async {
+    if (kIsWeb) {
+      _isEnabled = false;
+      _performance = null;
+      debugPrint('[PerformanceService] Web detectado: Firebase Performance desabilitado.');
+      return;
+    }
+
     try {
       _performance = FirebasePerformance.instance;
       _isEnabled = await _performance?.isPerformanceCollectionEnabled() ?? false;

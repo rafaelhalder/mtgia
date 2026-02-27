@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,6 +29,13 @@ const _atomicCardsFileName = 'AtomicCards.json';
 /// Tamanho do batch para envio paralelo ao Postgres.
 /// 500 = bom equilíbrio entre throughput e uso de memória.
 const _batchSize = 500;
+
+/// Concorrência maxima por batch para evitar pico de queries simultaneas.
+const _dbBatchConcurrency = 24;
+
+/// Timeout e tentativas para downloads HTTP externos.
+const _httpTimeout = Duration(seconds: 45);
+const _httpMaxRetries = 3;
 
 Future<void> main(List<String> args) async {
   if (args.contains('--help') || args.contains('-h')) {
@@ -86,7 +94,6 @@ Opcoes:
     if (!force && lastVersion != null && lastVersion == remoteVersion) {
       print(
           '✅ MTGJSON ja esta atualizado (version=$remoteVersion). Nada a fazer.');
-      await db.close();
       return;
     }
 
@@ -266,6 +273,71 @@ Future<int> _count(Pool pool, String table) async {
   return (res.first[0] as int?) ?? 0;
 }
 
+Future<http.Response> _httpGetWithRetry(
+  Uri uri, {
+  required String label,
+}) async {
+  Object? lastError;
+
+  for (var attempt = 1; attempt <= _httpMaxRetries; attempt++) {
+    try {
+      final response = await http.get(uri).timeout(_httpTimeout);
+      if (response.statusCode == 200) {
+        return response;
+      }
+
+      final retryable = response.statusCode == 429 || response.statusCode >= 500;
+      final message =
+          'Falha ao baixar $label: status=${response.statusCode} (tentativa $attempt/$_httpMaxRetries)';
+
+      if (!retryable || attempt == _httpMaxRetries) {
+        throw Exception(message);
+      }
+
+      print('⚠️  $message; tentando novamente...');
+      await Future.delayed(Duration(seconds: attempt * 2));
+    } on TimeoutException catch (e) {
+      lastError = e;
+      if (attempt == _httpMaxRetries) break;
+      print(
+          '⚠️  Timeout em $label (tentativa $attempt/$_httpMaxRetries); tentando novamente...');
+      await Future.delayed(Duration(seconds: attempt * 2));
+    } on SocketException catch (e) {
+      lastError = e;
+      if (attempt == _httpMaxRetries) break;
+      print(
+          '⚠️  Erro de rede em $label (tentativa $attempt/$_httpMaxRetries); tentando novamente...');
+      await Future.delayed(Duration(seconds: attempt * 2));
+    }
+  }
+
+  throw Exception('Falha ao baixar $label apos $_httpMaxRetries tentativas: $lastError');
+}
+
+Future<void> _runWithConcurrency<T>(
+  List<T> items,
+  Future<void> Function(T item) task, {
+  int concurrency = _dbBatchConcurrency,
+}) async {
+  if (items.isEmpty) return;
+
+  var nextIndex = 0;
+  Future<void> worker() async {
+    while (true) {
+      if (nextIndex >= items.length) return;
+      final currentIndex = nextIndex;
+      nextIndex++;
+      await task(items[currentIndex]);
+    }
+  }
+
+  final workers = List.generate(
+    concurrency.clamp(1, items.length),
+    (_) => worker(),
+  );
+  await Future.wait(workers);
+}
+
 Future<void> _logSync(Pool pool, {
   required String syncType,
   required String status,
@@ -313,10 +385,10 @@ int? _parseSinceDays(List<String> args) {
 // ═══════════════════════════════════════════════════════════════════════
 
 Future<Map<String, dynamic>> _fetchMtgJsonMeta() async {
-  final res = await http.get(Uri.parse(_metaUrl));
-  if (res.statusCode != 200) {
-    throw Exception('Falha ao baixar Meta.json: ${res.statusCode}');
-  }
+  final res = await _httpGetWithRetry(
+    Uri.parse(_metaUrl),
+    label: 'Meta.json',
+  );
   final decoded =
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   return decoded['data'] as Map<String, dynamic>;
@@ -325,10 +397,10 @@ Future<Map<String, dynamic>> _fetchMtgJsonMeta() async {
 /// Baixa SetList.json UMA VEZ e retorna a lista.
 Future<List<dynamic>> _fetchSetListData() async {
   print('⬇️  Baixando SetList.json...');
-  final res = await http.get(Uri.parse(_setListUrl));
-  if (res.statusCode != 200) {
-    throw Exception('Falha ao baixar SetList.json: ${res.statusCode}');
-  }
+  final res = await _httpGetWithRetry(
+    Uri.parse(_setListUrl),
+    label: 'SetList.json',
+  );
   final decoded =
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   return decoded['data'] as List<dynamic>;
@@ -355,11 +427,10 @@ List<String> _getNewSetCodesSinceFromData(
 
 Future<Map<String, dynamic>> _fetchSetJson(String setCode) async {
   print('⬇️  Baixando set $setCode...');
-  final res =
-      await http.get(Uri.parse('https://mtgjson.com/api/v5/$setCode.json'));
-  if (res.statusCode != 200) {
-    throw Exception('Falha ao baixar set $setCode: ${res.statusCode}');
-  }
+  final res = await _httpGetWithRetry(
+    Uri.parse('https://mtgjson.com/api/v5/$setCode.json'),
+    label: '$setCode.json',
+  );
   final decoded =
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
   return decoded['data'] as Map<String, dynamic>;
@@ -374,10 +445,10 @@ Future<File> _downloadAtomicCards({required bool force}) async {
     return file;
   }
   print('⬇️  Baixando $_atomicCardsUrl (pode demorar ~1min)...');
-  final res = await http.get(Uri.parse(_atomicCardsUrl));
-  if (res.statusCode != 200) {
-    throw Exception('Falha ao baixar AtomicCards.json: ${res.statusCode}');
-  }
+  final res = await _httpGetWithRetry(
+    Uri.parse(_atomicCardsUrl),
+    label: 'AtomicCards.json',
+  );
   await file.writeAsBytes(res.bodyBytes);
   print(
       '✅ Download concluido (${(res.bodyBytes.length / 1024 / 1024).toStringAsFixed(1)}MB)');
@@ -466,7 +537,9 @@ Future<int> _upsertCardsFromAtomic(
     for (var i = 0; i < rows.length; i += _batchSize) {
       final end = (i + _batchSize).clamp(0, rows.length);
       final batch = rows.sublist(i, end);
-      await Future.wait(batch.map((row) => stmt.run(row)));
+      await _runWithConcurrency(batch, (row) async {
+        await stmt.run(row);
+      });
       processed += batch.length;
       stdout.write('\r  ... $processed / ${rows.length}');
     }
@@ -552,7 +625,9 @@ Future<int> _upsertCardsFromSet(
     for (var i = 0; i < rows.length; i += _batchSize) {
       final end = (i + _batchSize).clamp(0, rows.length);
       final batch = rows.sublist(i, end);
-      await Future.wait(batch.map((row) => stmt.run(row)));
+      await _runWithConcurrency(batch, (row) async {
+        await stmt.run(row);
+      });
       processed += batch.length;
     }
   } finally {
@@ -650,7 +725,9 @@ Future<int> _upsertLegalitiesFromAtomic(
     for (var i = 0; i < rows.length; i += _batchSize) {
       final end = (i + _batchSize).clamp(0, rows.length);
       final batch = rows.sublist(i, end);
-      await Future.wait(batch.map((row) => stmt.run(row)));
+      await _runWithConcurrency(batch, (row) async {
+        await stmt.run(row);
+      });
       processed += batch.length;
       if (processed % 20000 < _batchSize) {
         stdout.write('\r  ... $processed / ${rows.length} legalidades');
@@ -707,7 +784,9 @@ Future<int> _upsertLegalitiesFromSet(
     for (var i = 0; i < rows.length; i += _batchSize) {
       final end = (i + _batchSize).clamp(0, rows.length);
       final batch = rows.sublist(i, end);
-      await Future.wait(batch.map((row) => stmt.run(row)));
+      await _runWithConcurrency(batch, (row) async {
+        await stmt.run(row);
+      });
       processed += batch.length;
     }
   } finally {

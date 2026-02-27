@@ -787,9 +787,11 @@ Future<Response> onRequest(RequestContext context) async {
     final deckId = body['deck_id'] as String?;
     final archetype = body['archetype'] as String?;
     final bracketRaw = body['bracket'];
-    final bracket =
-        bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
-    final keepTheme = body['keep_theme'] as bool? ?? true;
+    final parsedBracket =
+      bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
+    final parsedKeepTheme = body['keep_theme'] as bool?;
+    final hasBracketOverride = body.containsKey('bracket');
+    final hasKeepThemeOverride = body.containsKey('keep_theme');
 
     _optimizeRequestCount++;
 
@@ -799,6 +801,19 @@ Future<Response> onRequest(RequestContext context) async {
 
     // 1. Fetch Deck Data
     final pool = context.read<Pool>();
+
+    // Memória de preferências do usuário (se autenticado):
+    // aplica default somente quando o request não enviar override explícito.
+    final userPreferences = await _loadUserAiPreferences(
+      pool: pool,
+      userId: userId,
+    );
+    final bracket = hasBracketOverride
+      ? parsedBracket
+      : (userPreferences['preferred_bracket'] as int? ?? parsedBracket);
+    final keepTheme = hasKeepThemeOverride
+      ? (parsedKeepTheme ?? true)
+      : (userPreferences['keep_theme_default'] as bool? ?? true);
 
     // Get Deck Info
     final deckResult = await pool.execute(
@@ -841,6 +856,32 @@ Future<Response> onRequest(RequestContext context) async {
       '''),
       parameters: {'id': deckId},
     );
+
+    final deckSignature = _buildDeckSignature(cardsResult);
+    final cacheKey = _buildOptimizeCacheKey(
+      deckId: deckId,
+      archetype: archetype,
+      bracket: bracket,
+      keepTheme: keepTheme,
+      deckSignature: deckSignature,
+    );
+
+    final cachedResponse = await _loadOptimizeCache(
+      pool: pool,
+      cacheKey: cacheKey,
+    );
+    if (cachedResponse != null) {
+      cachedResponse['cache'] = {
+        'hit': true,
+        'cache_key': cacheKey,
+      };
+      cachedResponse['preferences'] = {
+        'memory_applied': !hasBracketOverride || !hasKeepThemeOverride,
+        'keep_theme': keepTheme,
+        'preferred_bracket': userPreferences['preferred_bracket'],
+      };
+      return Response.json(body: cachedResponse);
+    }
 
     final commanders = <String>[];
     final otherCards = <String>[];
@@ -2127,10 +2168,26 @@ Future<Response> onRequest(RequestContext context) async {
       Log.w('Persisted fallback telemetry unavailable: $e');
     }
 
+    final preCmc =
+        double.tryParse('${deckAnalysis['average_cmc'] ?? '0'}') ?? 0.0;
+    final postCmc = postAnalysis == null
+        ? preCmc
+        : (double.tryParse('${postAnalysis['average_cmc'] ?? preCmc}') ??
+            preCmc);
+
     final responseBody = {
       'mode': jsonResponse['mode'],
       'constraints': {
         'keep_theme': keepTheme,
+      },
+      'cache': {
+        'hit': false,
+        'cache_key': cacheKey,
+      },
+      'preferences': {
+        'memory_applied': !hasBracketOverride || !hasKeepThemeOverride,
+        'keep_theme': keepTheme,
+        'preferred_bracket': userPreferences['preferred_bracket'],
       },
       'theme': themeProfile.toJson(),
       'removals': validRemovals,
@@ -2168,11 +2225,40 @@ Future<Response> onRequest(RequestContext context) async {
     // Gerar additions_detailed apenas para cartas com card_id válido
     responseBody['additions_detailed'] = isComplete
         ? additionsDetailed
+            .whereType<Map<String, dynamic>>()
+            .map((entry) {
+              final name = entry['name']?.toString() ?? '';
+              final cardId = entry['card_id']?.toString() ?? '';
+              if (name.isEmpty || cardId.isEmpty) return null;
+              return _buildRecommendationDetail(
+                type: 'add',
+                name: name,
+                cardId: cardId,
+                quantity: (entry['quantity'] as int?) ?? 1,
+                targetArchetype: targetArchetype,
+                confidenceLevel: themeProfile.confidence,
+                cmcBefore: preCmc,
+                cmcAfter: postCmc,
+                keepTheme: keepTheme,
+              );
+            })
+            .where((e) => e != null)
+            .toList()
         : validAdditions
             .map((name) {
               final v = validByNameLower[name.toLowerCase()];
               if (v == null || v['id'] == null) return null;
-              return {'name': v['name'], 'card_id': v['id'], 'quantity': 1};
+              return _buildRecommendationDetail(
+                type: 'add',
+                name: '${v['name']}',
+                cardId: '${v['id']}',
+                quantity: 1,
+                targetArchetype: targetArchetype,
+                confidenceLevel: themeProfile.confidence,
+                cmcBefore: preCmc,
+                cmcAfter: postCmc,
+                keepTheme: keepTheme,
+              );
             })
             .where((e) => e != null)
             .toList();
@@ -2182,10 +2268,25 @@ Future<Response> onRequest(RequestContext context) async {
         .map((name) {
           final v = validByNameLower[name.toLowerCase()];
           if (v == null || v['id'] == null) return null;
-          return {'name': v['name'], 'card_id': v['id']};
+          return _buildRecommendationDetail(
+            type: 'remove',
+            name: '${v['name']}',
+            cardId: '${v['id']}',
+            quantity: 1,
+            targetArchetype: targetArchetype,
+            confidenceLevel: themeProfile.confidence,
+            cmcBefore: preCmc,
+            cmcAfter: postCmc,
+            keepTheme: keepTheme,
+          );
         })
         .where((e) => e != null)
         .toList();
+
+    responseBody['recommendations'] = [
+      ...(responseBody['removals_detailed'] as List),
+      ...(responseBody['additions_detailed'] as List),
+    ];
 
     // CRÍTICO: Balancear additions/removals detailed para manter contagem igual
     final addDet = responseBody['additions_detailed'] as List;
@@ -2302,6 +2403,27 @@ Future<Response> onRequest(RequestContext context) async {
 
     if (warnings.isNotEmpty) {
       responseBody['warnings'] = warnings;
+    }
+
+    try {
+      await _saveOptimizeCache(
+        pool: pool,
+        cacheKey: cacheKey,
+        userId: userId,
+        deckId: deckId,
+        deckSignature: deckSignature,
+        payload: responseBody,
+      );
+      await _saveUserAiPreferences(
+        pool: pool,
+        userId: userId,
+        preferredArchetype: targetArchetype,
+        preferredBracket: bracket,
+        keepThemeDefault: keepTheme,
+        preferredColors: commanderColorIdentity.toList(),
+      );
+    } catch (e) {
+      Log.w('Falha ao persistir cache/preferências de optimize: $e');
     }
 
     return Response.json(body: responseBody);
@@ -2455,6 +2577,250 @@ String _normalizeReasoning(dynamic value) {
   if (value == null) return '';
   if (value is String) return value;
   return value.toString();
+}
+
+String _buildDeckSignature(List<ResultRow> cardsResult) {
+  final entries = <String>[];
+  for (final row in cardsResult) {
+    final cardId = row[9].toString();
+    final quantity = (row[2] as int?) ?? 1;
+    entries.add('$cardId:$quantity');
+  }
+  entries.sort();
+  return entries.join('|');
+}
+
+String _buildOptimizeCacheKey({
+  required String deckId,
+  required String archetype,
+  required int? bracket,
+  required bool keepTheme,
+  required String deckSignature,
+}) {
+  final base = [
+    'optimize',
+    deckId,
+    archetype.toLowerCase().trim(),
+    '${bracket ?? 'none'}',
+    keepTheme ? 'keep' : 'free',
+    deckSignature,
+  ].join('::');
+  return 'v2:${_stableHash(base)}';
+}
+
+String _stableHash(String value) {
+  var hash = 2166136261;
+  for (final code in value.codeUnits) {
+    hash ^= code;
+    hash = (hash * 16777619) & 0xFFFFFFFF;
+  }
+  return hash.toRadixString(16);
+}
+
+Future<Map<String, dynamic>?> _loadOptimizeCache({
+  required Pool pool,
+  required String cacheKey,
+}) async {
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT payload
+      FROM ai_optimize_cache
+      WHERE cache_key = @cache_key
+        AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+    '''),
+    parameters: {
+      'cache_key': cacheKey,
+    },
+  );
+
+  if (result.isEmpty) return null;
+  final payload = result.first[0];
+  if (payload is Map<String, dynamic>) return Map<String, dynamic>.from(payload);
+  if (payload is Map) return payload.cast<String, dynamic>();
+  return null;
+}
+
+Future<void> _saveOptimizeCache({
+  required Pool pool,
+  required String cacheKey,
+  required String? userId,
+  required String deckId,
+  required String deckSignature,
+  required Map<String, dynamic> payload,
+}) async {
+  await pool.execute(
+    Sql.named('''
+      INSERT INTO ai_optimize_cache (
+        cache_key,
+        user_id,
+        deck_id,
+        deck_signature,
+        payload,
+        expires_at
+      ) VALUES (
+        @cache_key,
+        CAST(@user_id AS uuid),
+        CAST(@deck_id AS uuid),
+        @deck_signature,
+        @payload,
+        NOW() + INTERVAL '6 hours'
+      )
+      ON CONFLICT (cache_key)
+      DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        deck_id = EXCLUDED.deck_id,
+        deck_signature = EXCLUDED.deck_signature,
+        payload = EXCLUDED.payload,
+        expires_at = EXCLUDED.expires_at,
+        created_at = NOW()
+    '''),
+    parameters: {
+      'cache_key': cacheKey,
+      'user_id': userId,
+      'deck_id': deckId,
+      'deck_signature': deckSignature,
+      'payload': payload,
+    },
+  );
+
+  await pool.execute('''
+    DELETE FROM ai_optimize_cache
+    WHERE expires_at <= NOW()
+  ''');
+}
+
+Future<Map<String, dynamic>> _loadUserAiPreferences({
+  required Pool pool,
+  required String? userId,
+}) async {
+  if (userId == null || userId.isEmpty) {
+    return const {
+      'preferred_bracket': null,
+      'keep_theme_default': true,
+    };
+  }
+
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT preferred_archetype, preferred_bracket, keep_theme_default
+      FROM ai_user_preferences
+      WHERE user_id = CAST(@user_id AS uuid)
+      LIMIT 1
+    '''),
+    parameters: {
+      'user_id': userId,
+    },
+  );
+
+  if (result.isEmpty) {
+    return const {
+      'preferred_bracket': null,
+      'keep_theme_default': true,
+    };
+  }
+
+  final row = result.first;
+  return {
+    'preferred_archetype': row[0] as String?,
+    'preferred_bracket': row[1] as int?,
+    'keep_theme_default': row[2] as bool? ?? true,
+  };
+}
+
+Future<void> _saveUserAiPreferences({
+  required Pool pool,
+  required String? userId,
+  required String preferredArchetype,
+  required int? preferredBracket,
+  required bool keepThemeDefault,
+  required List<String> preferredColors,
+}) async {
+  if (userId == null || userId.isEmpty) return;
+
+  await pool.execute(
+    Sql.named('''
+      INSERT INTO ai_user_preferences (
+        user_id,
+        preferred_archetype,
+        preferred_bracket,
+        keep_theme_default,
+        preferred_colors,
+        updated_at
+      ) VALUES (
+        CAST(@user_id AS uuid),
+        @preferred_archetype,
+        @preferred_bracket,
+        @keep_theme_default,
+        @preferred_colors,
+        NOW()
+      )
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        preferred_archetype = EXCLUDED.preferred_archetype,
+        preferred_bracket = EXCLUDED.preferred_bracket,
+        keep_theme_default = EXCLUDED.keep_theme_default,
+        preferred_colors = EXCLUDED.preferred_colors,
+        updated_at = NOW()
+    '''),
+    parameters: {
+      'user_id': userId,
+      'preferred_archetype': preferredArchetype,
+      'preferred_bracket': preferredBracket,
+      'keep_theme_default': keepThemeDefault,
+      'preferred_colors': preferredColors,
+    },
+  );
+}
+
+Map<String, dynamic> _buildRecommendationDetail({
+  required String type,
+  required String name,
+  required String cardId,
+  required int quantity,
+  required String targetArchetype,
+  required String confidenceLevel,
+  required double cmcBefore,
+  required double cmcAfter,
+  required bool keepTheme,
+}) {
+  final confidenceScore = _confidenceScoreFromLevel(confidenceLevel);
+  final action = type == 'add' ? 'entrada' : 'saída';
+  final curveDelta = (cmcAfter - cmcBefore).toStringAsFixed(2);
+
+  return {
+    'type': type,
+    'name': name,
+    'card_id': cardId,
+    'quantity': quantity,
+    'reason':
+        'Sugestão de $action para alinhar o deck ao plano ${targetArchetype.toLowerCase()} e melhorar consistência geral.',
+    'confidence': {
+      'level': confidenceLevel,
+      'score': confidenceScore,
+    },
+    'impact_estimate': {
+      'curve': 'ΔCMC $curveDelta',
+      'consistency': keepTheme ? 'alta' : 'média',
+      'synergy': type == 'add' ? 'melhora' : 'ajuste',
+      'legality': 'mantida',
+    },
+  };
+}
+
+double _confidenceScoreFromLevel(String level) {
+  switch (level.toLowerCase()) {
+    case 'alta':
+    case 'high':
+      return 0.9;
+    case 'média':
+    case 'media':
+    case 'medium':
+      return 0.7;
+    default:
+      return 0.5;
+  }
 }
 
 Future<void> _recordOptimizeFallbackTelemetry({

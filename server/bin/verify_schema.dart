@@ -71,6 +71,15 @@ void main() async {
         'applied', 'no_candidate', 'no_replacement', 'candidate_count',
         'replacement_count', 'pair_count', 'created_at'
       ],
+      'ai_user_preferences': [
+        'user_id', 'preferred_archetype', 'preferred_bracket',
+        'keep_theme_default', 'preferred_colors', 'budget_tier',
+        'playstyle', 'created_at', 'updated_at'
+      ],
+      'ai_optimize_cache': [
+        'id', 'cache_key', 'user_id', 'deck_id', 'deck_signature',
+        'payload', 'created_at', 'expires_at'
+      ],
       'rate_limit_events': [
         'id', 'bucket', 'identifier', 'created_at'
       ],

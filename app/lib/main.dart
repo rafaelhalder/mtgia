@@ -82,6 +82,7 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   late final MessageProvider _messageProvider;
   late final NotificationProvider _notificationProvider;
   late final GoRouter _router;
+  bool _hadAuthenticatedSession = false;
 
   @override
   void initState() {
@@ -116,9 +117,16 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
         // Sempre permite a Splash (ela decide para onde ir).
         if (location == '/') return null;
 
-        // Não redirecionar enquanto o auth está carregando ou inicializando
-        // — evita loop de redirect durante login/register/splash.
+        // Enquanto auth inicializa/carrega, mantém o app em splash/auth.
+        // Evita abrir telas protegidas e disparar rajadas de 401 no boot.
         if (status == AuthStatus.loading || status == AuthStatus.initial) {
+          final isBootSafeRoute =
+              location == '/' || location == '/login' || location == '/register';
+          if (!isBootSafeRoute) {
+            debugPrint('[🧭 Router] → / (status=$status, aguardando auth)');
+            return '/';
+          }
+
           debugPrint('[🧭 Router] → null (status=$status, aguardando)');
           return null;
         }
@@ -275,19 +283,34 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
   }
 
   void _onAuthChanged() {
+    final status = _authProvider.status;
+
     if (_authProvider.isAuthenticated) {
+      _hadAuthenticatedSession = true;
       _notificationProvider.startPolling();
       _messageProvider.startPolling();
 
       // Registra FCM token para push notifications
       PushNotificationService().requestPermissionAndRegister();
-    } else {
+      return;
+    }
+
+    // Ignora estados transitórios para evitar efeitos colaterais (ex.: 401 em loop).
+    if (status == AuthStatus.initial || status == AuthStatus.loading) {
+      return;
+    }
+
+    if (status == AuthStatus.unauthenticated) {
       // Parar polling e limpar todo o estado dos providers ao deslogar
       _notificationProvider.stopPolling();
       _messageProvider.stopPolling();
 
-      // Remove FCM token do server (para de receber push)
-      PushNotificationService().unregister();
+      // Remove FCM token do server apenas quando houve sessão autenticada antes.
+      // Evita chamadas redundantes no boot/login sem token válido no backend.
+      if (_hadAuthenticatedSession) {
+        PushNotificationService().unregister();
+      }
+      _hadAuthenticatedSession = false;
 
       _clearAllProvidersState();
     }

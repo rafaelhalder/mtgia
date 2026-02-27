@@ -2823,6 +2823,21 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
               .map((m) => m.cast<String, dynamic>())
               .toList() ??
           const <Map<String, dynamic>>[];
+        final deckAnalysis =
+          (result['deck_analysis'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+        final postAnalysis =
+          (result['post_analysis'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+
+        final displayRemovals =
+          removalsDetailed.isNotEmpty
+            ? removalsDetailed
+            : removals.map((name) => {'name': name}).toList();
+        final displayAdditions =
+          additionsDetailed.isNotEmpty
+            ? additionsDetailed
+            : additions.map((name) => {'name': name}).toList();
 
       if (removals.isEmpty && additions.isEmpty) {
         if (!context.mounted) return;
@@ -2868,6 +2883,31 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                       const Divider(),
                       const SizedBox(height: 8),
                     ],
+                    if (deckAnalysis.isNotEmpty && postAnalysis.isNotEmpty) ...[
+                      const Text(
+                        'Antes vs Depois',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'CMC médio: ${deckAnalysis['average_cmc'] ?? '-'} → ${postAnalysis['average_cmc'] ?? '-'}',
+                      ),
+                      Text(
+                        'Curva: ${deckAnalysis['mana_curve_assessment'] ?? '-'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (postAnalysis['improvements'] is List &&
+                          (postAnalysis['improvements'] as List).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'Ganhos: ${(postAnalysis['improvements'] as List).take(2).join(' • ')}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
                     if (warnings.isNotEmpty) ...[
                       const Text(
                         'Avisos:',
@@ -2896,7 +2936,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                         ),
                       const SizedBox(height: 16),
                     ],
-                    if (removals.isNotEmpty) ...[
+                    if (displayRemovals.isNotEmpty) ...[
                       Text(
                         '❌ Remover:',
                         style: TextStyle(
@@ -2904,15 +2944,43 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                           color: AppTheme.error,
                         ),
                       ),
-                      ...removals.map(
-                        (c) => Padding(
-                          padding: const EdgeInsets.only(left: 8, top: 4),
-                          child: Text('• $c'),
-                        ),
-                      ),
+                      ...displayRemovals.take(20).map((item) {
+                        final name = item['name']?.toString() ?? '';
+                        final confidenceMap =
+                            (item['confidence'] is Map)
+                                ? (item['confidence'] as Map)
+                                    .cast<String, dynamic>()
+                                : const <String, dynamic>{};
+                        final confidenceLevel =
+                            confidenceMap['level']?.toString() ?? '';
+                        final reason = item['reason']?.toString() ?? '';
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 8, top: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                confidenceLevel.isEmpty
+                                    ? '• $name'
+                                    : '• $name (${confidenceLevel.toUpperCase()})',
+                              ),
+                              if (reason.isNotEmpty)
+                                Text(
+                                  reason,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
                       const SizedBox(height: 16),
                     ],
-                    if (additions.isNotEmpty) ...[
+                    if (displayAdditions.isNotEmpty) ...[
                       Text(
                         '✅ Adicionar:',
                         style: TextStyle(
@@ -2920,19 +2988,49 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                           color: AppTheme.success,
                         ),
                       ),
-                      ...additions
-                          .take(30)
-                          .map(
-                            (c) => Padding(
-                              padding: const EdgeInsets.only(left: 8, top: 4),
-                              child: Text('• $c'),
-                            ),
+                      ...displayAdditions.take(30).map((item) {
+                        final name = item['name']?.toString() ?? '';
+                        final confidenceMap =
+                            (item['confidence'] is Map)
+                                ? (item['confidence'] as Map)
+                                    .cast<String, dynamic>()
+                                : const <String, dynamic>{};
+                        final confidenceLevel =
+                            confidenceMap['level']?.toString() ?? '';
+                        final score = (confidenceMap['score'] as num?)?.toDouble();
+                        final reason = item['reason']?.toString() ?? '';
+
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 8, top: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                score == null
+                                    ? (confidenceLevel.isEmpty
+                                        ? '• $name'
+                                        : '• $name (${confidenceLevel.toUpperCase()})')
+                                    : '• $name (${confidenceLevel.toUpperCase()} ${(score * 100).round()}%)',
+                              ),
+                              if (reason.isNotEmpty)
+                                Text(
+                                  reason,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
                           ),
-                      if (additions.length > 30)
+                        );
+                      }),
+                      if (displayAdditions.length > 30)
                         Padding(
                           padding: const EdgeInsets.only(left: 8, top: 8),
                           child: Text(
-                            '+ ${additions.length - 30} cartas…',
+                            '+ ${displayAdditions.length - 30} cartas…',
                             style: const TextStyle(color: Colors.white70),
                           ),
                         ),

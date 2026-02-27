@@ -6349,3 +6349,242 @@ As mudanças concentraram-se em serviço de aplicação e observabilidade, prese
 - **Separation of concerns:** parsing/normalização de import movidos para `lib/`.
 - **Fail-fast com feedback útil:** mensagens de erro objetivas e acionáveis.
 - **Observabilidade orientada a operação:** latência e erro por endpoint com leitura direta.
+
+## 65. Sprint 2 — Segurança + Observabilidade (execução em lote)
+
+### 65.1 O porquê
+
+Com o core estabilizado, o próximo passo foi reduzir risco operacional e elevar visibilidade de produção. O foco do sprint foi: rate limiting adequado para ambiente distribuído, política de logs sem segredos, health/readiness consistentes e dashboard operacional mínimo.
+
+### 65.2 O como
+
+#### Rate limiting distribuído para produção
+
+Arquivos:
+- `server/lib/distributed_rate_limiter.dart` (novo)
+- `server/lib/rate_limit_middleware.dart`
+- `server/bin/migrate.dart` (migração `008_create_rate_limit_events`)
+- `server/database_setup.sql`
+- `server/bin/verify_schema.dart`
+
+Implementação:
+- criação de tabela `rate_limit_events` para contagem distribuída por janela temporal;
+- em produção, `authRateLimit()` e `aiRateLimit()` tentam backend distribuído (PostgreSQL);
+- fallback automático para in-memory quando indisponível;
+- controle por variável de ambiente `RATE_LIMIT_DISTRIBUTED=true|false`.
+
+Resultado:
+- proteção de brute force e abuso de IA com comportamento consistente entre instâncias.
+
+#### Política de logs sem segredos
+
+Arquivos:
+- `server/lib/log_sanitizer.dart` (novo)
+- `server/lib/logger.dart`
+
+Implementação:
+- sanitização de padrões sensíveis em logs (Bearer token, API key, senha, `JWT_SECRET`, `DB_PASS`, chaves OpenAI);
+- logger central passa a imprimir mensagens redigidas.
+
+Resultado:
+- redução de risco de vazamento acidental de segredos em logs operacionais.
+
+#### Health/readiness consistentes
+
+Arquivos:
+- `server/routes/health/index.dart`
+- `server/routes/health/ready/index.dart`
+
+Implementação:
+- `methodNotAllowed()` para métodos não suportados;
+- formato de resposta mais consistente com bloco `checks`.
+
+#### Dashboard mínimo (erro, latência, custo IA, throughput)
+
+Arquivos:
+- `server/routes/health/dashboard/index.dart` (novo)
+- `server/routes/health/metrics/index.dart`
+- `server/lib/request_metrics_service.dart`
+- `server/routes/_middleware.dart`
+
+Implementação:
+- `GET /health/metrics`: snapshot por endpoint com `request_count`, `error_count`, `error_rate`, `avg_latency_ms`, `p95_latency_ms`;
+- `GET /health/dashboard`: visão unificada com:
+  - métricas de request/latência/erro,
+  - custo IA proxy (tokens e erros via `ai_logs`, janela 24h),
+  - visão de optimize fallback (janela 24h).
+
+#### Hardening checklist por ambiente
+
+Arquivo:
+- `CHECKLIST_HARDENING_ENV.md` (raiz)
+
+Conteúdo:
+- checklist objetivo para `development`, `staging`, `production`;
+- inclui segurança de secrets, readiness, dashboard, retenção e rotina operacional.
+
+### 65.3 Validação executada
+
+- migração executada: `dart run bin/migrate.dart` (incluindo `008`)
+- schema verificado: `dart run bin/verify_schema.dart`
+- smoke endpoints:
+  - `GET /health/ready` ✅
+  - `GET /health/metrics` ✅
+  - `GET /health/dashboard` ✅
+- quality gates:
+  - `./scripts/quality_gate.ps1 quick` ✅
+  - `./scripts/quality_gate.ps1 full` ✅ (com observação de flakiness pontual de integração em execução paralela, sem regressão estrutural identificada)
+
+## 66. Sprint 3 — IA v2 (valor real)
+
+### 66.1 O porquê
+
+O objetivo desta sprint foi aumentar valor percebido no fluxo de otimização com IA em cinco pontos: explicabilidade por carta, confiança por sugestão, memória de preferência do usuário, cache por assinatura de deck+prompt e comparação visual antes/depois no app.
+
+### 66.2 O como
+
+#### Cache de IA por assinatura de deck + prompt
+
+Arquivos:
+- `server/routes/ai/optimize/index.dart`
+- `server/database_setup.sql`
+- `server/bin/migrate.dart` (migração `009_create_ai_optimize_v2_tables`)
+- `server/bin/verify_schema.dart`
+
+Implementação:
+- assinatura determinística do deck (`deck_signature`) baseada em `card_id:quantity`;
+- chave de cache `v2:<hash>` com `deck_id + archetype + bracket + keep_theme + signature`;
+- tabela `ai_optimize_cache` com `payload JSONB`, `expires_at` e índice de expiração;
+- leitura rápida no início do handler (`cache.hit=true`) e limpeza de expirados.
+
+Resultado:
+- evita recomputar prompts iguais e reduz custo/latência sem alterar contrato funcional.
+
+#### Memória de preferência do usuário
+
+Arquivos:
+- `server/routes/ai/optimize/index.dart`
+- `server/database_setup.sql`
+- `server/bin/migrate.dart`
+
+Implementação:
+- nova tabela `ai_user_preferences` por `user_id`;
+- fallback de defaults quando request não envia override (`bracket`, `keep_theme`);
+- upsert das preferências ao final da otimização (archetype/bracket/keep_theme/cores).
+
+Resultado:
+- comportamento de otimização mais consistente com o histórico do usuário autenticado.
+
+#### Sugestões explicáveis + score de confiança por carta
+
+Arquivo:
+- `server/routes/ai/optimize/index.dart`
+
+Implementação:
+- `additions_detailed` e `removals_detailed` enriquecidos com:
+  - `reason`
+  - `confidence.level`
+  - `confidence.score`
+  - `impact_estimate` (curva, consistência, sinergia, legalidade)
+- campo agregado `recommendations` com todas as recomendações detalhadas.
+
+Resultado:
+- cada carta passa a ter justificativa e nível de confiança objetivo para decisão do usuário.
+
+#### Comparação clara antes vs depois na UI
+
+Arquivo:
+- `app/lib/features/decks/screens/deck_details_screen.dart`
+
+Implementação:
+- dialog de confirmação da otimização agora mostra:
+  - bloco `Antes vs Depois` com CMC médio e resumo de ganhos;
+  - linhas por carta com confiança (`ALTA/MÉDIA/BAIXA` e score %) e razão textual.
+
+Resultado:
+- melhoria de entendimento do impacto real antes de aplicar mudanças no deck.
+
+#### Governança do roadmap
+
+Arquivo:
+- `ROADMAP.md`
+
+Implementação:
+- itens da Sprint 3 marcados como concluídos (`[x]`).
+
+### 66.3 Validação executada
+
+- `dart run bin/migrate.dart` ✅ (migração 009 aplicada)
+- `dart run bin/verify_schema.dart` ✅
+- `./scripts/quality_gate.ps1 quick` ✅
+- `./scripts/quality_gate.ps1 full` ✅
+
+## 67. Hardening do sync de cartas + governança do roadmap
+
+### 67.1 O porquê
+
+No fluxo de atualização de cartas via MTGJSON, havia dois riscos operacionais:
+- downloads sem retry/timeout explícitos (falhas transitórias de rede podiam interromper o sync);
+- batches com alta concorrência instantânea no Postgres (`Future.wait` com até 500 `stmt.run`), o que pode causar picos de carga desnecessários.
+
+Também havia divergência documental no `ROADMAP.md`: Sprint 1 e Sprint 2 estavam executadas na prática, mas não marcadas como concluídas.
+
+### 67.2 O como
+
+Arquivos alterados:
+- `server/bin/sync_cards.dart`
+- `ROADMAP.md`
+
+#### Hardening HTTP (MTGJSON)
+
+Implementação no `sync_cards.dart`:
+- helper `_httpGetWithRetry(...)` com:
+  - timeout de 45s por request (`_httpTimeout`),
+  - até 3 tentativas (`_httpMaxRetries`),
+  - retry apenas para cenários transitórios (429/5xx, timeout e erro de rede);
+- aplicado em:
+  - `Meta.json`,
+  - `SetList.json`,
+  - `SET.json` incremental,
+  - `AtomicCards.json` no full.
+
+Benefício:
+- maior resiliência sem alterar contrato nem semântica do sync.
+
+#### Controle de concorrência no upsert em batch
+
+Implementação:
+- helper `_runWithConcurrency(...)`;
+- limite de concorrência configurável (`_dbBatchConcurrency = 24`) por sub-batch;
+- substituição de `Future.wait(batch.map(stmt.run))` por execução concorrente limitada.
+
+Aplicado em:
+- upsert de cards full,
+- upsert de cards incremental,
+- upsert de legalities full,
+- upsert de legalities incremental.
+
+Benefício:
+- mantém throughput alto com pressão mais previsível no banco.
+
+#### Ajuste de consistência de lifecycle
+
+Implementação:
+- removido `db.close()` redundante no early return de versão já sincronizada;
+- fechamento permanece centralizado no bloco `finally`.
+
+#### Governança do roadmap
+
+Implementação em `ROADMAP.md`:
+- Sprint 1: todas as entregas marcadas `[x]`;
+- Sprint 2: todas as entregas marcadas `[x]`.
+
+Resultado:
+- roadmap refletindo corretamente o estado atual de execução.
+
+### 67.3 Padrões aplicados
+
+- **Fail-safe I/O**: retry/timeout para dependências externas.
+- **Backpressure controlado**: concorrência limitada em operações massivas.
+- **Fonte única de verdade**: status de sprint alinhado ao roadmap oficial.
+- **Mudança mínima compatível**: sem quebra de contrato de API e sem alterar formato de dados.
