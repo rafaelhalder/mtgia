@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
-String _cleanLookupKey(String value) => value.replaceAll(RegExp(r'\s+\d+$'), '');
+String cleanImportLookupKey(String value) =>
+  value.replaceAll(RegExp(r'\s+\d+$'), '');
 
 /// Resolve nomes de cartas para dados do banco em lote.
 ///
@@ -19,7 +20,7 @@ Future<Map<String, Map<String, dynamic>>> resolveImportCardNames(
     if (rawName == null || rawName.isEmpty) continue;
 
     final originalKey = rawName.toLowerCase();
-    final cleanKey = _cleanLookupKey(originalKey);
+    final cleanKey = cleanImportLookupKey(originalKey);
 
     exactKeys.add(originalKey);
     exactKeys.add(cleanKey);
@@ -58,7 +59,7 @@ Future<Map<String, Map<String, dynamic>>> resolveImportCardNames(
     if (rawName == null || rawName.isEmpty) continue;
 
     final originalKey = rawName.toLowerCase();
-    final cleanKey = _cleanLookupKey(originalKey);
+    final cleanKey = cleanImportLookupKey(originalKey);
     final lookupKey = foundCardsMap.containsKey(originalKey)
         ? originalKey
         : cleanKey;

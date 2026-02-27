@@ -83,7 +83,25 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
   }
 
   void _addCardToDeck(DeckCardItem card) async {
-    final deck = context.read<DeckProvider>().selectedDeck;
+    final deckProvider = context.read<DeckProvider>();
+    if (!widget.isBinderMode && deckProvider.selectedDeck?.id != widget.deckId) {
+      await deckProvider.fetchDeckDetails(widget.deckId);
+    }
+    if (!mounted) return;
+
+    final deck = deckProvider.selectedDeck?.id == widget.deckId
+        ? deckProvider.selectedDeck
+        : null;
+
+    if (!widget.isBinderMode && deck == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível carregar o deck para adicionar cartas.'),
+        ),
+      );
+      return;
+    }
+
     final format = deck?.format.toLowerCase();
     final isCommanderFormat = format == 'commander' || format == 'brawl';
 

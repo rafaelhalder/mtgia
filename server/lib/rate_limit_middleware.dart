@@ -167,8 +167,13 @@ Middleware rateLimitMiddleware({
 Middleware authRateLimit() {
   return (handler) {
     return (context) async {
-      final limiter = _isProduction() ? _authRateLimiter : _authRateLimiterDev;
+      final isProd = _isProduction();
+      final limiter = isProd ? _authRateLimiter : _authRateLimiterDev;
       final clientId = RateLimiter._defaultIdentifier(context);
+
+      if (!isProd && clientId == 'anonymous') {
+        return handler(context);
+      }
 
       if (!limiter.isAllowed(clientId)) {
         return Response.json(

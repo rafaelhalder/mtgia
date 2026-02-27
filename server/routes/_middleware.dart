@@ -1,9 +1,11 @@
 import 'dart:io';
+
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
-import '../lib/database.dart';
 
-// Instancia o banco de dados uma vez.
+import '../lib/database.dart';
+import '../lib/request_metrics_service.dart';
+
 final _db = Database();
 var _connected = false;
 
@@ -16,13 +18,15 @@ const _corsHeaders = {
 
 Handler middleware(Handler handler) {
   return (context) async {
-    // ── CORS preflight ───────────────────────────────────
+    final startedAt = DateTime.now();
+    final endpoint =
+        '${context.request.method.name.toUpperCase()} ${context.request.uri.path}';
+
     if (context.request.method == HttpMethod.options) {
       return Response(statusCode: HttpStatus.noContent, headers: _corsHeaders);
     }
 
     try {
-      // ── DB ────────────────────────────────────────────────
       if (!_connected) {
         await _db.connect();
         if (!_db.isConnected) {
@@ -35,11 +39,11 @@ Handler middleware(Handler handler) {
         _connected = true;
       }
 
-      // Executa o handler com Pool injetado.
       var response =
           await handler.use(provider<Pool>((_) => _db.connection))(context);
 
-      final contentLength = int.tryParse(response.headers['content-length'] ?? '');
+      final contentLength =
+          int.tryParse(response.headers['content-length'] ?? '');
       if (response.statusCode == HttpStatus.methodNotAllowed &&
           (contentLength == null || contentLength == 0)) {
         response = Response.json(
@@ -49,13 +53,31 @@ Handler middleware(Handler handler) {
         );
       }
 
-      // ── Adiciona CORS nas respostas ──────────────────────
-      // Evita materializar o body (performance/streaming).
-      final merged = <String, Object>{...response.headers, ..._corsHeaders};
-      return response.copyWith(headers: merged);
+      final mergedHeaders = <String, Object>{
+        ...response.headers,
+        ..._corsHeaders,
+      };
+      final finalResponse = response.copyWith(headers: mergedHeaders);
+
+      final latencyMs = DateTime.now().difference(startedAt).inMilliseconds;
+      RequestMetricsService.instance.record(
+        endpoint: endpoint,
+        statusCode: finalResponse.statusCode,
+        latencyMs: latencyMs,
+      );
+
+      return finalResponse;
     } catch (e, st) {
       print('[ERROR] middleware: $e');
       print('[ERROR] stack: $st');
+
+      final latencyMs = DateTime.now().difference(startedAt).inMilliseconds;
+      RequestMetricsService.instance.record(
+        endpoint: endpoint,
+        statusCode: HttpStatus.internalServerError,
+        latencyMs: latencyMs,
+      );
+
       return Response.json(
         statusCode: HttpStatus.internalServerError,
         body: {'error': 'Erro interno do servidor'},

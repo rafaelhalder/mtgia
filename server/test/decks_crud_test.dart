@@ -509,6 +509,51 @@ void main() {
       final data = jsonDecode(response.body);
       expect(data['deck']['name'], equals('Name Only Update'));
     });
+
+    test('should resolve card_id from name when updating cards', () async {
+      testDeckId = await createTestDeck(authToken!);
+      final validCard = await getValidCard(authToken!);
+
+      if (validCard == null) {
+        print('⚠️  Pulando teste: nenhuma carta encontrada');
+        return;
+      }
+
+      final cardName = validCard['name']?.toString();
+      if (cardName == null || cardName.trim().isEmpty) {
+        print('⚠️  Pulando teste: carta sem nome');
+        return;
+      }
+
+      final putResponse = await http.put(
+        Uri.parse('$baseUrl/decks/$testDeckId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $authToken',
+        },
+        body: jsonEncode({
+          'cards': [
+            {
+              'name': cardName,
+              'quantity': 1,
+              'is_commander': false,
+            }
+          ],
+        }),
+      );
+
+      expect(putResponse.statusCode, equals(200));
+
+      final getResponse = await http.get(
+        Uri.parse('$baseUrl/decks/$testDeckId'),
+        headers: {'Authorization': 'Bearer $authToken'},
+      );
+
+      expect(getResponse.statusCode, equals(200));
+      final data = jsonDecode(getResponse.body) as Map<String, dynamic>;
+      final totalCards = (data['stats'] as Map<String, dynamic>)['total_cards'];
+      expect(totalCards, greaterThan(0));
+    });
   }, skip: skipIntegration);
   
   group('Integration - Full Lifecycle', () {

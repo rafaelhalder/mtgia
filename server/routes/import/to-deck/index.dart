@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 import '../../../lib/import_card_lookup_service.dart';
-
-String _cleanLookupKey(String value) => value.replaceAll(RegExp(r'\s+\d+$'), '');
+import '../../../lib/import_list_service.dart';
+import '../../../lib/http_responses.dart';
 
 int _sumQuantities(List<Map<String, dynamic>> cards) =>
     cards.fold<int>(0, (sum, c) => sum + (c['quantity'] as int? ?? 0));
@@ -12,7 +12,7 @@ Future<Response> onRequest(RequestContext context) async {
   if (context.request.method == HttpMethod.post) {
     return _importToDeck(context);
   }
-  return Response(statusCode: HttpStatus.methodNotAllowed);
+  return methodNotAllowed();
 }
 
 /// Importa uma lista de cartas para um deck EXISTENTE
@@ -26,10 +26,7 @@ Future<Response> _importToDeck(RequestContext context) async {
   final replaceAll = body['replace_all'] == true;
 
   if (deckId == null || rawList == null) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Fields deck_id and list are required.'},
-    );
+    return badRequest('Fields deck_id and list are required.');
   }
 
   // Verifica se o deck pertence ao usuário
@@ -40,70 +37,25 @@ Future<Response> _importToDeck(RequestContext context) async {
   );
 
   if (deckCheck.isEmpty) {
-    return Response.json(
-      statusCode: HttpStatus.notFound,
-      body: {'error': 'Deck not found or access denied.'},
-    );
+    return notFound('Deck not found or access denied.');
   }
 
   final format = deckCheck.first[1] as String;
 
-  List<String> lines = [];
-  if (rawList is String) {
-    lines = rawList.split('\n');
-  } else if (rawList is List) {
-    for (var item in rawList) {
-      if (item is String) {
-        lines.add(item);
-      } else if (item is Map) {
-        final q = item['quantity'] ?? item['amount'] ?? item['qtd'] ?? 1;
-        final n = item['name'] ?? item['card_name'] ?? item['card'] ?? '';
-        if (n.toString().isNotEmpty) {
-          lines.add('$q $n');
-        }
-      }
-    }
-  } else {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Field list must be a String or a List.'},
-    );
+  late final List<String> lines;
+  try {
+    lines = normalizeImportLines(rawList);
+  } on FormatException catch (e) {
+    return badRequest(e.message);
   }
-
-  // Regex para fazer o parse da linha
-  final lineRegex = RegExp(r'^(\d+)x?\s+([^(]+)\s*(?:\(([\w\d]+)\))?.*$');
 
   final cardsToInsert = <Map<String, dynamic>>[];
   final notFoundCards = <String>[];
   final warnings = <String>[];
 
-  final parsedItems = <Map<String, dynamic>>[];
-
-  // 1. Parse de todas as linhas
-  for (var line in lines) {
-    line = line.trim();
-    if (line.isEmpty) continue;
-
-    final match = lineRegex.firstMatch(line);
-    if (match != null) {
-      final quantity = int.parse(match.group(1)!);
-      final cardName = match.group(2)!.trim();
-
-      final lineLower = line.toLowerCase();
-      final isCommanderTag = lineLower.contains('[commander') ||
-          lineLower.contains('*cmdr*') ||
-          lineLower.contains('!commander');
-
-      parsedItems.add({
-        'line': line,
-        'name': cardName,
-        'quantity': quantity,
-        'isCommanderTag': isCommanderTag,
-      });
-    } else {
-      notFoundCards.add(line);
-    }
-  }
+  final parseResult = parseImportLines(lines);
+  final parsedItems = parseResult.parsedItems;
+  notFoundCards.addAll(parseResult.invalidLines);
 
   // 2) Resolve nomes em lote (exato + clean + split fallback)
   final foundCardsMap = await resolveImportCardNames(pool, parsedItems);
@@ -113,7 +65,7 @@ Future<Response> _importToDeck(RequestContext context) async {
     if (notFoundCards.contains(item['line'])) continue;
 
     final originalKey = (item['name'] as String).toLowerCase();
-    final cleanedKey = _cleanLookupKey(originalKey);
+    final cleanedKey = cleanImportLookupKey(originalKey);
     final nameKey = foundCardsMap.containsKey(originalKey) ? originalKey : cleanedKey;
 
     if (foundCardsMap.containsKey(nameKey)) {
@@ -134,13 +86,10 @@ Future<Response> _importToDeck(RequestContext context) async {
   }
 
   if (cardsToInsert.isEmpty) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {
-        'error': 'No valid cards found in the list.',
-        'not_found_lines': notFoundCards
-      },
-    );
+    return badRequest('No valid cards found in the list.', details: {
+      'not_found_lines': notFoundCards,
+      'hint': 'Confira formato das linhas (ex: "1 Sol Ring") e nomes das cartas.',
+    });
   }
 
   // 6. Validação de regras
@@ -220,9 +169,6 @@ DO UPDATE SET
     });
   } catch (e) {
     print('[ERROR] Failed to import cards: $e');
-    return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'error': 'Failed to import cards'},
-    );
+    return internalServerError('Failed to import cards');
   }
 }

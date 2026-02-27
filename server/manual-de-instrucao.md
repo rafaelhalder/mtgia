@@ -6200,3 +6200,152 @@ Agendamento automático:
 Benefício:
 - remove dependência de hardcode para privilégio administrativo;
 - mantém tabela de telemetria enxuta e previsível ao longo do tempo.
+
+## 63. Core Impecável — contrato de cartas por ID, deep link robusto e rate limit de auth em dev/test
+
+### 63.1 O porquê
+
+Foram atacados três pontos críticos do fluxo principal:
+
+1) `PUT /decks/:id` aceitava basicamente `card_id`, enquanto parte do fluxo de import/edição pode chegar com `name`.
+2) No deep link `/decks/:id/search`, o usuário podia tentar adicionar carta antes do provider carregar o deck.
+3) Em dev/test, o rate limit de auth podia bloquear QA quando o identificador caía em `anonymous`.
+
+Esses problemas afetam diretamente o ciclo core: criar/importar → validar → analisar → otimizar.
+
+### 63.2 O como
+
+#### Backend — `PUT /decks/:id` com fallback por nome
+
+Arquivo alterado:
+- `server/routes/decks/[id]/index.dart`
+
+Implementação:
+- normalização do payload de `cards` aceitando:
+  - `card_id` (preferencial);
+  - `name` (fallback compatível).
+- quando `card_id` não vem, resolve via lookup case-insensitive em `cards`:
+  - `SELECT id::text FROM cards WHERE LOWER(name) = LOWER(@name) LIMIT 1`.
+- validações fail-fast por item:
+  - exige `card_id` **ou** `name`;
+  - `quantity` obrigatória e positiva.
+- deduplicação por `card_id` com merge de entradas:
+  - `is_commander` consolidado por OR;
+  - quantidade somada para não-comandante;
+  - comandante sempre normalizado para `quantity = 1`.
+- manutenção da validação central de regras com `DeckRulesService` antes de persistir.
+
+Resultado:
+- contrato de update fica resiliente para clientes legados/compat sem quebrar o padrão preferido por `card_id`.
+
+#### Frontend — deep link de busca garante carregamento do deck
+
+Arquivo alterado:
+- `app/lib/features/cards/screens/card_search_screen.dart`
+
+Implementação:
+- `_addCardToDeck` agora garante `fetchDeckDetails(widget.deckId)` quando necessário antes de calcular regras e enviar adição.
+- se o deck não puder ser carregado, exibe erro claro e aborta a ação.
+
+Resultado:
+- “Adicionar carta” funciona de forma previsível mesmo em entrada via deep link com provider ainda vazio.
+
+#### Backend — auth rate limit em dev/test sem bloquear QA
+
+Arquivo alterado:
+- `server/lib/rate_limit_middleware.dart`
+
+Implementação:
+- em `authRateLimit()`, quando **não é produção** e `clientId == 'anonymous'`, o middleware não bloqueia a requisição.
+- comportamento restritivo permanece em produção.
+
+Resultado:
+- evita falso bloqueio em ambientes locais e suítes de teste, mantendo proteção forte em produção.
+
+### 63.3 Testes e validação
+
+Arquivo de teste atualizado:
+- `server/test/decks_crud_test.dart`
+
+Novo cenário coberto:
+- `PUT /decks/:id` resolve `card_id` a partir de `name` e persiste atualização com sucesso.
+
+Validações executadas:
+- checks de erros de compilação (backend/frontend): sem erros nos arquivos alterados.
+- teste direcionado de integração: `decks_crud_test.dart` passou.
+
+### 63.4 Padrões aplicados
+
+- **Compatibilidade controlada:** `card_id` continua preferencial; `name` apenas fallback de robustez.
+- **Fail-fast:** payload inválido falha cedo com mensagem objetiva.
+- **Mudança cirúrgica:** foco nos pontos críticos do fluxo core, sem expansão de escopo.
+
+## 64. Sprint 1 — Estabilidade do Core (execução em lote)
+
+### 64.1 O porquê
+
+Para fechar a base do ciclo core (criar/importar → analisar → otimizar), foi necessário reduzir acoplamento em rotas críticas, melhorar feedback de importação e adicionar observabilidade mínima acionável por endpoint.
+
+### 64.2 O como
+
+#### Refatoração para camada de serviço (import)
+
+Novos serviços:
+- `server/lib/import_list_service.dart`
+  - `normalizeImportLines(rawList)`
+  - `parseImportLines(lines)`
+- `server/lib/import_card_lookup_service.dart`
+  - utilitário exposto `cleanImportLookupKey(...)`
+
+Rotas atualizadas para usar os serviços:
+- `server/routes/import/index.dart`
+- `server/routes/import/to-deck/index.dart`
+
+Resultado:
+- parsing e normalização de lista saíram da rota para serviço compartilhado;
+- lookup de cartas reutilizado e consistente entre importação para novo deck e para deck existente;
+- redução de duplicação e menor risco de divergência de comportamento.
+
+#### Feedback de falha mais claro no fluxo de importação
+
+Melhorias aplicadas:
+- erros de payload inválido (`list` não String/List) com mensagem direta;
+- resposta de falha quando nenhuma carta válida é resolvida agora inclui `hint` para correção de formato;
+- alinhamento de respostas com helper de erro (`badRequest`, `notFound`, `internalServerError`, `methodNotAllowed`) no `import/to-deck`.
+
+#### Observabilidade mínima por endpoint
+
+Novo serviço:
+- `server/lib/request_metrics_service.dart`
+  - coleta em memória por endpoint (`METHOD /path`):
+    - `request_count`
+    - `error_count`
+    - `error_rate`
+    - `avg_latency_ms`
+    - `p95_latency_ms` (amostra recente)
+
+Integração global:
+- `server/routes/_middleware.dart`
+  - registra métricas para todas as requisições processadas;
+  - registra falhas `500` também no caminho de exceção.
+
+Endpoint novo:
+- `server/routes/health/metrics/index.dart`
+  - `GET /health/metrics` retorna snapshot de totais e métricas por endpoint.
+
+### 64.3 DDL residual em request path
+
+Nesta rodada não foi adicionada nenhuma DDL em rota.
+As mudanças concentraram-se em serviço de aplicação e observabilidade, preservando a estratégia de migrations/scripts fora do request path.
+
+### 64.4 Validação executada
+
+- `./scripts/quality_gate.ps1 quick` ✅
+- `./scripts/quality_gate.ps1 full` ✅
+- smoke `GET /health/metrics` ✅ (`status=200`, totais e endpoints retornados)
+
+### 64.5 Padrões aplicados
+
+- **Separation of concerns:** parsing/normalização de import movidos para `lib/`.
+- **Fail-fast com feedback útil:** mensagens de erro objetivas e acionáveis.
+- **Observabilidade orientada a operação:** latência e erro por endpoint com leitura direta.

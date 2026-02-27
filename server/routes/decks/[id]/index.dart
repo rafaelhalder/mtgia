@@ -205,55 +205,79 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
 
       // 3. Se uma nova lista de cartas for enviada, substitui a antiga
       if (cards != null) {
-        final normalized = cards
-            .whereType<Map>()
-            .map((m) => m.cast<String, dynamic>())
-            .toList();
-        
-        // DEBUG: Log cartas recebidas
-        print('[DEBUG] PUT /decks/$deckId - Cartas recebidas: ${normalized.length}');
-        for (final card in normalized) {
-          print('[DEBUG]   card_id=${card['card_id']}, qty=${card['quantity']}, is_commander=${card['is_commander']}');
+        final normalized = <Map<String, dynamic>>[];
+        for (final rawCard in cards.whereType<Map>()) {
+          final card = rawCard.cast<String, dynamic>();
+
+          var cardId = (card['card_id'] as String?)?.trim();
+          final cardName = (card['name'] as String?)?.trim();
+          final quantityRaw = card['quantity'];
+          final quantity = quantityRaw is int
+              ? quantityRaw
+              : int.tryParse('${quantityRaw ?? ''}');
+          final isCommander = card['is_commander'] as bool? ?? false;
+
+          if ((cardId == null || cardId.isEmpty) &&
+              (cardName == null || cardName.isEmpty)) {
+            throw Exception('Each card must have a card_id or name.');
+          }
+          if (quantity == null || quantity <= 0) {
+            throw Exception('Each card must have a positive quantity.');
+          }
+
+          if (cardId == null || cardId.isEmpty) {
+            final lookup = await session.execute(
+              Sql.named(
+                'SELECT id::text FROM cards WHERE LOWER(name) = LOWER(@name) LIMIT 1',
+              ),
+              parameters: {'name': cardName!},
+            );
+            if (lookup.isEmpty) {
+              throw Exception('Card not found: $cardName');
+            }
+            cardId = lookup.first[0] as String;
+          }
+
+          normalized.add({
+            'card_id': cardId,
+            'quantity': quantity,
+            'is_commander': isCommander,
+            'condition': _validateCardCondition(card['condition']?.toString()),
+          });
         }
-        
-        // Deduplicar por card_id (evita duplicatas acidentais do cliente)
-        // Prioriza is_commander: true se houver conflito
+
         final deduped = <String, Map<String, dynamic>>{};
         for (final card in normalized) {
-          final cardId = card['card_id'] as String?;
-          if (cardId == null || cardId.isEmpty) continue;
-          
+          final cardId = card['card_id'] as String;
           final existing = deduped[cardId];
+
           if (existing == null) {
             deduped[cardId] = card;
-          } else {
-            // Se já existe, mantém o que tem is_commander: true
-            final existingIsCmd = existing['is_commander'] as bool? ?? false;
-            final newIsCmd = card['is_commander'] as bool? ?? false;
-            if (newIsCmd && !existingIsCmd) {
-              deduped[cardId] = card;
-            }
-            // Caso contrário, mantém o existente
+            continue;
           }
+
+          final existingIsCommander = existing['is_commander'] as bool? ?? false;
+          final newIsCommander = card['is_commander'] as bool? ?? false;
+          final mergedIsCommander = existingIsCommander || newIsCommander;
+
+          final existingQty = existing['quantity'] as int? ?? 0;
+          final newQty = card['quantity'] as int? ?? 0;
+
+          deduped[cardId] = {
+            ...existing,
+            'is_commander': mergedIsCommander,
+            'quantity': mergedIsCommander ? 1 : (existingQty + newQty),
+            'condition': card['condition'] ?? existing['condition'],
+          };
         }
+
         final dedupedList = deduped.values.toList();
-        
-        // NORMALIZAÇÃO: Commander deve ter quantity=1
+
         for (final card in dedupedList) {
           final isCommander = card['is_commander'] as bool? ?? false;
           if (isCommander) {
-            final oldQty = card['quantity'];
             card['quantity'] = 1;
-            if (oldQty != 1) {
-              print('[FIX] Commander normalizado: qty $oldQty → 1');
-            }
           }
-        }
-        
-        // DEBUG: Log após deduplicação
-        print('[DEBUG] PUT /decks/$deckId - Após dedup: ${dedupedList.length} cartas');
-        for (final card in dedupedList) {
-          print('[DEBUG]   dedup: card_id=${card['card_id']}, qty=${card['quantity']}, is_commander=${card['is_commander']}');
         }
         
         await DeckRulesService(session).validateAndThrow(
@@ -286,7 +310,7 @@ Future<Response> _updateDeck(RequestContext context, String deckId) async {
             params[pId] = card['card_id'];
             params[pQty] = card['quantity'];
             params[pCmdr] = card['is_commander'] ?? false;
-            params[pCond] = _validateCardCondition(card['condition']?.toString());
+            params[pCond] = card['condition'];
           }
 
           final batchInsertSql =
