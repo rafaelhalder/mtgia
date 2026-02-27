@@ -6126,7 +6126,6 @@ Melhorias aplicadas no endpoint:
 2) Segurança de escopo global (admin)
 - `include_global=true` exige privilégio admin;
 - admin definido por `TELEMETRY_ADMIN_USER_IDS` (UUIDs) e `TELEMETRY_ADMIN_EMAILS` (emails);
-- fallback operacional configurado para reconhecer `rafaelhalder@gmail.com` como admin no endpoint de telemetria;
 - sem privilégio: `403`.
 
 3) Filtros operacionais
@@ -6159,3 +6158,30 @@ Melhorias aplicadas no endpoint:
 - menor risco de exposição de métricas globais;
 - leitura histórica e temporal acionável para decisões de prompt/modelo/fallback;
 - workflow local mais previsível com `verify_schema` estável.
+
+### 62.5 Configuração final de admin + retenção automática
+
+Fechamento operacional aplicado para evitar hardcode e manter governança por ambiente:
+
+- admin de telemetria agora é **somente por configuração**:
+  - `TELEMETRY_ADMIN_USER_IDS`
+  - `TELEMETRY_ADMIN_EMAILS`
+- exemplo configurado no `.env` local:
+  - `TELEMETRY_ADMIN_EMAILS=rafaelhalder@gmail.com`
+
+Retenção automática de telemetria adicionada:
+
+- script Dart: `bin/cleanup_optimize_telemetry.dart`
+  - remove registros antigos de `ai_optimize_fallback_telemetry`
+  - retention default via `TELEMETRY_RETENTION_DAYS` (default 180)
+  - suporte a `--retention-days=<N>` e `--dry-run`
+
+- wrapper para cron: `bin/cron_cleanup_optimize_telemetry.sh`
+
+Exemplos:
+- `dart run bin/cleanup_optimize_telemetry.dart --dry-run`
+- `dart run bin/cleanup_optimize_telemetry.dart --retention-days=120`
+
+Benefício:
+- remove dependência de hardcode para privilégio administrativo;
+- mantém tabela de telemetria enxuta e previsível ao longo do tempo.

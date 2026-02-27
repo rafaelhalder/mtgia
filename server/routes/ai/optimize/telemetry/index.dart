@@ -329,8 +329,6 @@ Future<bool> _isAdminUser({
       .where((e) => e.isNotEmpty)
       .toSet();
 
-  emails.add('rafaelhalder@gmail.com');
-
   try {
     final result = await pool.execute(
       Sql.named('''
