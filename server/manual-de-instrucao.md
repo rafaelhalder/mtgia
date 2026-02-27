@@ -7009,3 +7009,31 @@ No endpoint `POST /ai/optimize` em `mode=complete`:
 - separa melhor responsabilidade entre IA (priorização) e motor local (decisão final);
 - mantém trilha auditável de quando e por que o `complete` é bloqueado por qualidade.
 
+## 79. Reforço máximo da solução: fallback multicamada não-básico
+
+### 79.1 O que foi reforçado
+
+No `mode=complete`, o preenchimento não-terreno passou a usar cadeia local em camadas:
+
+1. solver determinístico por slots com bracket;
+2. solver determinístico por slots sem bracket (relaxamento controlado);
+3. preenchimento por popularidade local em `card_meta_insights` (knowledge própria);
+4. somente depois disso, fallback de básicos para garantir tamanho.
+
+Implementação em:
+- `server/routes/ai/optimize/index.dart`
+
+Novos helpers:
+- `_loadMetaInsightFillers(...)`
+- `_loadGuaranteedNonBasicFillers(...)`
+
+### 79.2 Resultado validado
+
+- Regressão crítica (`sourceDeckId` fixo) executada com sucesso técnico;
+- cenário degenerado continua **bloqueado por qualidade** com `422 + COMPLETE_QUALITY_BASIC_OVERFLOW`;
+- comportamento evita falso positivo de “deck competitivo pronto” quando o resultado ainda é inadequado.
+
+### 79.3 Leitura operacional
+
+Mesmo com reforço de fallback, se o acervo elegível local for insuficiente para o caso, a API prefere reprovar com diagnóstico explícito em vez de aceitar um output inconsistente.
+

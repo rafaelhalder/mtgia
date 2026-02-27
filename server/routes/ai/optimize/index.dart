@@ -1366,7 +1366,7 @@ Future<Response> onRequest(RequestContext context) async {
                 .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
                 .toSet();
 
-            final fillers = await _loadDeterministicSlotFillers(
+            final fillers = await _loadGuaranteedNonBasicFillers(
               pool: pool,
               currentDeckCards: virtualDeck,
               targetArchetype: targetArchetype,
@@ -3592,6 +3592,132 @@ Future<List<Map<String, dynamic>>> _loadDeterministicSlotFillers({
       'color_identity': e['color_identity'],
     };
   }).toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
+  required Pool pool,
+  required Set<String> commanderColorIdentity,
+  required Set<String> excludeNames,
+  required int limit,
+}) async {
+  if (limit <= 0) return const [];
+
+  final identity = commanderColorIdentity.toList();
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
+      FROM card_meta_insights mi
+      JOIN cards c ON LOWER(c.name) = LOWER(mi.card_name)
+      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+        AND c.type_line NOT ILIKE '%land%'
+        AND c.name NOT LIKE 'A-%'
+        AND c.name NOT LIKE '\_%' ESCAPE '\\'
+        AND c.name NOT LIKE '%World Champion%'
+        AND c.name NOT LIKE '%Heroes of the Realm%'
+        AND (
+          (
+            c.color_identity IS NOT NULL
+            AND (
+              c.color_identity <@ @identity::text[]
+              OR c.color_identity = '{}'
+            )
+          )
+          OR (
+            c.color_identity IS NULL
+            AND (
+              c.colors <@ @identity::text[]
+              OR c.colors = '{}'
+              OR c.colors IS NULL
+            )
+          )
+        )
+      ORDER BY mi.meta_deck_count DESC, mi.usage_count DESC, c.name ASC
+      LIMIT @limit
+    '''),
+    parameters: {
+      'exclude': excludeNames.toList(),
+      'identity': identity,
+      'limit': limit,
+    },
+  );
+
+  return result
+      .map((row) => {
+            'id': row[0] as String,
+            'name': row[1] as String,
+            'type_line': (row[2] as String?) ?? '',
+            'oracle_text': (row[3] as String?) ?? '',
+            'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
+            'color_identity':
+                (row[5] as List?)?.cast<String>() ?? const <String>[],
+          })
+      .toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadGuaranteedNonBasicFillers({
+  required Pool pool,
+  required List<Map<String, dynamic>> currentDeckCards,
+  required String targetArchetype,
+  required Set<String> commanderColorIdentity,
+  required int? bracket,
+  required Set<String> excludeNames,
+  required Set<String> preferredNames,
+  required int limit,
+}) async {
+  if (limit <= 0) return const [];
+
+  final aggregated = <Map<String, dynamic>>[];
+  final seen = <String>{};
+
+  void addUnique(Iterable<Map<String, dynamic>> items) {
+    for (final item in items) {
+      final name = ((item['name'] as String?) ?? '').trim().toLowerCase();
+      if (name.isEmpty || seen.contains(name)) continue;
+      seen.add(name);
+      aggregated.add(item);
+      if (aggregated.length >= limit) return;
+    }
+  }
+
+  final withBracket = await _loadDeterministicSlotFillers(
+    pool: pool,
+    currentDeckCards: currentDeckCards,
+    targetArchetype: targetArchetype,
+    commanderColorIdentity: commanderColorIdentity,
+    bracket: bracket,
+    excludeNames: excludeNames,
+    preferredNames: preferredNames,
+    limit: limit,
+  );
+  addUnique(withBracket);
+
+  if (aggregated.length < limit) {
+    final noBracket = await _loadDeterministicSlotFillers(
+      pool: pool,
+      currentDeckCards: currentDeckCards,
+      targetArchetype: targetArchetype,
+      commanderColorIdentity: commanderColorIdentity,
+      bracket: null,
+      excludeNames: excludeNames.union(seen),
+      preferredNames: preferredNames,
+      limit: limit - aggregated.length,
+    );
+    addUnique(noBracket);
+  }
+
+  if (aggregated.length < limit) {
+    final metaFillers = await _loadMetaInsightFillers(
+      pool: pool,
+      commanderColorIdentity: commanderColorIdentity,
+      excludeNames: excludeNames.union(seen),
+      limit: limit - aggregated.length,
+    );
+    addUnique(metaFillers);
+  }
+
+  return aggregated.take(limit).toList();
 }
 
 Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
