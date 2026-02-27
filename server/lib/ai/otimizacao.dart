@@ -583,7 +583,7 @@ class DeckOptimizerService {
           'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
-      ).timeout(const Duration(seconds: 25));
+      ).timeout(const Duration(seconds: 8));
 
       stopwatch.stop();
 
@@ -730,7 +730,7 @@ class DeckOptimizerService {
           'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
-      ).timeout(const Duration(seconds: 25));
+      ).timeout(const Duration(seconds: 8));
 
       stopwatch.stop();
 
