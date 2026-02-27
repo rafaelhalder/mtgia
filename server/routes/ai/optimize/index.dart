@@ -790,6 +790,8 @@ Future<Response> onRequest(RequestContext context) async {
     final parsedBracket =
       bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
     final parsedKeepTheme = body['keep_theme'] as bool?;
+    final requestedModeRaw = body['mode']?.toString().trim().toLowerCase() ?? '';
+    final requestMode = requestedModeRaw.contains('complete') ? 'complete' : 'optimize';
     final hasBracketOverride = body.containsKey('bracket');
     final hasKeepThemeOverride = body.containsKey('keep_theme');
 
@@ -857,10 +859,22 @@ Future<Response> onRequest(RequestContext context) async {
       parameters: {'id': deckId},
     );
 
+    final currentTotalBeforeMode = cardsResult.fold<int>(
+      0,
+      (sum, row) => sum + ((row[2] as int?) ?? 1),
+    );
+    final maxTotalForFormat =
+        deckFormat == 'commander' ? 100 : (deckFormat == 'brawl' ? 60 : null);
+    final shouldAutoComplete =
+        maxTotalForFormat != null && currentTotalBeforeMode < maxTotalForFormat;
+    final effectiveMode =
+        requestMode == 'complete' || shouldAutoComplete ? 'complete' : 'optimize';
+
     final deckSignature = _buildDeckSignature(cardsResult);
     final cacheKey = _buildOptimizeCacheKey(
       deckId: deckId,
       archetype: archetype,
+      mode: effectiveMode,
       bracket: bracket,
       keepTheme: keepTheme,
       deckSignature: deckSignature,
@@ -905,20 +919,6 @@ Future<Response> onRequest(RequestContext context) async {
       final cardId = row[9] as String;
 
       currentTotalCards += quantity;
-
-    if (commanders.isNotEmpty && commanderColorIdentity.isEmpty) {
-      final inferredFromDeck = normalizeColorIdentity(deckColors.toList());
-      if (inferredFromDeck.isNotEmpty) {
-        commanderColorIdentity.addAll(inferredFromDeck);
-      } else {
-        commanderColorIdentity.addAll(const {'W', 'U', 'B', 'R', 'G'});
-      }
-      Log.w(
-        'Commander sem color_identity detectável; aplicando identidade fallback '
-        'para evitar complete degradado. commanders=${commanders.join(' | ')} '
-        'identity=${commanderColorIdentity.join(',')}',
-      );
-    }
       originalCountsById[cardId] = (originalCountsById[cardId] ?? 0) + quantity;
 
       // Coletar cores do deck
@@ -959,6 +959,24 @@ Future<Response> onRequest(RequestContext context) async {
           otherCards.add('$name (Type: $typeLine)');
         }
       }
+    }
+
+    if (commanderColorIdentity.isEmpty) {
+      final inferredFromDeck = normalizeColorIdentity(deckColors.toList());
+      if (inferredFromDeck.isNotEmpty) {
+        commanderColorIdentity.addAll(inferredFromDeck);
+      } else {
+        commanderColorIdentity.addAll(const {'W', 'U', 'B', 'R', 'G'});
+      }
+
+      final reason = commanders.isNotEmpty
+          ? 'commander sem color_identity detectável'
+          : 'deck sem is_commander marcado';
+      Log.w(
+        'Color identity fallback aplicado ($reason) para evitar complete degradado. '
+        'commanders=${commanders.join(' | ')} '
+        'identity=${commanderColorIdentity.join(',')}',
+      );
     }
 
     // 1.5 Análise de Arquétipo e Tema do Deck
@@ -3052,19 +3070,21 @@ String _buildDeckSignature(List<ResultRow> cardsResult) {
 String _buildOptimizeCacheKey({
   required String deckId,
   required String archetype,
+  required String mode,
   required int? bracket,
   required bool keepTheme,
   required String deckSignature,
 }) {
   final base = [
     'optimize',
+    mode.toLowerCase().trim(),
     deckId,
     archetype.toLowerCase().trim(),
     '${bracket ?? 'none'}',
     keepTheme ? 'keep' : 'free',
     deckSignature,
   ].join('::');
-  return 'v3:${_stableHash(base)}';
+  return 'v4:${_stableHash(base)}';
 }
 
 String _stableHash(String value) {

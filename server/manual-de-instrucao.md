@@ -1,3 +1,40 @@
+## 2026-02-27 — Fix crítico no `complete` para decks sem `is_commander`
+
+### Contexto do problema
+- O endpoint `POST /ai/optimize` em modo `complete` podia retornar `422` com `COMPLETE_QUALITY_PARTIAL` mesmo com EDHREC amplo (ex.: ~300 cartas para Jin-Gitaxias).
+- Sintoma observado: baixa quantidade de não-básicas adicionadas e excesso relativo de básicos (ex.: `non_basic_added=20`, `basic_added=44`, `target_additions=99`).
+
+### Causa raiz
+- A `commanderColorIdentity` podia ficar vazia quando o deck não tinha carta marcada com `is_commander=true`.
+- Com identidade vazia, os filtros de candidatos não-terreno ficavam restritos a cartas colorless em várias queries internas do `complete`, reduzindo drasticamente o pool útil.
+
+### Implementação aplicada
+- Arquivo alterado: `server/routes/ai/optimize/index.dart`.
+- Ajuste: remoção do fallback de identidade de dentro do loop de leitura das cartas e aplicação do fallback **após** montar o estado completo do deck.
+- Nova regra:
+  - se `commanderColorIdentity` estiver vazia após leitura do deck:
+    - tenta inferir de `deckColors` (`normalizeColorIdentity`);
+    - se ainda vazio, usa fallback `W,U,B,R,G` para evitar modo degradado.
+- Log explícito do motivo:
+  - `commander sem color_identity detectável`, ou
+  - `deck sem is_commander marcado`.
+- Ajuste adicional de cache:
+  - `cache_key` de optimize agora inclui `mode` (`optimize`/`complete`) e versão foi elevada para `v4`.
+  - O `mode` usado na chave é o **mode efetivo** (inclui auto-complete quando deck de Commander/Brawl está incompleto), evitando colisão com requisições sem `mode` explícito.
+  - Motivo: evitar servir resposta antiga de `complete` após mudança de lógica (stale cache mascarando correção).
+
+### Por que essa abordagem
+- Evita bloquear o complete por metadado incompleto no deck (ausência de `is_commander`).
+- Mantém prioridade no comportamento competitivo: preferir preencher com não-básicas válidas/sinérgicas antes de degenerar para básicos.
+- Preserva segurança: o fallback só ativa quando não há identidade detectável.
+
+### Padrões e arquitetura
+- Correção focada em causa raiz, sem alterar contrato da API.
+- Mudança localizada na rota de orquestração (`routes/ai/optimize`), preservando serviços (`DeckOptimizerService`) e políticas já existentes.
+
+### Exemplo de extensão
+- Se no futuro existir campo `deck.color_identity` persistido, ele pode entrar como primeira fonte de fallback antes de `deckColors`, mantendo a mesma lógica de proteção contra identidade vazia.
+
 # Manual de Instrução e Documentação Técnica - ManaLoom
 
 **Nome do Projeto:** ManaLoom - AI-Powered MTG Deck Builder  
@@ -9,6 +46,27 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 ---
 
 ## 📋 Status Atual do Projeto
+
+### ✅ Atualização Técnica — Credenciais dinâmicas no teste do gate carro-chefe (27/02/2026)
+
+**Motivação (o porquê)**
+- O gate de `optimize/complete` precisava validar cenários com decks de usuários reais/localmente disponíveis, sem ficar preso à conta fixa de teste.
+- Isso evita falso negativo por `source deck` inexistente para o usuário padrão do teste.
+
+**Implementação (o como)**
+- `test/ai_optimize_flow_test.dart` passou a aceitar autenticação por variáveis de ambiente:
+  - `TEST_USER_EMAIL`
+  - `TEST_USER_PASSWORD`
+  - `TEST_USER_USERNAME` (opcional)
+- Quando essas variáveis não são definidas, o comportamento antigo permanece (fallback para `test_optimize_flow@example.com`).
+
+**Como usar no gate**
+- Exemplo:
+  - `TEST_USER_EMAIL=<email> TEST_USER_PASSWORD=<senha> SOURCE_DECK_ID=<uuid> ./scripts/quality_gate_carro_chefe.sh`
+
+**Impacto de compatibilidade**
+- Não quebra o fluxo atual de CI/local porque mantém defaults.
+- Só altera o usuário autenticado quando variáveis são fornecidas explicitamente.
 
 ### ✅ Atualização Técnica — Seed de montagem via EDHREC average-decks no fluxo complete (27/02/2026)
 

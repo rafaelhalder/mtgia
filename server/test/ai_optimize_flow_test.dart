@@ -12,10 +12,16 @@ void main() {
   final baseUrl =
       Platform.environment['TEST_API_BASE_URL'] ?? 'http://localhost:8080';
 
-  const testUser = {
-    'email': 'test_optimize_flow@example.com',
-    'password': 'TestPassword123!',
-    'username': 'test_optimize_flow_user',
+  final testUserEmail =
+      Platform.environment['TEST_USER_EMAIL'] ?? 'test_optimize_flow@example.com';
+  final testUserPassword =
+      Platform.environment['TEST_USER_PASSWORD'] ?? 'TestPassword123!';
+  final testUserUsername = Platform.environment['TEST_USER_USERNAME'] ??
+      '${testUserEmail.split('@').first}_optimize_flow_user';
+  final testUser = {
+    'email': testUserEmail,
+    'password': testUserPassword,
+    'username': testUserUsername,
   };
   final sourceDeckId =
       Platform.environment['SOURCE_DECK_ID'] ?? '0b163477-2e8a-488a-8883-774fcd05281f';

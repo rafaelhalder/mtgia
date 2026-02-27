@@ -74,9 +74,9 @@
     "_source_route": "/decks/:id",
     "_source_private_status": 200
   },
-  "cloned_deck_id": "3200881c-4686-495c-b54c-de6f706f2844",
+  "cloned_deck_id": "3dcd673d-115c-4fc4-9428-063ded75e025",
   "optimize_request": {
-    "deck_id": "3200881c-4686-495c-b54c-de6f706f2844",
+    "deck_id": "3dcd673d-115c-4fc4-9428-063ded75e025",
     "archetype": "Control",
     "bracket": 2,
     "keep_theme": true
