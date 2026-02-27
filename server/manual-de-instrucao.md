@@ -6182,6 +6182,21 @@ Exemplos:
 - `dart run bin/cleanup_optimize_telemetry.dart --dry-run`
 - `dart run bin/cleanup_optimize_telemetry.dart --retention-days=120`
 
+Agendamento automático:
+
+- Linux (cron):
+  - script: `bin/cron_cleanup_optimize_telemetry.sh`
+  - exemplo diário às 03:15:
+    - `15 3 * * * cd /caminho/mtgia/server && ./bin/cron_cleanup_optimize_telemetry.sh >> /var/log/mtgia_cleanup.log 2>&1`
+
+- Windows (Task Scheduler):
+  - script: `bin/cron_cleanup_optimize_telemetry.ps1`
+  - ação (programa): `powershell.exe`
+  - argumentos:
+    - `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\rafae\Documents\project\mtgia\server\bin\cron_cleanup_optimize_telemetry.ps1"`
+  - opcional (forçar retenção específica):
+    - `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\rafae\Documents\project\mtgia\server\bin\cron_cleanup_optimize_telemetry.ps1" -RetentionDays 180`
+
 Benefício:
 - remove dependência de hardcode para privilégio administrativo;
 - mantém tabela de telemetria enxuta e previsível ao longo do tempo.
