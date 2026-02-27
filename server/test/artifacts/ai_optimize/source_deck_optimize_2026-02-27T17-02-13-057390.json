@@ -1,0 +1,98 @@
+{
+  "source_deck_id": "0b163477-2e8a-488a-8883-774fcd05281f",
+  "source_available": true,
+  "source_snapshot": {
+    "id": "0b163477-2e8a-488a-8883-774fcd05281f",
+    "name": "Jin",
+    "format": "commander",
+    "description": "",
+    "archetype": null,
+    "bracket": null,
+    "synergy_score": 0,
+    "strengths": null,
+    "weaknesses": null,
+    "is_public": false,
+    "pricing_currency": "USD",
+    "pricing_total": 11.49,
+    "pricing_missing_cards": 0,
+    "pricing_updated_at": "2026-02-27T19:20:54.714484Z",
+    "created_at": "2026-02-27T01:52:33.268021Z",
+    "stats": {
+      "total_cards": 1,
+      "unique_cards": 1,
+      "mana_curve": {
+        "5": 1
+      },
+      "color_distribution": {
+        "W": 0,
+        "U": 1,
+        "B": 0,
+        "R": 0,
+        "G": 0,
+        "C": 0
+      }
+    },
+    "commander": [
+      {
+        "quantity": 1,
+        "is_commander": true,
+        "condition": "NM",
+        "id": "41ca54f3-8d20-40e4-a9d8-4f1674e5abb3",
+        "name": "Jin-Gitaxias // The Great Synthesis",
+        "mana_cost": "{3}{U}{U}",
+        "type_line": "Legendary Creature — Phyrexian Praetor",
+        "oracle_text": "Ward {2}\nWhenever you cast a noncreature spell with mana value 3 or greater, draw a card.\n{3}{U}: Exile Jin-Gitaxias, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery and only if you have seven or more cards in hand.",
+        "colors": [
+          "U"
+        ],
+        "color_identity": null,
+        "image_url": "https://api.scryfall.com/cards/named?exact=Jin-Gitaxias&set=mom&format=image",
+        "set_code": "MOM",
+        "rarity": null
+      }
+    ],
+    "main_board": {},
+    "all_cards_flat": [
+      {
+        "quantity": 1,
+        "is_commander": true,
+        "condition": "NM",
+        "id": "41ca54f3-8d20-40e4-a9d8-4f1674e5abb3",
+        "name": "Jin-Gitaxias // The Great Synthesis",
+        "mana_cost": "{3}{U}{U}",
+        "type_line": "Legendary Creature — Phyrexian Praetor",
+        "oracle_text": "Ward {2}\nWhenever you cast a noncreature spell with mana value 3 or greater, draw a card.\n{3}{U}: Exile Jin-Gitaxias, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery and only if you have seven or more cards in hand.",
+        "colors": [
+          "U"
+        ],
+        "color_identity": null,
+        "image_url": "https://api.scryfall.com/cards/named?exact=Jin-Gitaxias&set=mom&format=image",
+        "set_code": "MOM",
+        "rarity": null
+      }
+    ],
+    "_source_route": "/decks/:id",
+    "_source_private_status": 200
+  },
+  "cloned_deck_id": "32f2046b-c369-49aa-915f-5f159f0dc219",
+  "optimize_request": {
+    "deck_id": "32f2046b-c369-49aa-915f-5f159f0dc219",
+    "archetype": "Control",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 422,
+  "optimize_response": {
+    "error": "Complete mode não atingiu qualidade mínima para montagem competitiva.",
+    "quality_error": {
+      "code": "COMPLETE_QUALITY_PARTIAL",
+      "message": "Não foi possível completar o deck com qualidade mínima: adições insuficientes.",
+      "target_additions": 99,
+      "added_total": 64,
+      "basic_added": 44,
+      "non_basic_added": 20
+    },
+    "mode": "complete",
+    "target_additions": 99
+  }
+}

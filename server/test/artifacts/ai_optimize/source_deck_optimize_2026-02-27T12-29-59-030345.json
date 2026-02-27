@@ -1,0 +1,348 @@
+{
+  "source_deck_id": "0b163477-2e8a-488a-8883-774fcd05281f",
+  "source_available": false,
+  "source_snapshot": {
+    "_source_route": "unavailable",
+    "_source_private_status": 404,
+    "_source_private_body": {
+      "error": "Deck not found or you do not have permission to view it."
+    },
+    "_source_public_status": 404,
+    "_source_public_body": {
+      "error": "Deck not found or is not public."
+    }
+  },
+  "cloned_deck_id": "2e5c7264-b562-4911-9640-d6ed1fd44709",
+  "optimize_request": {
+    "deck_id": "2e5c7264-b562-4911-9640-d6ed1fd44709",
+    "archetype": "Control",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "complete",
+    "constraints": {
+      "keep_theme": true
+    },
+    "theme": {
+      "theme": "tribal-phyrexian",
+      "confidence": "alta",
+      "match_score": 1.0,
+      "core_cards": [
+        "Atraxa, Praetors' Voice"
+      ]
+    },
+    "bracket": 2,
+    "target_additions": 99,
+    "iterations": 2,
+    "additions": [
+      "Evolution Sage",
+      "Misty Rainforest",
+      "Ezuri, Stalker of Spheres",
+      "Tekuthal, Inquiry Dominus",
+      "Polluted Delta",
+      "Plains",
+      "Island",
+      "Swamp",
+      "Forest",
+      "Vorinclex, Monstrous Raider",
+      "Unnatural Restoration",
+      "Cankerbloom",
+      "Bloated Contaminator",
+      "Venerated Rotpriest",
+      "Vraska's Fall",
+      "Karn's Bastion",
+      "Dreamtide Whale",
+      "Brokers Ascendancy",
+      "Contagion Engine",
+      "Scalding Tarn",
+      "Astral Cornucopia",
+      "Flux Channeler",
+      "Tezzeret's Gambit",
+      "Prologue to Phyresis",
+      "Blighted Agent",
+      "Everflowing Chalice",
+      "Doubling Season",
+      "Ichor Rats",
+      "Vraska, Betrayal's Sting",
+      "Inexorable Tide",
+      "Deepglow Skate",
+      "Thrummingbird",
+      "Experimental Augury",
+      "Cyclonic Rift",
+      "Brainstorm",
+      "Path to Exile",
+      "Counterspell",
+      "Arcane Signet",
+      "Command Tower",
+      "Dark Ritual",
+      "Sol Ring"
+    ],
+    "additions_detailed": [
+      {
+        "card_id": "76fb88b7-f115-4b28-b00c-333dcc030e1c",
+        "quantity": 1,
+        "name": "Evolution Sage"
+      },
+      {
+        "card_id": "9e65e875-19cc-4f3f-b17c-96ec1fd2c0e3",
+        "quantity": 1,
+        "name": "Misty Rainforest"
+      },
+      {
+        "card_id": "6c7ffcc4-265a-423c-8666-825e08c7481f",
+        "quantity": 1,
+        "name": "Ezuri, Stalker of Spheres"
+      },
+      {
+        "card_id": "c6bfe514-522b-4a77-9664-1e4b139e38c8",
+        "quantity": 1,
+        "name": "Tekuthal, Inquiry Dominus"
+      },
+      {
+        "card_id": "1db42a2f-9db1-452b-bb79-96b13d50456a",
+        "quantity": 1,
+        "name": "Polluted Delta"
+      },
+      {
+        "card_id": "a08016ec-4371-41b8-9e0f-5b3a086b9169",
+        "quantity": 15,
+        "name": "Plains"
+      },
+      {
+        "card_id": "b07b9a40-a94a-4827-97a0-03b30c8acd59",
+        "quantity": 16,
+        "name": "Island"
+      },
+      {
+        "card_id": "258cb391-43bd-49ac-8abb-06ff150bdb05",
+        "quantity": 15,
+        "name": "Swamp"
+      },
+      {
+        "card_id": "115a89fa-3dac-4cf4-8b6b-c6de50a3d62e",
+        "quantity": 16,
+        "name": "Forest"
+      },
+      {
+        "card_id": "72157043-c99b-42f5-bc6c-9a16ee55132e",
+        "quantity": 1,
+        "name": "Vorinclex, Monstrous Raider"
+      },
+      {
+        "card_id": "c0649805-6547-44dd-882f-ccaa0b551ba2",
+        "quantity": 1,
+        "name": "Unnatural Restoration"
+      },
+      {
+        "card_id": "f9108573-f7b1-4b5b-b7e6-7948eec3d084",
+        "quantity": 1,
+        "name": "Cankerbloom"
+      },
+      {
+        "card_id": "f93ed0a7-2799-4f32-b61b-11cc685d7874",
+        "quantity": 1,
+        "name": "Bloated Contaminator"
+      },
+      {
+        "card_id": "213bda7c-f40d-4197-891d-ab3ae4da475d",
+        "quantity": 1,
+        "name": "Venerated Rotpriest"
+      },
+      {
+        "card_id": "2d677104-2cf7-4e62-a8b6-ecbc9b00f97d",
+        "quantity": 1,
+        "name": "Vraska's Fall"
+      },
+      {
+        "card_id": "fc638814-e184-4e58-ad04-221fe81ee8f5",
+        "quantity": 1,
+        "name": "Karn's Bastion"
+      },
+      {
+        "card_id": "bb44774c-279e-4a84-818d-99ea413b21ec",
+        "quantity": 1,
+        "name": "Dreamtide Whale"
+      },
+      {
+        "card_id": "a90b8ca8-21b9-421e-8695-f69d77cd7352",
+        "quantity": 1,
+        "name": "Brokers Ascendancy"
+      },
+      {
+        "card_id": "b0060bb7-c1f3-4d1b-9742-14a011a86733",
+        "quantity": 1,
+        "name": "Contagion Engine"
+      },
+      {
+        "card_id": "820a2796-f976-41ee-90c1-37a01a8a2a14",
+        "quantity": 1,
+        "name": "Scalding Tarn"
+      },
+      {
+        "card_id": "f8f29a09-fbf8-4015-b4a3-b1168219a422",
+        "quantity": 1,
+        "name": "Astral Cornucopia"
+      },
+      {
+        "card_id": "c577d7f7-b415-4bbd-ac1e-32207085b9d0",
+        "quantity": 1,
+        "name": "Flux Channeler"
+      },
+      {
+        "card_id": "39ee4043-eedf-4e96-9a38-8a7208fe897c",
+        "quantity": 1,
+        "name": "Tezzeret's Gambit"
+      },
+      {
+        "card_id": "936c9e62-d9ae-4abd-8490-5b8c45697c4b",
+        "quantity": 1,
+        "name": "Prologue to Phyresis"
+      },
+      {
+        "card_id": "3f7666e5-f540-4d76-8e02-d1a3f9dbd08e",
+        "quantity": 1,
+        "name": "Blighted Agent"
+      },
+      {
+        "card_id": "bede9e2b-04b8-4a4a-82dc-76e45859d02a",
+        "quantity": 1,
+        "name": "Everflowing Chalice"
+      },
+      {
+        "card_id": "a7a73990-39b9-4d0c-aba0-941d6bd6d6bd",
+        "quantity": 1,
+        "name": "Doubling Season"
+      },
+      {
+        "card_id": "2f398fd7-4e14-4da7-966f-464ce57ff8b2",
+        "quantity": 1,
+        "name": "Ichor Rats"
+      },
+      {
+        "card_id": "b4268854-b4e2-4765-9bb7-78d8c16e2ee4",
+        "quantity": 1,
+        "name": "Vraska, Betrayal's Sting"
+      },
+      {
+        "card_id": "18e84b42-3de3-489a-8826-53ee73dbff09",
+        "quantity": 1,
+        "name": "Inexorable Tide"
+      },
+      {
+        "card_id": "e5d0d61c-7aaa-4763-b77c-4a915691c00a",
+        "quantity": 1,
+        "name": "Deepglow Skate"
+      },
+      {
+        "card_id": "05b4d7d5-b418-418d-b3e6-daeedac17aec",
+        "quantity": 1,
+        "name": "Thrummingbird"
+      },
+      {
+        "card_id": "6055258c-8b2d-4b93-82c0-e7ed7ddadacd",
+        "quantity": 1,
+        "name": "Experimental Augury"
+      },
+      {
+        "card_id": "666eba39-2083-46d6-b15d-d9ea4f3496e3",
+        "quantity": 1,
+        "name": "Cyclonic Rift"
+      },
+      {
+        "card_id": "6b822d6e-67aa-4a37-8b41-b11192592044",
+        "quantity": 1,
+        "name": "Brainstorm"
+      },
+      {
+        "card_id": "2fd0e384-8025-43cc-a7f5-5125c7b4d1bc",
+        "quantity": 1,
+        "name": "Path to Exile"
+      },
+      {
+        "card_id": "0e573ac1-7597-42be-8345-6a06c23cdac6",
+        "quantity": 1,
+        "name": "Counterspell"
+      },
+      {
+        "card_id": "af4dbd03-8804-42d5-8672-546dcb1a77a2",
+        "quantity": 1,
+        "name": "Arcane Signet"
+      },
+      {
+        "card_id": "e0350ea1-a2b6-4799-b75b-e4593ac61766",
+        "quantity": 1,
+        "name": "Command Tower"
+      },
+      {
+        "card_id": "76605a67-bbfc-4c64-ad53-c637efed8c71",
+        "quantity": 1,
+        "name": "Dark Ritual"
+      },
+      {
+        "card_id": "49d20996-8a55-4ad4-9dd9-d45f715995bd",
+        "quantity": 1,
+        "name": "Sol Ring"
+      }
+    ],
+    "removals": [],
+    "removals_detailed": [],
+    "reasoning": "Deck completado com cartas sinérgicas ao arquétipo Control, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.",
+    "deck_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 0,
+        "battles": 0
+      },
+      "total_cards": 1,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana W (Tem 0 fontes, ideal > 10). Falta mana U (Tem 0 fontes, ideal > 10). Falta mana B (Tem 0 fontes, ideal > 10). Falta mana G (Tem 0 fontes, ideal > 10)",
+      "archetype_confidence": "baixa"
+    },
+    "post_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "2.82",
+      "type_distribution": {
+        "creatures": 14,
+        "instants": 8,
+        "sorceries": 2,
+        "enchantments": 3,
+        "artifacts": 5,
+        "planeswalkers": 1,
+        "lands": 67,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "BOA: Curva equilibrada para Midrange",
+      "mana_base_assessment": "Falta mana U (Tem 4 fontes, ideal > 15). Falta mana B (Tem 4 fontes, ideal > 10). Falta mana G (Tem 4 fontes, ideal > 10)",
+      "archetype_confidence": "média"
+    },
+    "validation_warnings": [],
+    "warnings": {
+      "blocked_by_bracket": {
+        "blocked_additions": [
+          {
+            "name": "Flooded Strand",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          }
+        ]
+      }
+    }
+  },
+  "bulk_status": 200,
+  "bulk_response": {
+    "ok": true,
+    "total_cards": 100
+  }
+}

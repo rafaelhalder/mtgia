@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, Directory, File;
 
 import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
@@ -12,12 +12,19 @@ void main() {
   final baseUrl =
       Platform.environment['TEST_API_BASE_URL'] ?? 'http://localhost:8080';
 
-  const testUser = {
-    'email': 'test_optimize_flow@example.com',
-    'password': 'TestPassword123!',
-    'username': 'test_optimize_flow_user',
+  final testUserEmail =
+      Platform.environment['TEST_USER_EMAIL'] ?? 'test_optimize_flow@example.com';
+  final testUserPassword =
+      Platform.environment['TEST_USER_PASSWORD'] ?? 'TestPassword123!';
+  final testUserUsername = Platform.environment['TEST_USER_USERNAME'] ??
+      '${testUserEmail.split('@').first}_optimize_flow_user';
+  final testUser = {
+    'email': testUserEmail,
+    'password': testUserPassword,
+    'username': testUserUsername,
   };
-  const sourceDeckId = '0b163477-2e8a-488a-8883-774fcd05281f';
+  final sourceDeckId =
+      Platform.environment['SOURCE_DECK_ID'] ?? '0b163477-2e8a-488a-8883-774fcd05281f';
 
   final createdDeckIds = <String>[];
   String? authToken;
@@ -141,6 +148,99 @@ void main() {
     return exact.isNotEmpty ? exact.first : data.first;
   }
 
+  Future<Map<String, dynamic>?> fetchDeckDetails(String deckId) async {
+    final privateResponse = await http.get(
+      Uri.parse('$baseUrl/decks/$deckId'),
+      headers: authHeaders(),
+    );
+
+    if (privateResponse.statusCode == 200) {
+      final body = decodeJson(privateResponse);
+      body['_source_route'] = '/decks/:id';
+      body['_source_private_status'] = privateResponse.statusCode;
+      return body;
+    }
+
+    final publicResponse = await http.get(
+      Uri.parse('$baseUrl/community/decks/$deckId'),
+      headers: authHeaders(),
+    );
+
+    if (publicResponse.statusCode != 200) {
+      return {
+        '_source_route': 'unavailable',
+        '_source_private_status': privateResponse.statusCode,
+        '_source_private_body': decodeJson(privateResponse),
+        '_source_public_status': publicResponse.statusCode,
+        '_source_public_body': decodeJson(publicResponse),
+      };
+    }
+
+    final body = decodeJson(publicResponse);
+    body['_source_route'] = '/community/decks/:id';
+    body['_source_private_status'] = privateResponse.statusCode;
+    body['_source_public_status'] = publicResponse.statusCode;
+    return body;
+  }
+
+  List<Map<String, dynamic>> extractCardsForClone(Map<String, dynamic> sourceDeck) {
+    final privateCards = (sourceDeck['cards'] as List?)
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList() ??
+        <Map<String, dynamic>>[];
+
+    if (privateCards.isNotEmpty) {
+      return privateCards
+          .where((c) => c['card_id'] is String)
+          .map((c) => {
+                'card_id': c['card_id'] as String,
+                'quantity': (c['quantity'] as int?) ?? 1,
+                if (c['is_commander'] == true) 'is_commander': true,
+              })
+          .toList();
+    }
+
+    final publicCards = (sourceDeck['all_cards_flat'] as List?)
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList() ??
+        <Map<String, dynamic>>[];
+
+    return publicCards
+        .where((c) => c['id'] is String)
+        .map((c) => {
+              'card_id': c['id'] as String,
+              'quantity': (c['quantity'] as int?) ?? 1,
+              if (c['is_commander'] == true) 'is_commander': true,
+            })
+        .toList();
+  }
+
+  Future<void> persistValidationArtifact({
+    required String scenario,
+    required Map<String, dynamic> payload,
+  }) async {
+    final timestamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .replaceAll('.', '-');
+    final dir = Directory('test/artifacts/ai_optimize');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+
+    final latestFile = File('${dir.path}/${scenario}_latest.json');
+    final historicalFile = File('${dir.path}/${scenario}_$timestamp.json');
+    final content = const JsonEncoder.withIndent('  ').convert(payload);
+
+    latestFile.writeAsStringSync(content);
+    historicalFile.writeAsStringSync(content);
+
+    print('📦 Artifact salvo: ${historicalFile.path}');
+    print('📌 Latest: ${latestFile.path}');
+  }
+
   Future<List<String>> commanderCandidatesFromSourceDeck() async {
     final candidates = <String>[];
 
@@ -250,6 +350,16 @@ void main() {
             'Deck size=$size bracket=$bracket retornou quantidade absurda para "$key".',
       );
     }
+  }
+
+  bool isBasicLandName(String name) {
+    final normalized = name.trim().toLowerCase();
+    return normalized == 'plains' ||
+        normalized == 'island' ||
+        normalized == 'swamp' ||
+        normalized == 'mountain' ||
+        normalized == 'forest' ||
+        normalized == 'wastes';
   }
 
   setUpAll(() async {
@@ -375,6 +485,11 @@ void main() {
           }
 
           final body = decodeJson(response);
+            final consistency = (body['consistency_slo'] as Map?)?.cast<String, dynamic>();
+            expect(consistency, isNotNull,
+              reason: 'consistency_slo ausente no complete mode');
+            expect(consistency!['average_deck_seed_stage_used'], isA<bool>(),
+              reason: 'average_deck_seed_stage_used deve ser booleano');
           final details = (body['additions_detailed'] as List?)
                   ?.whereType<Map>()
                   .map((e) => e.cast<String, dynamic>())
@@ -393,6 +508,233 @@ void main() {
       },
       skip: skipIntegration,
       timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'complete mode output can be saved via /decks/:id/cards/bulk',
+      () async {
+        final deckId = await createCommanderDeckWithCount(1);
+        createdDeckIds.add(deckId);
+
+        final optimizeResponse = await postJsonWithRetry('/ai/optimize', {
+          'deck_id': deckId,
+          'archetype': 'Control',
+          'bracket': 2,
+          'keep_theme': true,
+        });
+
+        expect(optimizeResponse.statusCode, equals(200),
+            reason: optimizeResponse.body);
+
+        final optimizeBody = decodeJson(optimizeResponse);
+        expect(optimizeBody['mode'], equals('complete'),
+            reason:
+                'Deck com 1 carta deve entrar em complete mode para reproduzir fluxo do app.');
+
+        final additionsDetailed = (optimizeBody['additions_detailed'] as List?)
+                ?.whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList() ??
+            <Map<String, dynamic>>[];
+
+        expect(additionsDetailed, isNotEmpty,
+            reason: 'complete mode sem additions_detailed não é aplicável no app.');
+
+        final bulkCards = additionsDetailed
+            .where((item) => item['card_id'] is String)
+            .map((item) => {
+                  'card_id': item['card_id'] as String,
+                  'quantity': (item['quantity'] as int?) ?? 1,
+                })
+            .toList();
+
+        expect(bulkCards, isNotEmpty,
+            reason: 'Nenhuma carta com card_id retornada para bulk save.');
+
+        final bulkResponse = await postJsonWithRetry(
+          '/decks/$deckId/cards/bulk',
+          {'cards': bulkCards},
+        );
+
+        expect(
+          bulkResponse.statusCode,
+          equals(200),
+          reason:
+              'Bulk save falhou após optimize complete. body=${bulkResponse.body}',
+        );
+      },
+      skip: skipIntegration,
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'source deck regression uses fixed sourceDeckId and persists full return for validation',
+      () async {
+        final sourceDeck = await fetchDeckDetails(sourceDeckId);
+        final sourceAvailable = sourceDeck != null &&
+            (sourceDeck['_source_route'] as String?) != 'unavailable';
+
+        final cloneCards = sourceAvailable
+            ? extractCardsForClone(sourceDeck)
+            : <Map<String, dynamic>>[];
+
+        if (sourceAvailable) {
+          expect(
+            cloneCards,
+            isNotEmpty,
+            reason:
+                'Deck de referência $sourceDeckId não possui cartas para o teste.',
+          );
+        }
+
+        String? deckId;
+        if (sourceAvailable) {
+          final copyResponse = await postJsonWithRetry(
+            '/community/decks/$sourceDeckId',
+            {},
+          );
+
+          if (copyResponse.statusCode == 200 || copyResponse.statusCode == 201) {
+            final copiedBody = decodeJson(copyResponse);
+            deckId = copiedBody['id'] as String?;
+          }
+        }
+
+        if (deckId == null && sourceAvailable && cloneCards.isNotEmpty) {
+          final source = sourceDeck!;
+          deckId = await createDeck(
+            format: ((source['format'] as String?)?.trim().isNotEmpty ?? false)
+                ? (source['format'] as String)
+                : 'commander',
+            cards: cloneCards,
+          );
+        }
+
+        deckId ??= await createCommanderDeckWithCount(1);
+
+        createdDeckIds.add(deckId);
+
+        final optimizeRequest = {
+          'deck_id': deckId,
+          'archetype': 'Control',
+          'bracket': 2,
+          'keep_theme': true,
+        };
+
+        final optimizeResponse =
+            await postJsonWithRetry('/ai/optimize', optimizeRequest);
+        expect(optimizeResponse.statusCode, anyOf(equals(200), equals(422)),
+            reason: optimizeResponse.body);
+
+        final optimizeBody = decodeJson(optimizeResponse);
+        print('🧪 source optimize mode=${optimizeBody['mode']}');
+        print('🧪 source optimize body=${jsonEncode(optimizeBody)}');
+
+        final resultEnvelope = <String, dynamic>{
+          'source_deck_id': sourceDeckId,
+          'source_available': sourceAvailable,
+          'source_snapshot': sourceDeck,
+          'cloned_deck_id': deckId,
+          'optimize_request': optimizeRequest,
+          'optimize_status': optimizeResponse.statusCode,
+          'optimize_response': optimizeBody,
+        };
+
+        if (optimizeResponse.statusCode == 422) {
+          await persistValidationArtifact(
+            scenario: 'source_deck_optimize',
+            payload: resultEnvelope,
+          );
+
+          expect(optimizeBody['quality_error'], isA<Map>(),
+              reason:
+                  'Quando optimize retorna 422 no complete, deve trazer diagnóstico quality_error.');
+          return;
+        }
+
+        final additionsDetailed = (optimizeBody['additions_detailed'] as List?)
+                ?.whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList() ??
+            <Map<String, dynamic>>[];
+
+        if ((optimizeBody['mode'] as String?) == 'complete') {
+          final targetAdditions = (optimizeBody['target_additions'] as int?) ?? 0;
+          final nonBasicSuggestions = additionsDetailed.where((entry) {
+            final name = (entry['name']?.toString() ?? '').trim();
+            if (name.isEmpty) return false;
+            return !isBasicLandName(name);
+          }).toList();
+
+          final totalAdded = additionsDetailed.fold<int>(
+            0,
+            (acc, e) => acc + ((e['quantity'] as int?) ?? 0),
+          );
+          final basicAdded = additionsDetailed.fold<int>(0, (acc, e) {
+            final name = (e['name']?.toString() ?? '').trim();
+            if (name.isEmpty) return acc;
+            if (!isBasicLandName(name)) return acc;
+            return acc + ((e['quantity'] as int?) ?? 0);
+          });
+
+          if (targetAdditions >= 40) {
+            expect(
+              nonBasicSuggestions.isNotEmpty,
+              isTrue,
+              reason:
+                  'Complete mode retornou apenas terrenos básicos (target_additions=$targetAdditions), indicando fallback degradado.',
+            );
+
+            // Guardrail de qualidade: não aceitar enchimento degenerado de básicos.
+            final maxAllowedBasics = (targetAdditions * 0.65).floor();
+            expect(
+              basicAdded <= maxAllowedBasics,
+              isTrue,
+              reason:
+                  'Complete mode retornou básicos demais ($basicAdded de $totalAdded adições, limite=$maxAllowedBasics).',
+            );
+          }
+        }
+
+        if ((optimizeBody['mode'] as String?) == 'complete' &&
+            additionsDetailed.isNotEmpty) {
+          final bulkCards = additionsDetailed
+              .where((item) => item['card_id'] is String)
+              .map((item) => {
+                    'card_id': item['card_id'] as String,
+                    'quantity': (item['quantity'] as int?) ?? 1,
+                  })
+              .toList();
+
+          if (bulkCards.isNotEmpty) {
+            final bulkResponse = await postJsonWithRetry(
+              '/decks/$deckId/cards/bulk',
+              {'cards': bulkCards},
+            );
+
+            final bulkBody = decodeJson(bulkResponse);
+            resultEnvelope['bulk_status'] = bulkResponse.statusCode;
+            resultEnvelope['bulk_response'] = bulkBody;
+
+            print('🧪 source bulk status=${bulkResponse.statusCode}');
+            print('🧪 source bulk body=${jsonEncode(bulkBody)}');
+
+            expect(
+              bulkResponse.statusCode,
+              equals(200),
+              reason:
+                  'Bulk save falhou no teste com sourceDeckId=$sourceDeckId body=${bulkResponse.body}',
+            );
+          }
+        }
+
+        await persistValidationArtifact(
+          scenario: 'source_deck_optimize',
+          payload: resultEnvelope,
+        );
+      },
+      skip: skipIntegration,
+      timeout: const Timeout(Duration(minutes: 4)),
     );
 
     test(

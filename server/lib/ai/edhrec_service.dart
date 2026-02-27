@@ -15,6 +15,7 @@ class EdhrecService {
   
   // Cache em memória para evitar requests repetidos no mesmo ciclo de vida do server
   static final Map<String, _CachedResult> _cache = {};
+  static final Map<String, _CachedAverageDeckResult> _averageDeckCache = {};
   
   /// Busca os dados de co-ocorrência para um comandante específico.
   /// 
@@ -67,6 +68,53 @@ class EdhrecService {
       }
     } catch (e) {
       Log.e('EDHREC request failed: $e');
+      return null;
+    }
+  }
+
+  Future<EdhrecAverageDeckData?> fetchAverageDeckData(String commanderName) async {
+    final slug = _toSlug(commanderName);
+
+    final cached = _averageDeckCache[slug];
+    if (cached != null && !cached.isExpired) {
+      Log.d('EDHREC average-deck cache hit: $slug');
+      return cached.data;
+    }
+
+    final url = '$_baseUrl/pages/average-decks/$slug.json';
+    Log.i('EDHREC average-deck fetch: $url');
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://edhrec.com/',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final data = _parseAverageDeckResponse(json, commanderName);
+        _averageDeckCache[slug] = _CachedAverageDeckResult(data, DateTime.now());
+        Log.i(
+          'EDHREC average-deck loaded: ${data.seedCards.length} seed cards for $commanderName',
+        );
+        return data;
+      }
+
+      if (response.statusCode == 404) {
+        Log.w('EDHREC average-deck: commander not found: $slug');
+        return null;
+      }
+
+      Log.w('EDHREC average-deck error: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      Log.e('EDHREC average-deck request failed: $e');
       return null;
     }
   }
@@ -138,26 +186,129 @@ class EdhrecService {
     
     // Extrai temas/strategies do EDHREC
     final themes = <String>[];
-    final panels = jsonDict?['panels'] as Map<String, dynamic>? ?? {};
-    final themepanel = panels['themepanel'] as Map<String, dynamic>?;
-    if (themepanel != null) {
-      final themeList = themepanel['themes'] as List<dynamic>? ?? [];
-      for (final t in themeList) {
-        if (t is Map && t['name'] != null) {
-          themes.add(t['name'] as String);
-        }
+    final panels = (json['panels'] as Map<String, dynamic>?) ??
+        (jsonDict?['panels'] as Map<String, dynamic>?) ??
+        {};
+    final tagLinks = panels['taglinks'] as List<dynamic>? ?? [];
+    for (final tag in tagLinks) {
+      if (tag is Map && tag['value'] is String) {
+        themes.add(tag['value'] as String);
       }
     }
     
     // Extrai número médio de decks
-    final deckCount = jsonDict?['header']?['num_decks'] as int? ?? 0;
+    final deckCount = _toInt(json['num_decks_avg']) ??
+        _toInt((jsonDict?['card'] as Map<String, dynamic>?)?['num_decks']) ??
+        0;
+
+    final averageTypeDistribution = <String, int>{
+      'land': _toInt(json['land']) ?? 0,
+      'creature': _toInt(json['creature']) ?? 0,
+      'instant': _toInt(json['instant']) ?? 0,
+      'sorcery': _toInt(json['sorcery']) ?? 0,
+      'artifact': _toInt(json['artifact']) ?? 0,
+      'enchantment': _toInt(json['enchantment']) ?? 0,
+      'planeswalker': _toInt(json['planeswalker']) ?? 0,
+      'battle': _toInt(json['battle']) ?? 0,
+      'basic': _toInt(json['basic']) ?? 0,
+      'nonbasic': _toInt(json['nonbasic']) ?? 0,
+      'deck_size': _toInt(json['deck_size']) ?? 0,
+      'total_card_count': _toInt(json['total_card_count']) ?? 0,
+    };
+
+    final manaCurveRaw = panels['mana_curve'] as Map<String, dynamic>? ?? {};
+    final manaCurve = <String, int>{
+      for (final entry in manaCurveRaw.entries)
+        entry.key: _toInt(entry.value) ?? 0,
+    };
+
+    final articlesRaw = panels['articles'] as List<dynamic>? ?? [];
+    final articles = <Map<String, dynamic>>[];
+    for (final article in articlesRaw.take(30)) {
+      if (article is! Map) continue;
+      final authorMap = article['author'] is Map
+          ? (article['author'] as Map).cast<String, dynamic>()
+          : const <String, dynamic>{};
+      articles.add({
+        'title': article['value']?.toString() ?? '',
+        'date': article['date']?.toString() ?? '',
+        'href': article['href']?.toString() ?? '',
+        'excerpt': article['excerpt']?.toString() ?? '',
+        'author': authorMap['name']?.toString() ?? '',
+      });
+    }
     
     return EdhrecCommanderData(
       commanderName: commanderName,
       deckCount: deckCount,
       themes: themes,
       topCards: cardLists,
+      averageTypeDistribution: averageTypeDistribution,
+      manaCurve: manaCurve,
+      articles: articles,
     );
+  }
+
+  EdhrecAverageDeckData _parseAverageDeckResponse(
+    Map<String, dynamic> json,
+    String commanderName,
+  ) {
+    final container = json['container'] as Map<String, dynamic>?;
+    final jsonDict = container?['json_dict'] as Map<String, dynamic>?;
+    final cardPayload = jsonDict?['card'];
+
+    final deckCount = _toInt(json['num_decks']) ??
+        _toInt(json['num_decks_avg']) ??
+        _toInt(cardPayload is Map ? cardPayload['num_decks'] : null) ??
+        0;
+
+    final rawDeck = json['deck'];
+    final seedCounts = <String, int>{};
+    if (rawDeck is Map) {
+      for (final entry in rawDeck.entries) {
+        final cardName = entry.key.toString().trim();
+        if (cardName.isEmpty) continue;
+        final qty = _toInt(entry.value) ?? 1;
+        if (qty <= 0) continue;
+        seedCounts[cardName] = qty;
+      }
+    }
+
+    final cardlists = jsonDict?['cardlists'] as List<dynamic>? ?? const [];
+    for (final list in cardlists) {
+      if (list is! Map) continue;
+      final cardviews = list['cardviews'] as List<dynamic>? ?? const [];
+      for (final card in cardviews) {
+        if (card is! Map) continue;
+        final name = card['name']?.toString().trim() ?? '';
+        if (name.isEmpty || seedCounts.containsKey(name)) continue;
+        seedCounts[name] = 1;
+      }
+    }
+
+    final seedCards = seedCounts.entries
+        .map(
+          (entry) => EdhrecAverageDeckCard(name: entry.key, quantity: entry.value),
+        )
+        .toList()
+      ..sort((a, b) {
+        final byQty = b.quantity.compareTo(a.quantity);
+        if (byQty != 0) return byQty;
+        return a.name.compareTo(b.name);
+      });
+
+    return EdhrecAverageDeckData(
+      commanderName: commanderName,
+      deckCount: deckCount,
+      seedCards: seedCards,
+    );
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
   
   /// Normaliza categoria do EDHREC para padrão interno
@@ -211,6 +362,7 @@ class EdhrecService {
   /// Limpa cache expirado
   void cleanupCache() {
     _cache.removeWhere((_, v) => v.isExpired);
+    _averageDeckCache.removeWhere((_, v) => v.isExpired);
   }
 }
 
@@ -220,12 +372,18 @@ class EdhrecCommanderData {
   final int deckCount; // Número de decks registrados
   final List<String> themes; // Temas/estratégias sugeridas
   final List<EdhrecCard> topCards; // Cartas ordenadas por synergy
+  final Map<String, int> averageTypeDistribution; // Média de composição por tipo
+  final Map<String, int> manaCurve; // Curva de mana média
+  final List<Map<String, dynamic>> articles; // Artigos relacionados ao commander
   
   EdhrecCommanderData({
     required this.commanderName,
     required this.deckCount,
     required this.themes,
     required this.topCards,
+    required this.averageTypeDistribution,
+    required this.manaCurve,
+    required this.articles,
   });
   
   /// Encontra uma carta por nome (case-insensitive)
@@ -264,6 +422,28 @@ class EdhrecCard {
   String toString() => '$name (syn:${synergy.toStringAsFixed(2)}, inc:${(inclusion*100).toStringAsFixed(0)}%)';
 }
 
+class EdhrecAverageDeckData {
+  final String commanderName;
+  final int deckCount;
+  final List<EdhrecAverageDeckCard> seedCards;
+
+  EdhrecAverageDeckData({
+    required this.commanderName,
+    required this.deckCount,
+    required this.seedCards,
+  });
+}
+
+class EdhrecAverageDeckCard {
+  final String name;
+  final int quantity;
+
+  EdhrecAverageDeckCard({
+    required this.name,
+    required this.quantity,
+  });
+}
+
 /// Cache interno com timeout
 class _CachedResult {
   final EdhrecCommanderData data;
@@ -272,4 +452,14 @@ class _CachedResult {
   _CachedResult(this.data, this.fetchedAt);
   
   bool get isExpired => DateTime.now().difference(fetchedAt) > EdhrecService._cacheTimeout;
+}
+
+class _CachedAverageDeckResult {
+  final EdhrecAverageDeckData data;
+  final DateTime fetchedAt;
+
+  _CachedAverageDeckResult(this.data, this.fetchedAt);
+
+  bool get isExpired =>
+      DateTime.now().difference(fetchedAt) > EdhrecService._cacheTimeout;
 }

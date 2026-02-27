@@ -1,3 +1,59 @@
+## 2026-02-27 — Fix crítico no `complete` para decks sem `is_commander`
+
+### Contexto do problema
+- O endpoint `POST /ai/optimize` em modo `complete` podia retornar `422` com `COMPLETE_QUALITY_PARTIAL` mesmo com EDHREC amplo (ex.: ~300 cartas para Jin-Gitaxias).
+- Sintoma observado: baixa quantidade de não-básicas adicionadas e excesso relativo de básicos (ex.: `non_basic_added=20`, `basic_added=44`, `target_additions=99`).
+
+### Causa raiz
+- A `commanderColorIdentity` podia ficar vazia quando o deck não tinha carta marcada com `is_commander=true`.
+- Com identidade vazia, os filtros de candidatos não-terreno ficavam restritos a cartas colorless em várias queries internas do `complete`, reduzindo drasticamente o pool útil.
+
+### Implementação aplicada
+- Arquivo alterado: `server/routes/ai/optimize/index.dart`.
+- Ajuste: remoção do fallback de identidade de dentro do loop de leitura das cartas e aplicação do fallback **após** montar o estado completo do deck.
+- Nova regra:
+  - se `commanderColorIdentity` estiver vazia após leitura do deck:
+    - tenta inferir de `deckColors` (`normalizeColorIdentity`);
+    - se ainda vazio, usa fallback `W,U,B,R,G` para evitar modo degradado.
+- Log explícito do motivo:
+  - `commander sem color_identity detectável`, ou
+  - `deck sem is_commander marcado`.
+- Ajuste adicional de cache:
+  - `cache_key` de optimize agora inclui `mode` (`optimize`/`complete`) e versão foi elevada para `v4`.
+  - O `mode` usado na chave é o **mode efetivo** (inclui auto-complete quando deck de Commander/Brawl está incompleto), evitando colisão com requisições sem `mode` explícito.
+  - Motivo: evitar servir resposta antiga de `complete` após mudança de lógica (stale cache mascarando correção).
+- Ajuste de qualidade no fallback não-terreno:
+  - Adicionada deduplicação por `name` nos pools de fallback (`_loadUniversalCommanderFallbacks`, `_loadMetaInsightFillers`, `_loadBroadCommanderNonLandFillers`, `_loadCompetitiveNonLandFillers`, `_loadEmergencyNonBasicFillers`).
+  - Motivo: múltiplas printagens da mesma carta ocupavam slots de sugestão; na aplicação final (Commander), duplicatas por nome eram descartadas e reduziam drasticamente `non_basic_added`.
+  - Complemento: quando o fallback universal não atinge `spellsNeeded`, o fluxo passa a completar com `_loadBroadCommanderNonLandFillers` (respeitando identidade/bracket), aumentando cobertura de não-básicas antes de recorrer a básicos.
+  - Salvaguarda adicional: se o broad pool ainda retornar vazio, o fluxo usa `_loadIdentitySafeNonLandFillers`, que aplica filtro de identidade em memória (Dart) após consulta ampla legal/non-land. Isso evita dependência de edge-cases SQL e mantém robustez no complete.
+  - Fallback por nomes preferidos: adicionada etapa `_loadPreferredNameFillers` usando `aiSuggestedNames` (derivados de EDHREC average/top/priorities). Isso prioriza cartas já alinhadas ao comandante e evita degradar para básicos cedo demais quando a IA timeouta.
+
+### Por que essa abordagem
+- Evita bloquear o complete por metadado incompleto no deck (ausência de `is_commander`).
+- Mantém prioridade no comportamento competitivo: preferir preencher com não-básicas válidas/sinérgicas antes de degenerar para básicos.
+- Preserva segurança: o fallback só ativa quando não há identidade detectável.
+
+### Padrões e arquitetura
+- Correção focada em causa raiz, sem alterar contrato da API.
+- Mudança localizada na rota de orquestração (`routes/ai/optimize`), preservando serviços (`DeckOptimizerService`) e políticas já existentes.
+
+### Exemplo de extensão
+- Se no futuro existir campo `deck.color_identity` persistido, ele pode entrar como primeira fonte de fallback antes de `deckColors`, mantendo a mesma lógica de proteção contra identidade vazia.
+
+### Hotfix adicional — bloqueio de cartas off-color no retorno final (27/02/2026)
+
+**Motivação (o porquê)**
+- Após estabilizar o `complete` para retornar `200`, o gate ainda podia falhar no `bulk save` porque algumas sugestões finais continham cartas fora da identidade do comandante (ex.: `Beast Within` em commander mono-blue).
+
+**Implementação (o como)**
+- Arquivo alterado: `server/routes/ai/optimize/index.dart`.
+- No loop final de montagem de `additionsDetailed` para não-terrenos, foi adicionada verificação obrigatória com `isWithinCommanderIdentity(...)` antes de aceitar cada carta.
+- O loader `_loadUniversalCommanderFallbacks` passou a retornar também `type_line`, `oracle_text`, `colors` e `color_identity` (além de `id` e `name`), permitindo validar identidade de forma consistente mesmo no fallback universal.
+
+**Resultado esperado**
+- O endpoint deixa de sugerir cartas off-color na resposta final de `complete`, evitando erro de regra no endpoint de aplicação em lote (`/decks/:id/cards/bulk`).
+
 # Manual de Instrução e Documentação Técnica - ManaLoom
 
 **Nome do Projeto:** ManaLoom - AI-Powered MTG Deck Builder  
@@ -9,6 +65,77 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 ---
 
 ## 📋 Status Atual do Projeto
+
+### ✅ Atualização Técnica — Credenciais dinâmicas no teste do gate carro-chefe (27/02/2026)
+
+**Motivação (o porquê)**
+- O gate de `optimize/complete` precisava validar cenários com decks de usuários reais/localmente disponíveis, sem ficar preso à conta fixa de teste.
+- Isso evita falso negativo por `source deck` inexistente para o usuário padrão do teste.
+
+**Implementação (o como)**
+- `test/ai_optimize_flow_test.dart` passou a aceitar autenticação por variáveis de ambiente:
+  - `TEST_USER_EMAIL`
+  - `TEST_USER_PASSWORD`
+  - `TEST_USER_USERNAME` (opcional)
+- Quando essas variáveis não são definidas, o comportamento antigo permanece (fallback para `test_optimize_flow@example.com`).
+
+**Como usar no gate**
+- Exemplo:
+  - `TEST_USER_EMAIL=<email> TEST_USER_PASSWORD=<senha> SOURCE_DECK_ID=<uuid> ./scripts/quality_gate_carro_chefe.sh`
+
+**Impacto de compatibilidade**
+- Não quebra o fluxo atual de CI/local porque mantém defaults.
+- Só altera o usuário autenticado quando variáveis são fornecidas explicitamente.
+
+### ✅ Atualização Técnica — Seed de montagem via EDHREC average-decks no fluxo complete (27/02/2026)
+
+**Motivação (o porquê)**
+- A base de `commanders/{slug}` é excelente para ranking/sinergia, mas não é a melhor fonte para montar um esqueleto inicial de 99 cartas.
+- Para reduzir montagens degeneradas e melhorar aderência a listas reais, o fluxo de `complete` passou a usar seed persistido de `average-decks/{slug}`.
+
+**Implementação (o como)**
+- O serviço `EdhrecService` ganhou suporte ao endpoint `average-decks` com parser dedicado e cache em memória.
+- O endpoint `GET /ai/commander-reference` agora também persiste `average_deck_seed` em `commander_reference_profiles.profile_json`.
+- O `reference_bases.saved_fields` inclui `average_deck_seed` para auditoria explícita da base salva.
+- O fluxo `POST /ai/optimize` em `mode=complete` passa a injetar esse seed na prioridade de candidatos antes do preenchimento determinístico.
+
+**Campos e contrato impactados**
+- `commander_profile.average_deck_seed`: lista com `{ name, quantity }` (sem básicos).
+- `consistency_slo.average_deck_seed_stage_used`: booleano indicando uso do seed no ciclo de complete.
+
+**Validação**
+- `test/commander_reference_atraxa_test.dart` valida presença de `average_deck_seed` no profile.
+- `test/ai_optimize_flow_test.dart` valida presença de `average_deck_seed_stage_used` em `consistency_slo` no complete mode.
+
+### ✅ Atualização Técnica — Persistência completa da base EDHREC por comandante (27/02/2026)
+
+**Motivação (o porquê)**
+- A otimização precisava de uma base consultável e persistente com contexto completo do comandante, não apenas top cards.
+- Foi necessário guardar também métricas estruturais (médias por tipo, curva de mana e artigos) para auditoria e referência futura.
+
+**Implementação (o como)**
+- O endpoint `GET /ai/commander-reference` agora persiste no `profile_json` de `commander_reference_profiles` os blocos:
+  - `average_type_distribution`
+  - `mana_curve`
+  - `articles`
+  - `reference_bases`
+- O bloco `reference_bases` marca explicitamente a origem e escopo da base:
+  - `provider: edhrec`
+  - `category: commander_only`
+  - descrição do escopo e lista de campos salvos.
+
+**Campos persistidos por comandante (resumo)**
+- `top_cards` com `category`, `synergy`, `inclusion`, `num_decks`
+- `themes`
+- `average_type_distribution` (land/creature/instant/sorcery/artifact/enchantment/planeswalker/battle/basic/nonbasic)
+- `mana_curve` (bins por CMC)
+- `articles` (title/date/href/excerpt/author)
+
+**Validação**
+- Teste de integração `test/commander_reference_atraxa_test.dart` atualizado para validar:
+  - `reference_bases.category == commander_only`
+  - presença de `average_type_distribution`
+  - presença de `mana_curve`
 
 ### ✅ **Implementado (Backend - Dart Frog)**
 - [x] Estrutura base do servidor (`dart_frog dev`)
@@ -5684,6 +5811,32 @@ Melhorias aplicadas:
 - menor variância de qualidade entre endpoints de IA;
 - melhor alinhamento com o objetivo do produto: construir, entender e melhorar decks com consistência.
 
+## 55. Resolução de `API_BASE_URL` no Flutter (debug vs produção)
+
+### 55.1 O Porquê
+
+Foi identificado erro recorrente de login no app iOS em debug com `Failed host lookup` para o domínio de produção, mesmo com backend local disponível.
+
+Em desenvolvimento, depender do DNS externo reduz confiabilidade do fluxo de QA e aumenta falsos negativos de autenticação/rede.
+
+### 55.2 O Como
+
+Arquivo alterado:
+- `app/lib/core/api/api_client.dart`
+
+Nova estratégia de resolução do `baseUrl`:
+1. Se `API_BASE_URL` for definido via `--dart-define`, ele sempre prevalece.
+2. Se não houver override e o app estiver em `kDebugMode`, usa backend local por padrão:
+  - Android emulator: `http://10.0.2.2:8080`
+  - iOS simulator/macOS/web: `http://localhost:8080`
+3. Em release/profile, mantém domínio de produção.
+
+### 55.3 Benefício
+
+- login e rotas protegidas ficam estáveis em debug local;
+- desenvolvimento deixa de depender de DNS externo;
+- produção permanece inalterada.
+
 ## 55. Prompt otimizado para performance e robustez (optimize)
 
 ### 55.1 O Porquê
@@ -6828,3 +6981,443 @@ Resultado:
 - **Entrega incremental com gate real**: estabiliza menor unidade antes de escalar cobertura.
 - **Fail-fast externo, fallback interno**: menor dependência de latência do provedor de IA.
 - **Rastreabilidade de evolução**: matriz não foi removida, apenas pausada para retomada segura.
+
+## 74. Regressão com deck fixo + artefato JSON de retorno (validação contínua)
+
+### 74.1 O porquê
+
+Como o fluxo de otimização é o carro-chefe do produto, foi necessário garantir uma validação repetível com um deck de referência fixo e preservar o retorno completo para auditoria funcional.
+
+### 74.2 O como
+
+Arquivo alterado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Foi adicionado um teste de integração dedicado que:
+- usa explicitamente o deck de referência `0b163477-2e8a-488a-8883-774fcd05281f`;
+- busca o deck fonte, clona as cartas para um deck do usuário de teste e roda `POST /ai/optimize`;
+- quando `mode=complete`, tenta aplicar o resultado via `POST /decks/:id/cards/bulk`;
+- imprime os retornos no log do teste e salva artefatos JSON para validação manual.
+
+Artefatos gerados automaticamente:
+- `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`
+- `server/test/artifacts/ai_optimize/source_deck_optimize_<timestamp>.json`
+
+Conteúdo do artefato:
+- `source_deck_id` e `cloned_deck_id`;
+- request de optimize;
+- status/body de optimize;
+- status/body de bulk (quando aplicável).
+
+### 74.3 Benefício prático
+
+- Permite comparar execuções reais ao longo do tempo sem depender só de assertion.
+- Dá visibilidade imediata de regressão na qualidade/consistência do retorno.
+- Cria trilha auditável para revisão humana do que a IA/heurística entregou.
+
+## 75. Especificação formal de validações de criação/completação de deck
+
+### 75.1 O porquê
+
+Foi identificado um problema crítico de qualidade no fluxo `mode=complete`: em cenários degradados, o sistema ainda podia fechar 100 cartas com excesso de terrenos básicos.
+
+Mesmo com validação estrutural correta (legalidade/identidade/tamanho), isso não atende o objetivo do produto.
+
+### 75.2 O como
+
+Foi criado o documento normativo:
+
+- `server/doc/DECK_CREATION_VALIDATIONS.md`
+
+Esse arquivo define:
+
+- pipeline de validação obrigatório (payload → existência → legalidade → regras de formato → identidade → bracket);
+- validações de qualidade de composição no `complete` (faixas mínimas/máximas e critérios de bloqueio);
+- política de fallback permitida e proibida;
+- requisitos de observabilidade/auditoria;
+- DoD específico para o carro-chefe de otimização.
+
+### 75.3 Efeito esperado
+
+- Evitar retorno “tecnicamente válido porém estrategicamente ruim”.
+- Tornar explícito o que deve bloquear resposta `complete` com baixa qualidade.
+- Padronizar critérios para backend, QA e evolução do motor de otimização.
+
+## 76. Blueprint de consistência do carro-chefe (Deck Engine local-first)
+
+### 76.1 O porquê
+
+O fluxo de montagem de deck é o principal diferencial do produto e não pode oscilar por disponibilidade de terceiros (EDHREC/Scryfall/OpenAI).
+
+Foi necessário formalizar uma arquitetura em que:
+- a conclusão do deck seja determinística e previsível;
+- fontes externas sejam insumo de priorização, não dependência crítica;
+- a sinergia evolua para um ativo próprio do produto.
+
+### 76.2 O como
+
+Documento criado:
+
+- `server/doc/DECK_ENGINE_CONSISTENCY_FLOW.md`
+
+Conteúdo formalizado no blueprint:
+- pipeline único de montagem: normalização -> pool elegível -> slot plan -> scoring híbrido -> solver -> fallback local garantido -> IA opcional;
+- papel da IA como ranking/explicação (sem responsabilidade de fechar deck);
+- estratégia local-first para sinergia usando `meta_decks`, `card_meta_insights`, `synergy_packages` e `archetype_patterns`;
+- plano incremental de adaptação (fases 1..3) sem big-bang;
+- SLOs de consistência para produção (taxa de complete, fallback, p95, qualidade por slot).
+
+### 76.3 Benefício prático
+
+- Reduz variabilidade operacional do carro-chefe.
+- Mantém aproveitamento de dados externos sem acoplar sucesso da montagem a APIs de terceiros.
+- Cria direção técnica clara para transformar sinergia em conhecimento próprio contínuo.
+
+## 77. Fase 1 implementada: fallback determinístico por slots no `complete`
+
+### 77.1 O porquê
+
+Mesmo com fallback de cartas não-terreno, o fluxo `mode=complete` ainda oscilava por falta de priorização funcional (ramp/draw/removal/etc.), resultando em preenchimento inconsistente.
+
+### 77.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças aplicadas:
+- inclusão de classificação funcional de cartas (`ramp`, `draw`, `removal`, `interaction`, `engine`, `wincon`, `utility`);
+- cálculo determinístico de necessidade por slot com base no estado atual do deck e arquétipo alvo;
+- novo carregador `_loadDeterministicSlotFillers(...)` que ordena candidatos por déficit de slot antes de adicionar no fallback final;
+- integração desse carregador no ponto final de preenchimento do `complete`.
+
+Também foi restaurado o baseline do teste de regressão para `bracket: 2` em:
+- `server/test/ai_optimize_flow_test.dart`
+
+### 77.3 Resultado observado
+
+- O teste focado de regressão (`sourceDeckId` fixo) continuou estável e passou.
+- O fluxo mantém proteção de qualidade (`422 + quality_error`) quando não alcança mínimo competitivo.
+- A seleção de fillers passa a ser orientada por função, abrindo caminho para o solver completo de slots nas próximas etapas.
+
+## 78. Etapas consolidadas e validação do fluxo consistente
+
+### 78.1 O que foi implementado
+
+No endpoint `POST /ai/optimize` em `mode=complete`:
+
+1. **Solver determinístico por slots**
+  - fallback não-terreno priorizado por função (`ramp/draw/removal/interaction/engine/wincon/utility`);
+  - ranqueamento por déficit funcional do deck atual.
+
+2. **IA como auxiliar de ranking**
+  - nomes sugeridos pela IA entram apenas como `boost` de prioridade no solver;
+  - fechamento não depende mais de resposta externa para seguir.
+
+3. **Fallback local garantido de tamanho**
+  - quando necessário, etapa final local completa tamanho alvo do formato;
+  - depois disso, qualidade é revalidada antes de aceitar o resultado.
+
+4. **Sinais de consistência (SLO) no payload**
+  - `consistency_slo` adicionado na resposta do `complete` com flags de estágios usados e métricas de adição.
+
+5. **Revalidação de qualidade endurecida**
+  - novo bloqueio `COMPLETE_QUALITY_BASIC_OVERFLOW` para excesso de básicos em cenários de adição alta;
+  - evita aceitar deck completo porém degenerado.
+
+### 78.2 Validação executada
+
+- teste focado de regressão (`sourceDeckId` fixo) executado após as mudanças;
+- comportamento validado: resultado degenerado agora retorna `422` com `quality_error` explícito, em vez de sucesso falso;
+- artefato de auditoria atualizado em `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`.
+
+### 78.3 Impacto prático
+
+- reduz inconsistência operacional do carro-chefe;
+- separa melhor responsabilidade entre IA (priorização) e motor local (decisão final);
+- mantém trilha auditável de quando e por que o `complete` é bloqueado por qualidade.
+
+## 79. Reforço máximo da solução: fallback multicamada não-básico
+
+### 79.1 O que foi reforçado
+
+No `mode=complete`, o preenchimento não-terreno passou a usar cadeia local em camadas:
+
+1. solver determinístico por slots com bracket;
+2. solver determinístico por slots sem bracket (relaxamento controlado);
+3. preenchimento por popularidade local em `card_meta_insights` (knowledge própria);
+4. somente depois disso, fallback de básicos para garantir tamanho.
+
+Implementação em:
+- `server/routes/ai/optimize/index.dart`
+
+Novos helpers:
+- `_loadMetaInsightFillers(...)`
+- `_loadGuaranteedNonBasicFillers(...)`
+
+### 79.2 Resultado validado
+
+- Regressão crítica (`sourceDeckId` fixo) executada com sucesso técnico;
+- cenário degenerado continua **bloqueado por qualidade** com `422 + COMPLETE_QUALITY_BASIC_OVERFLOW`;
+- comportamento evita falso positivo de “deck competitivo pronto” quando o resultado ainda é inadequado.
+
+### 79.3 Leitura operacional
+
+Mesmo com reforço de fallback, se o acervo elegível local for insuficiente para o caso, a API prefere reprovar com diagnóstico explícito em vez de aceitar um output inconsistente.
+
+## 80. Gate exclusivo do carro-chefe (temporário)
+
+### 80.1 O porquê
+
+Durante a fase de correção intensiva do fluxo `optimize/complete`, o gate geral do projeto não é o melhor sinal para evolução rápida do carro-chefe.
+
+Foi criado um gate dedicado para validar sempre o cenário real da otimização com artefato.
+
+### 80.2 O como
+
+Arquivo novo:
+- `scripts/quality_gate_carro_chefe.sh`
+
+Esse script:
+- executa apenas o teste crítico de regressão do fluxo de otimização;
+- força integração (`RUN_INTEGRATION_TESTS=1`);
+- aceita `SOURCE_DECK_ID` para validar deck-alvo explícito;
+- confirma geração de artefato em `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`.
+
+Uso:
+- `./scripts/quality_gate_carro_chefe.sh`
+- `SOURCE_DECK_ID=<uuid> ./scripts/quality_gate_carro_chefe.sh`
+
+Complemento técnico no teste:
+- `server/test/ai_optimize_flow_test.dart` passou a ler `SOURCE_DECK_ID` via variável de ambiente (fallback para o deck padrão de regressão).
+
+### 80.3 Resultado
+
+- Gate dedicado validado com sucesso em execução real.
+- Mantém foco total no comportamento funcional do carro-chefe sem perder rastreabilidade.
+
+### 80.4 Endurecimento aplicado (modo estrito)
+
+O `quality_gate_carro_chefe.sh` foi endurecido para refletir critério real de funcionalidade:
+
+- sobe backend temporário automaticamente quando `localhost:8080` não está ativo;
+- executa o teste crítico de regressão;
+- valida o artefato `source_deck_optimize_latest.json` em modo estrito;
+- **falha** se `optimize_status != 200` ou se existir `quality_error`.
+
+Resultado prático: cenários com `COMPLETE_QUALITY_BASIC_OVERFLOW` (ex.: excesso de básicos) não passam mais no gate exclusivo, mesmo quando o teste de contrato em si conclui sem erro técnico.
+
+## 81. Referência competitiva por comandante (endpoint + uso no optimize)
+
+### 81.1 O porquê
+
+Para reduzir decisões baseadas apenas em heurística genérica, foi necessário introduzir um caminho explícito para buscar referências competitivas por comandante e usar esse sinal dentro do fluxo `optimize/complete`.
+
+### 81.2 O como
+
+Novo endpoint criado:
+- `GET /ai/commander-reference?commander=<nome>&limit=<n>`
+- arquivo: `server/routes/ai/commander-reference/index.dart`
+
+Comportamento:
+- busca decks em `meta_decks` (formatos `EDH` e `cEDH`) contendo o comandante no `card_list`;
+- fallback por `archetype ILIKE` com token do comandante quando não houver match direto no `card_list`;
+- gera modelo de referência com cartas mais frequentes (não-básicas), taxa de aparição e amostra de decks fonte;
+- fallback resiliente para schema parcial (quando coluna `common_commanders` não existe), sem quebrar a rota.
+
+Integração no `optimize/complete`:
+- arquivo: `server/routes/ai/optimize/index.dart`
+- adição de `_loadCommanderCompetitivePriorities(...)` com mesma lógica de fallback (`card_list` -> `archetype` -> `card_meta_insights` quando disponível);
+- nomes prioritários do modelo competitivo entram no solver como preferência (boost de ranking), tornando as sugestões menos arbitrárias e mais ancoradas no acervo competitivo local.
+
+### 81.3 Validação
+
+Teste funcional via API:
+- para `commander=Kinnan`, endpoint retornou `meta_decks_found > 0` e lista de referência;
+- para comandantes sem cobertura no acervo atual, retorna vazio sem erro (comportamento esperado e auditável).
+
+## 82. Sync on-demand por comandante (MTGTop8) no endpoint de referência
+
+### 82.1 O porquê
+
+Mesmo com coleta periódica, alguns comandantes podem ficar sem cobertura imediata no acervo local (`meta_decks`). Para reduzir esse gap no fluxo crítico de otimização, foi adicionado um modo de atualização sob demanda por comandante, acionado na própria rota de referência.
+
+### 82.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/commander-reference/index.dart`
+
+Contrato novo no endpoint:
+- `GET /ai/commander-reference?commander=<nome>&limit=<n>&refresh=true`
+
+Comportamento quando `refresh=true`:
+- executa varredura controlada no MTGTop8 para formatos `EDH` e `cEDH`;
+- lê eventos recentes por formato e tenta importar decks ainda não presentes em `meta_decks`;
+- baixa decklist (`/mtgo?d=<id>`) e só persiste decks com match no nome do comandante solicitado;
+- mantém idempotência via `ON CONFLICT (source_url) DO NOTHING`;
+- retorna resumo de atualização em `refresh` (importados, eventos/decks escaneados, se encontrou comandante).
+
+Estratégia de segurança/performance:
+- escopo de coleta limitado (amostra de eventos e decks por evento) para não degradar a latência da API;
+- atualização é opt-in por query param, preservando comportamento rápido padrão quando `refresh` não é enviado.
+
+### 82.3 Exemplo de uso
+
+```bash
+curl -s "http://localhost:8080/ai/commander-reference?commander=Kinnan&limit=30&refresh=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+Resposta inclui:
+- `meta_decks_found`
+- `references`
+- `model`
+- `refresh` (quando o modo on-demand foi acionado)
+
+## 83. Hardening do complete: fallback de emergência não-básico
+
+### 83.1 O porquê
+
+Em alguns cenários de deck mínimo (ex.: regressão com deck-base muito pequeno), o pipeline de preenchimento podia ficar com pool insuficiente de não-básicas após filtros, resultando em `COMPLETE_QUALITY_PARTIAL` e bloqueio `422`.
+
+### 83.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças aplicadas:
+- fallback de identidade quando comandante chega sem `color_identity` detectável:
+  - tenta inferir por `deckColors`;
+  - se ainda vazio, usa identidade ampla (`W/U/B/R/G`) para evitar starvation;
+- novo estágio `_loadEmergencyNonBasicFillers(...)` no fluxo `complete`:
+  - consulta cartas legais, não-terreno e não duplicadas;
+  - aplica filtro de bracket quando possível (sem zerar pool);
+  - preenche lacunas restantes antes do fallback final de básicos.
+
+Resultado esperado:
+- reduzir `422` por adições insuficientes;
+- manter a qualidade mínima do complete (menos degeneração em básicos) mesmo em decks de entrada muito pequenos.
+
+## 84. Correção de identidade de cor composta (root cause de starvation)
+
+### 84.1 O porquê
+
+Foi identificado um cenário em que a identidade de cor podia chegar em formato composto (ex.: `"{W}{U}"`, `"W,U"`), e a normalização literal tratava isso como token único. Resultado: filtros de identidade passavam quase só cartas incolores, degradando o `complete`.
+
+### 84.2 O como
+
+Arquivo alterado:
+- `server/lib/color_identity.dart`
+
+Mudança:
+- `normalizeColorIdentity(...)` passou a extrair símbolos válidos via regex (`W/U/B/R/G/C`) em vez de manter strings compostas intactas.
+
+Impacto:
+- `isWithinCommanderIdentity(...)` passa a comparar conjuntos reais de cores;
+- aumenta o pool elegível de cartas não-básicas no fluxo `optimize/complete`;
+- reduz risco de fallback degenerado causado por identidade mal normalizada.
+
+## 85. Baseline estrutural dos decks competitivos (formato/cor/tema)
+
+### 85.1 O porquê
+
+Para evitar decisões ad-hoc no `optimize/complete`, foi necessário provar que o backend consegue extrair padrões estruturais reais do acervo competitivo (média de lands, instants, sorceries, enchantments, etc.) e usar isso como base auditável.
+
+### 85.2 O como
+
+Novo script:
+- `server/bin/meta_profile_report.dart`
+
+Fluxo do script:
+- lê todos os decks de `meta_decks` originados do MTGTop8;
+- faz parse de `card_list` (ignorando sideboard);
+- cruza cartas com a tabela `cards` para identificar `type_line` e `color_identity`;
+- calcula métricas por deck;
+- agrega em dois níveis:
+  - por formato;
+  - por grupo `formato + cores + tema` (tema inferido de `archetype`).
+
+Métricas calculadas:
+- `avg_lands`, `avg_basic_lands`, `avg_creatures`, `avg_instants`, `avg_sorceries`,
+  `avg_enchantments`, `avg_artifacts`, `avg_planeswalkers`, além de `avg_total_cards`.
+
+Execução:
+- `cd server && dart run bin/meta_profile_report.dart`
+
+### 85.3 Validação (snapshot desta execução)
+
+- `total_competitive_decks`: `325`
+- `EDH` (33 decks): `avg_lands=37.21`, `avg_basic_lands=4.94`
+- `cEDH` (27 decks): `avg_lands=26.44`, `avg_basic_lands=1.15`
+
+Conclusão técnica:
+- é plenamente viável manter uma base pré-computada de estrutura por perfil competitivo;
+- esse baseline pode ser usado como referência de validação para reduzir saídas degeneradas no `complete`.
+
+## 86. Fallback EDHREC por comandante com cache persistido
+
+### 86.1 O porquê
+
+Quando um comandante não tem cobertura suficiente em `meta_decks` (MTGTop8), o sistema não deve depender de heurística pura. Foi adicionado fallback EDHREC para construir uma referência estruturada por comandante e salvar para reuso futuro.
+
+### 86.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/commander-reference/index.dart`
+
+Integração aplicada:
+- usa `EdhrecService` (`server/lib/ai/edhrec_service.dart`) quando não há decks suficientes no acervo competitivo local;
+- monta `commander_profile` com:
+  - `source: edhrec`,
+  - `themes`,
+  - `top_cards` (categoria, synergy, inclusão, num_decks),
+  - `recommended_structure` com metas por categoria não-terreno;
+- persiste perfil em cache no banco para referência futura.
+
+Persistência:
+- tabela criada sob demanda: `commander_reference_profiles`
+  - `commander_name` (PK)
+  - `source`
+  - `deck_count`
+  - `profile_json` (JSONB)
+  - `updated_at`
+- `UPSERT` por `commander_name` para manter versão mais recente.
+
+### 86.3 Resultado
+
+No endpoint `GET /ai/commander-reference`:
+- se houver cobertura MTGTop8, mantém modelo competitivo local;
+- se não houver, retorna referência EDHREC com `commander_profile` e salva para reuso;
+- reduz dependência de “achismo” para comandantes fora do recorte competitivo coletado.
+
+## 87. Uso do perfil por comandante no optimize/complete + teste Atraxa
+
+### 87.1 O porquê
+
+Não basta expor o perfil de referência; o fluxo de montagem (`optimize/complete`) precisa consumi-lo para reduzir degeneração em casos sem cobertura competitiva local.
+
+### 87.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Integrações aplicadas no `complete`:
+- leitura de `commander_reference_profiles.profile_json` por comandante;
+- uso de `recommended_structure.lands` para definir alvo de terrenos no fallback inteligente;
+- uso de `top_cards` do perfil para priorização de nomes quando o sinal competitivo local (`meta_decks`) estiver fraco.
+
+Helpers adicionados:
+- `_loadCommanderReferenceProfileFromCache(...)`
+- `_extractRecommendedLandsFromProfile(...)`
+- `_extractTopCardNamesFromProfile(...)`
+
+### 87.3 Teste automático (Atraxa)
+
+Novo teste de integração:
+- `server/test/commander_reference_atraxa_test.dart`
+
+Validações:
+- endpoint `GET /ai/commander-reference` responde 200 para Atraxa;
+- `commander_profile` presente com `source=edhrec`;
+- `reference_cards` não vazio;
+- `recommended_structure.lands` presente e dentro de faixa razoável (`28..42`).
+

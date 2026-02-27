@@ -1,0 +1,113 @@
+{
+  "source_deck_id": "0b163477-2e8a-488a-8883-774fcd05281f",
+  "source_available": false,
+  "source_snapshot": {
+    "_source_route": "unavailable",
+    "_source_private_status": 404,
+    "_source_private_body": {
+      "error": "Deck not found or you do not have permission to view it."
+    },
+    "_source_public_status": 404,
+    "_source_public_body": {
+      "error": "Deck not found or is not public."
+    }
+  },
+  "cloned_deck_id": "cbc23e80-1307-4eb7-83d0-a837c752980b",
+  "optimize_request": {
+    "deck_id": "cbc23e80-1307-4eb7-83d0-a837c752980b",
+    "archetype": "Control",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "complete",
+    "constraints": {
+      "keep_theme": true
+    },
+    "theme": {
+      "theme": "tribal-phyrexian",
+      "confidence": "alta",
+      "match_score": 1.0,
+      "core_cards": [
+        "Atraxa, Praetors' Voice"
+      ]
+    },
+    "bracket": 2,
+    "target_additions": 99,
+    "iterations": 1,
+    "additions": [
+      "Forest",
+      "Island",
+      "Plains",
+      "Swamp"
+    ],
+    "additions_detailed": [
+      {
+        "card_id": "115a89fa-3dac-4cf4-8b6b-c6de50a3d62e",
+        "quantity": 25,
+        "name": "Forest"
+      },
+      {
+        "card_id": "b07b9a40-a94a-4827-97a0-03b30c8acd59",
+        "quantity": 25,
+        "name": "Island"
+      },
+      {
+        "card_id": "a08016ec-4371-41b8-9e0f-5b3a086b9169",
+        "quantity": 25,
+        "name": "Plains"
+      },
+      {
+        "card_id": "258cb391-43bd-49ac-8abb-06ff150bdb05",
+        "quantity": 24,
+        "name": "Swamp"
+      }
+    ],
+    "removals": [],
+    "removals_detailed": [],
+    "reasoning": "Deck completado com cartas sinérgicas ao arquétipo Control, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.",
+    "deck_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 0,
+        "battles": 0
+      },
+      "total_cards": 1,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana W (Tem 0 fontes, ideal > 10). Falta mana U (Tem 0 fontes, ideal > 10). Falta mana B (Tem 0 fontes, ideal > 10). Falta mana G (Tem 0 fontes, ideal > 10)",
+      "archetype_confidence": "baixa"
+    },
+    "post_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 99,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana W (Tem 0 fontes, ideal > 10). Falta mana U (Tem 0 fontes, ideal > 10). Falta mana B (Tem 0 fontes, ideal > 10). Falta mana G (Tem 0 fontes, ideal > 10)",
+      "archetype_confidence": "baixa"
+    },
+    "validation_warnings": []
+  },
+  "bulk_status": 200,
+  "bulk_response": {
+    "ok": true,
+    "total_cards": 100
+  }
+}
