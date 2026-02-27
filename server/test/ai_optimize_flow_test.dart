@@ -100,6 +100,34 @@ void main() {
     );
   }
 
+  Future<http.Response> postJsonWithRetry(
+    String path,
+    Map<String, dynamic> payload, {
+    int attempts = 3,
+  }) async {
+    Object? lastError;
+
+    for (var i = 0; i < attempts; i++) {
+      try {
+        return await http.post(
+          Uri.parse('$baseUrl$path'),
+          headers: authHeaders(withContentType: true),
+          body: jsonEncode(payload),
+        );
+      } on http.ClientException catch (e) {
+        lastError = e;
+        final msg = e.message.toLowerCase();
+        final transient = msg.contains('connection closed') ||
+            msg.contains('refused') ||
+            msg.contains('reset');
+        if (!transient || i == attempts - 1) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+    }
+
+    throw Exception('POST retry exhausted: $path error=$lastError');
+  }
+
   Future<Map<String, dynamic>> findCardByName(String name) async {
     final uri = Uri.parse('$baseUrl/cards?name=${Uri.encodeQueryComponent(name)}&limit=25&page=1');
     final response = await http.get(uri, headers: authHeaders());
@@ -241,14 +269,10 @@ void main() {
         final deckId = await createDeck(format: 'standard');
         createdDeckIds.add(deckId);
 
-        final response = await http.post(
-          Uri.parse('$baseUrl/ai/optimize'),
-          headers: authHeaders(withContentType: true),
-          body: jsonEncode({
-            'deck_id': deckId,
-            'archetype': 'midrange',
-          }),
-        );
+        final response = await postJsonWithRetry('/ai/optimize', {
+          'deck_id': deckId,
+          'archetype': 'midrange',
+        });
 
         expect(response.statusCode, anyOf(200, 500), reason: response.body);
         final body = decodeJson(response);
@@ -279,13 +303,9 @@ void main() {
     test(
       'returns 400 when archetype is missing',
       () async {
-        final response = await http.post(
-          Uri.parse('$baseUrl/ai/optimize'),
-          headers: authHeaders(withContentType: true),
-          body: jsonEncode({
-            'deck_id': '00000000-0000-0000-0000-000000000097',
-          }),
-        );
+        final response = await postJsonWithRetry('/ai/optimize', {
+          'deck_id': '00000000-0000-0000-0000-000000000097',
+        });
 
         expect(response.statusCode, equals(400), reason: response.body);
         expect(decodeJson(response)['error'], isA<String>());
@@ -296,14 +316,10 @@ void main() {
     test(
       'returns 404 when deck does not exist',
       () async {
-        final response = await http.post(
-          Uri.parse('$baseUrl/ai/optimize'),
-          headers: authHeaders(withContentType: true),
-          body: jsonEncode({
-            'deck_id': '00000000-0000-0000-0000-000000000097',
-            'archetype': 'midrange',
-          }),
-        );
+        final response = await postJsonWithRetry('/ai/optimize', {
+          'deck_id': '00000000-0000-0000-0000-000000000097',
+          'archetype': 'midrange',
+        });
 
         expect(response.statusCode, equals(404), reason: response.body);
         expect(decodeJson(response)['error'], isA<String>());
@@ -317,14 +333,10 @@ void main() {
         final deckId = await createDeck(format: 'commander');
         createdDeckIds.add(deckId);
 
-        final response = await http.post(
-          Uri.parse('$baseUrl/ai/optimize'),
-          headers: authHeaders(withContentType: true),
-          body: jsonEncode({
-            'deck_id': deckId,
-            'archetype': 'control',
-          }),
-        );
+        final response = await postJsonWithRetry('/ai/optimize', {
+          'deck_id': deckId,
+          'archetype': 'control',
+        });
 
         final body = decodeJson(response);
 
@@ -350,14 +362,10 @@ void main() {
           final deckId = await createCommanderDeckWithCount(size);
           createdDeckIds.add(deckId);
 
-          final response = await http.post(
-            Uri.parse('$baseUrl/ai/optimize'),
-            headers: authHeaders(withContentType: true),
-            body: jsonEncode({
-              'deck_id': deckId,
-              'archetype': 'control',
-            }),
-          );
+          final response = await postJsonWithRetry('/ai/optimize', {
+            'deck_id': deckId,
+            'archetype': 'control',
+          });
 
           expect(response.statusCode, anyOf(200, 500), reason: 'deck size $size => ${response.body}');
 
@@ -400,16 +408,12 @@ void main() {
             final deckId = await createCommanderDeckWithCount(size);
             createdDeckIds.add(deckId);
 
-            final response = await http.post(
-              Uri.parse('$baseUrl/ai/optimize'),
-              headers: authHeaders(withContentType: true),
-              body: jsonEncode({
-                'deck_id': deckId,
-                'archetype': 'Control',
-                'bracket': bracket,
-                'keep_theme': true,
-              }),
-            );
+            final response = await postJsonWithRetry('/ai/optimize', {
+              'deck_id': deckId,
+              'archetype': 'Control',
+              'bracket': bracket,
+              'keep_theme': true,
+            });
 
             expect(
               response.statusCode,
