@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -582,7 +583,7 @@ class DeckOptimizerService {
           'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
-      );
+      ).timeout(const Duration(seconds: 25));
 
       stopwatch.stop();
 
@@ -729,7 +730,7 @@ class DeckOptimizerService {
           'temperature': temperature,
           'response_format': {"type": "json_object"}
         }),
-      );
+      ).timeout(const Duration(seconds: 25));
 
       stopwatch.stop();
 
