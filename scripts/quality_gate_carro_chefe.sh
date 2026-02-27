@@ -8,6 +8,15 @@ SOURCE_DECK_ID="${SOURCE_DECK_ID:-0b163477-2e8a-488a-8883-774fcd05281f}"
 TEST_NAME="source deck regression uses fixed sourceDeckId and persists full return for validation"
 SERVER_PID=""
 
+CARRO_CHEFE_STRICT="${CARRO_CHEFE_STRICT:-}"
+if [[ -z "$CARRO_CHEFE_STRICT" ]]; then
+  if [[ "${CI:-}" == "1" || "${CI:-}" == "true" ]]; then
+    CARRO_CHEFE_STRICT=1
+  else
+    CARRO_CHEFE_STRICT=0
+  fi
+fi
+
 cleanup() {
   if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
     kill "$SERVER_PID" >/dev/null 2>&1 || true
@@ -21,6 +30,7 @@ printf "\n============================================================\n"
 printf "Quality Gate - Carro-Chefe (optimize/complete)\n"
 printf "============================================================\n"
 printf "SOURCE_DECK_ID=%s\n" "$SOURCE_DECK_ID"
+printf "STRICT_MODE=%s\n" "$CARRO_CHEFE_STRICT"
 printf "SERVER=%s\n\n" "$SERVER_DIR"
 
 cd "$SERVER_DIR"
@@ -64,11 +74,12 @@ dart test test/ai_optimize_flow_test.dart \
 
 ARTIFACT_PATH="$SERVER_DIR/test/artifacts/ai_optimize/source_deck_optimize_latest.json"
 
-python3 - "$ARTIFACT_PATH" <<'PY'
+python3 - "$ARTIFACT_PATH" "$CARRO_CHEFE_STRICT" <<'PY'
 import json
 import sys
 
 artifact_path = sys.argv[1]
+strict_mode = str(sys.argv[2]).strip() == "1"
 
 with open(artifact_path, "r", encoding="utf-8") as f:
   payload = json.load(f)
@@ -76,15 +87,44 @@ with open(artifact_path, "r", encoding="utf-8") as f:
 status = payload.get("optimize_status")
 response = payload.get("optimize_response") or {}
 quality_error = response.get("quality_error")
+source_available = bool(payload.get("source_available"))
 
-if status != 200:
-  print(f"❌ Gate carro-chefe falhou: optimize_status={status} (esperado 200).")
+if strict_mode:
+  if status != 200:
+    print(f"❌ Gate carro-chefe (strict) falhou: optimize_status={status} (esperado 200).")
+    if quality_error:
+      print(f"   quality_error={quality_error}")
+    sys.exit(2)
+  if quality_error:
+    print("❌ Gate carro-chefe (strict) falhou: status 200 com quality_error presente.")
+    print(f"   quality_error={quality_error}")
+    sys.exit(2)
+
+# Contrato atual do teste de integração:
+# - 200: complete com qualidade mínima
+# - 422: complete parcial/degradado, desde que retorne quality_error diagnóstico
+if not strict_mode and status not in (200, 422):
+  print(f"❌ Gate carro-chefe falhou: optimize_status={status} (esperado 200 ou 422).")
   if quality_error:
     print(f"   quality_error={quality_error}")
   sys.exit(2)
 
+if not strict_mode and status == 422:
+  if not quality_error:
+    print("❌ Gate carro-chefe falhou: status 422 sem quality_error diagnóstico.")
+    sys.exit(2)
+
+  if not source_available:
+    print("⚠️  Gate carro-chefe: source deck indisponível localmente; 422 com quality_error aceito como diagnóstico válido.")
+    print(f"   quality_error={quality_error}")
+    sys.exit(0)
+
+  print("❌ Gate carro-chefe falhou: source deck disponível, mas optimize retornou 422.")
+  print(f"   quality_error={quality_error}")
+  sys.exit(2)
+
 if quality_error:
-  print("❌ Gate carro-chefe falhou: quality_error presente no optimize_response.")
+  print("❌ Gate carro-chefe falhou: status 200 com quality_error presente.")
   print(f"   quality_error={quality_error}")
   sys.exit(2)
 

@@ -3528,7 +3528,7 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
       SELECT id::text, name
       FROM cards
       WHERE name = ANY(@names)
-      ORDER BY edhrec_rank ASC NULLS LAST, name ASC
+      ORDER BY name ASC
       LIMIT @limit
     '''),
     parameters: {
@@ -4476,7 +4476,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
           OR c.color_identity = '{}'
           OR c.color_identity IS NULL
         )
-      ORDER BY c.edhrec_rank ASC NULLS LAST, c.name ASC
+      ORDER BY c.name ASC
       LIMIT 300
     '''),
     parameters: {
