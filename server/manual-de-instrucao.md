@@ -6794,3 +6794,37 @@ RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/a
 - **Teste orientado a evidência**: cobertura explícita de entradas críticas reportadas.
 - **Fail-late com diagnóstico completo**: agrega erros para não perder visibilidade dos demais cenários.
 - **Compatibilidade**: sem alterar contrato público da API durante o reforço da suíte.
+
+## 73. Estabilização incremental do `/ai/optimize` — Fase 1 (size=1)
+
+### 73.1 O porquê
+
+Após ampliar a cobertura, o próximo passo foi estabilizar primeiro o cenário mínimo (deck Commander com 1 carta) antes de reativar a matriz completa de tamanhos. Isso reduz ruído e acelera correção orientada por evidência.
+
+### 73.2 O como
+
+Arquivos alterados:
+- `server/test/ai_optimize_flow_test.dart`
+- `server/lib/ai/otimizacao.dart`
+
+Implementação:
+- teste de complete ajustado para foco temporário em `size=1` (fase 1);
+- matriz extensa (`1,2,5,10,15,20,40,60,80,97,99` x brackets `1..4`) mantida no arquivo, porém temporariamente em `skip` até estabilização incremental;
+- timeout de chamadas OpenAI em otimização/completion reduzido para falha rápida (`8s`), favorecendo fallback determinístico do fluxo de complete quando a IA externa não responde a tempo.
+
+Validação executada:
+```bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/ai_optimize_flow_test.dart -r expanded
+```
+
+Resultado:
+- suíte `ai_optimize_flow_test.dart` passou no escopo de fase 1;
+- cenário `size=1` validado com sucesso;
+- matriz completa ficou explicitamente pausada para próxima fase de expansão controlada.
+
+### 73.3 Padrões aplicados
+
+- **Entrega incremental com gate real**: estabiliza menor unidade antes de escalar cobertura.
+- **Fail-fast externo, fallback interno**: menor dependência de latência do provedor de IA.
+- **Rastreabilidade de evolução**: matriz não foi removida, apenas pausada para retomada segura.

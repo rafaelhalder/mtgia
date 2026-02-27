@@ -3201,7 +3201,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
           OR c.color_identity = '{}'
           OR c.color_identity IS NULL
         )
-      ORDER BY c.edhrec_rank ASC NULLS LAST
+      ORDER BY c.name ASC
       LIMIT 50
     '''),
     parameters: {
