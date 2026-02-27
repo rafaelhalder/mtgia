@@ -479,6 +479,11 @@ void main() {
           }
 
           final body = decodeJson(response);
+            final consistency = (body['consistency_slo'] as Map?)?.cast<String, dynamic>();
+            expect(consistency, isNotNull,
+              reason: 'consistency_slo ausente no complete mode');
+            expect(consistency!['average_deck_seed_stage_used'], isA<bool>(),
+              reason: 'average_deck_seed_stage_used deve ser booleano');
           final details = (body['additions_detailed'] as List?)
                   ?.whereType<Map>()
                   .map((e) => e.cast<String, dynamic>())

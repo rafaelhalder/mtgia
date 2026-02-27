@@ -1037,19 +1037,42 @@ Future<Response> onRequest(RequestContext context) async {
         final aiSuggestedNames = <String>{};
         final commanderMetaPriorityNames = <String>{};
         final targetAdditionsForComplete = maxTotal - currentTotalCards;
-        final maxBasicAdditions = targetAdditionsForComplete >= 40
-          ? (targetAdditionsForComplete * 0.65).floor()
-          : 999;
+        var maxBasicAdditions = 999;
+        Map<String, dynamic>? commanderReferenceProfile;
+        int? commanderRecommendedLands;
 
         var aiStageUsed = false;
         var deterministicStageUsed = false;
         var guaranteedBasicsStageUsed = false;
         var competitiveModelStageUsed = false;
+        var averageDeckSeedStageUsed = false;
         var basicAddedDuringBuild = 0;
 
         if (commanders.isNotEmpty) {
           final commanderName = commanders.first.trim();
           if (commanderName.isNotEmpty) {
+            commanderReferenceProfile = await _loadCommanderReferenceProfileFromCache(
+              pool: pool,
+              commanderName: commanderName,
+            );
+            commanderRecommendedLands =
+                _extractRecommendedLandsFromProfile(commanderReferenceProfile);
+
+            if (targetAdditionsForComplete >= 40) {
+              final recommended = (commanderRecommendedLands ?? 38).clamp(28, 42);
+              maxBasicAdditions = recommended + 6;
+            }
+
+            final averageDeckSeedNames = _extractAverageDeckSeedNamesFromProfile(
+              commanderReferenceProfile,
+              limit: 140,
+            );
+            if (averageDeckSeedNames.isNotEmpty) {
+              averageDeckSeedStageUsed = true;
+              aiSuggestedNames
+                  .addAll(averageDeckSeedNames.map((e) => e.toLowerCase()));
+            }
+
             final priorityNames = await _loadCommanderCompetitivePriorities(
               pool: pool,
               commanderName: commanderName,
@@ -1059,6 +1082,16 @@ Future<Response> onRequest(RequestContext context) async {
               competitiveModelStageUsed = true;
               commanderMetaPriorityNames.addAll(priorityNames);
               aiSuggestedNames.addAll(priorityNames.map((e) => e.toLowerCase()));
+            } else {
+              final profileTopNames = _extractTopCardNamesFromProfile(
+                commanderReferenceProfile,
+                limit: 80,
+              );
+              if (profileTopNames.isNotEmpty) {
+                aiSuggestedNames
+                    .addAll(profileTopNames.map((e) => e.toLowerCase()));
+                competitiveModelStageUsed = true;
+              }
             }
           }
         }
@@ -1282,7 +1315,11 @@ Future<Response> onRequest(RequestContext context) async {
           
           // Terrenos ideais baseados no CMC médio:
           // CMC < 2.0 → 32 lands | CMC 2.0-3.0 → 35 | CMC 3.0-4.0 → 37 | CMC > 4.0 → 39
-          final idealLands = avgCmc < 2.0 ? 32 : (avgCmc < 3.0 ? 35 : (avgCmc < 4.0 ? 37 : 39));
+            final idealLands = (commanderRecommendedLands ??
+                (avgCmc < 2.0
+                  ? 32
+                  : (avgCmc < 3.0 ? 35 : (avgCmc < 4.0 ? 37 : 39))))
+              .clamp(28, 42);
           final landsNeeded = (idealLands - currentLands).clamp(0, missing);
           final spellsNeeded = missing - landsNeeded;
           
@@ -1602,7 +1639,8 @@ Future<Response> onRequest(RequestContext context) async {
             'basic_added': basicAdded,
             'non_basic_added': nonBasicAdded,
           };
-        } else if (targetTotal >= 40 && basicAdded > (targetTotal * 0.65).floor()) {
+        } else if (targetTotal >= 40 &&
+            basicAdded > ((commanderRecommendedLands ?? 38).clamp(28, 42) + 6)) {
           qualityError = {
             'code': 'COMPLETE_QUALITY_BASIC_OVERFLOW',
             'message':
@@ -1647,6 +1685,7 @@ Future<Response> onRequest(RequestContext context) async {
             'completed_target': addedTotal >= targetTotal,
             'ai_stage_used': aiStageUsed,
             'competitive_model_stage_used': competitiveModelStageUsed,
+            'average_deck_seed_stage_used': averageDeckSeedStageUsed,
             'deterministic_stage_used': deterministicStageUsed,
             'guaranteed_basics_stage_used': guaranteedBasicsStageUsed,
             'added_total': addedTotal,
@@ -3025,7 +3064,7 @@ String _buildOptimizeCacheKey({
     keepTheme ? 'keep' : 'free',
     deckSignature,
   ].join('::');
-  return 'v2:${_stableHash(base)}';
+  return 'v3:${_stableHash(base)}';
 }
 
 String _stableHash(String value) {
@@ -3618,6 +3657,76 @@ Future<List<String>> _loadCommanderCompetitivePriorities({
     });
 
   return sorted.take(limit).map((e) => e.key).toList();
+}
+
+Future<Map<String, dynamic>?> _loadCommanderReferenceProfileFromCache({
+  required Pool pool,
+  required String commanderName,
+}) async {
+  if (commanderName.trim().isEmpty) return null;
+
+  try {
+    final result = await pool.execute(
+      Sql.named('''
+        SELECT profile_json
+        FROM commander_reference_profiles
+        WHERE LOWER(commander_name) = LOWER(@commander)
+        LIMIT 1
+      '''),
+      parameters: {'commander': commanderName},
+    );
+
+    if (result.isEmpty) return null;
+    final payload = result.first[0];
+    if (payload is Map<String, dynamic>) return Map<String, dynamic>.from(payload);
+    if (payload is Map) return payload.cast<String, dynamic>();
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+int? _extractRecommendedLandsFromProfile(Map<String, dynamic>? profile) {
+  if (profile == null) return null;
+  final structure = profile['recommended_structure'];
+  if (structure is! Map) return null;
+  final landsRaw = structure['lands'];
+  if (landsRaw is int) return landsRaw;
+  if (landsRaw is num) return landsRaw.toInt();
+  if (landsRaw is String) return int.tryParse(landsRaw);
+  return null;
+}
+
+List<String> _extractTopCardNamesFromProfile(
+  Map<String, dynamic>? profile, {
+  required int limit,
+}) {
+  if (profile == null || limit <= 0) return const [];
+  final topCardsRaw = profile['top_cards'];
+  if (topCardsRaw is! List) return const [];
+
+  return topCardsRaw
+      .whereType<Map>()
+      .map((entry) => (entry['name'] as String?)?.trim() ?? '')
+      .where((name) => name.isNotEmpty)
+      .take(limit)
+      .toList();
+}
+
+List<String> _extractAverageDeckSeedNamesFromProfile(
+  Map<String, dynamic>? profile, {
+  required int limit,
+}) {
+  if (profile == null || limit <= 0) return const [];
+  final raw = profile['average_deck_seed'];
+  if (raw is! List) return const [];
+
+  return raw
+      .whereType<Map>()
+      .map((entry) => (entry['name'] as String?)?.trim() ?? '')
+      .where((name) => name.isNotEmpty)
+      .take(limit)
+      .toList();
 }
 
 String _inferFunctionalRole({

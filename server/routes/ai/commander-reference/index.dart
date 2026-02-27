@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
@@ -5,6 +6,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 
+import '../../../lib/ai/edhrec_service.dart';
 import '../../../lib/http_responses.dart';
 
 Future<Response> onRequest(RequestContext context) async {
@@ -25,6 +27,11 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final pool = context.read<Pool>();
+    await _ensureCommanderProfileCacheTable(pool);
+    final cachedProfile = await _loadCommanderProfileCache(
+      pool: pool,
+      commander: commander,
+    );
 
     Map<String, dynamic>? refreshSummary;
     if (shouldRefresh) {
@@ -68,6 +75,54 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     if (decks.isEmpty) {
+      final needsCacheUpgrade =
+          cachedProfile != null && !_hasExtendedCommanderReferenceBase(cachedProfile);
+
+      final edhrecProfile = (shouldRefresh || cachedProfile == null || needsCacheUpgrade)
+          ? await _buildAndPersistEdhrecProfile(
+              pool: pool,
+              commander: commander,
+            )
+          : cachedProfile;
+
+      if (edhrecProfile != null) {
+        final edhrecCards = (edhrecProfile['top_cards'] as List?)
+                ?.whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList() ??
+            const <Map<String, dynamic>>[];
+
+        return Response.json(body: {
+          'commander': commander,
+          'meta_decks_found': 0,
+          'reference_cards': edhrecCards
+              .take(limit)
+              .map((c) => {
+                    'name': c['name'],
+                    'total_copies': 0,
+                    'appears_in_decks': c['num_decks'] ?? 0,
+                    'usage_rate': c['inclusion'] ?? 0.0,
+                    'synergy': c['synergy'] ?? 0.0,
+                    'category': c['category'] ?? 'other',
+                  })
+              .toList(),
+          'sample_decks': const <Map<String, dynamic>>[],
+          'model': {
+            'type': 'commander_reference_profile',
+            'source': 'edhrec',
+            'generated_from_meta_decks': 0,
+            'generated_from_edhrec': true,
+            'top_non_basic_cards': edhrecCards
+                .map((e) => e['name'])
+                .whereType<String>()
+                .take(limit)
+                .toList(),
+          },
+          'commander_profile': edhrecProfile,
+          if (refreshSummary != null) 'refresh': refreshSummary,
+        });
+      }
+
       List<dynamic> fallback = const [];
       try {
         fallback = await pool.execute(
@@ -94,6 +149,7 @@ Future<Response> onRequest(RequestContext context) async {
           'reference_cards': <Map<String, dynamic>>[],
           'sample_decks': <Map<String, dynamic>>[],
           'message': 'Nenhum deck competitivo encontrado para esse comandante no acervo atual.',
+          if (cachedProfile != null) 'commander_profile': cachedProfile,
         });
       }
 
@@ -120,6 +176,7 @@ Future<Response> onRequest(RequestContext context) async {
           'generated_from_card_meta_insights': true,
           'top_non_basic_cards': cards.map((e) => e['name']).toList(),
         },
+        if (cachedProfile != null) 'commander_profile': cachedProfile,
         if (refreshSummary != null) 'refresh': refreshSummary,
       });
     }
@@ -207,6 +264,7 @@ Future<Response> onRequest(RequestContext context) async {
         'generated_from_meta_decks': totalDecks,
         'top_non_basic_cards': references.map((e) => e['name']).toList(),
       },
+      if (cachedProfile != null) 'commander_profile': cachedProfile,
       if (refreshSummary != null) 'refresh': refreshSummary,
     });
   } catch (e) {
@@ -218,6 +276,183 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   }
+}
+
+Future<void> _ensureCommanderProfileCacheTable(Pool pool) async {
+  await pool.execute('''
+    CREATE TABLE IF NOT EXISTS commander_reference_profiles (
+      commander_name TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      deck_count INTEGER NOT NULL DEFAULT 0,
+      profile_json JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  ''');
+}
+
+Future<Map<String, dynamic>?> _loadCommanderProfileCache({
+  required Pool pool,
+  required String commander,
+}) async {
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT profile_json
+      FROM commander_reference_profiles
+      WHERE LOWER(commander_name) = LOWER(@commander)
+      LIMIT 1
+    '''),
+    parameters: {'commander': commander},
+  );
+
+  if (result.isEmpty) return null;
+  final payload = result.first[0];
+  if (payload is Map<String, dynamic>) return Map<String, dynamic>.from(payload);
+  if (payload is Map) return payload.cast<String, dynamic>();
+  return null;
+}
+
+Future<Map<String, dynamic>?> _buildAndPersistEdhrecProfile({
+  required Pool pool,
+  required String commander,
+}) async {
+  final service = EdhrecService();
+  final data = await service.fetchCommanderData(commander);
+  if (data == null || data.topCards.isEmpty) return null;
+  final averageDeck = await service.fetchAverageDeckData(commander);
+
+  final nonLandCategories = <String, double>{};
+  final topCards = <Map<String, dynamic>>[];
+
+  for (final card in data.topCards.take(180)) {
+    final category = card.category;
+    final inclusion = card.inclusion <= 0 ? 0.001 : card.inclusion;
+    if (category != 'lands') {
+      nonLandCategories[category] = (nonLandCategories[category] ?? 0) + inclusion;
+    }
+    if (category == 'lands') continue;
+    topCards.add({
+      'name': card.name,
+      'category': card.category,
+      'synergy': double.parse(card.synergy.toStringAsFixed(4)),
+      'inclusion': double.parse(card.inclusion.toStringAsFixed(4)),
+      'num_decks': card.numDecks,
+    });
+  }
+
+  const recommendedLands = 36;
+  const totalDeckCards = 99;
+  const commanderSlot = 1;
+  final nonLandTarget = totalDeckCards - commanderSlot - recommendedLands;
+  final averageDeckSeed = <Map<String, dynamic>>[];
+  if (averageDeck != null) {
+    for (final card in averageDeck.seedCards.take(180)) {
+      if (_isBasicLandName(card.name)) continue;
+      final cardName = card.name.trim();
+      if (cardName.isEmpty) continue;
+      averageDeckSeed.add({
+        'name': cardName,
+        'quantity': card.quantity,
+      });
+    }
+  }
+
+  final categoryTargets = <String, int>{};
+  final totalWeight = nonLandCategories.values.fold<double>(0, (a, b) => a + b);
+  if (totalWeight > 0) {
+    for (final entry in nonLandCategories.entries) {
+      categoryTargets[entry.key] = ((entry.value / totalWeight) * nonLandTarget).round();
+    }
+  }
+
+  var sumTargets = categoryTargets.values.fold<int>(0, (a, b) => a + b);
+  if (sumTargets < nonLandTarget && categoryTargets.isNotEmpty) {
+    final ordered = categoryTargets.entries.toList()
+      ..sort((a, b) => (nonLandCategories[b.key] ?? 0).compareTo(nonLandCategories[a.key] ?? 0));
+    var i = 0;
+    while (sumTargets < nonLandTarget) {
+      final key = ordered[i % ordered.length].key;
+      categoryTargets[key] = (categoryTargets[key] ?? 0) + 1;
+      sumTargets++;
+      i++;
+    }
+  }
+
+  final profile = {
+    'source': 'edhrec',
+    'commander': commander,
+    'deck_count': data.deckCount,
+    'themes': data.themes,
+    'average_type_distribution': data.averageTypeDistribution,
+    'mana_curve': data.manaCurve,
+    'articles': data.articles,
+    'reference_bases': {
+      'provider': 'edhrec',
+      'category': 'commander_only',
+      'description':
+          'Base específica de commander (não representa meta global cross-commander).',
+      'saved_fields': [
+        'average_type_distribution',
+        'mana_curve',
+        'articles',
+        'themes',
+        'top_cards',
+        'average_deck_seed',
+      ],
+    },
+    'recommended_structure': {
+      'total_cards': totalDeckCards,
+      'commander_slots': commanderSlot,
+      'lands': recommendedLands,
+      'non_lands': nonLandTarget,
+      'category_targets': categoryTargets,
+    },
+    'average_deck_seed': averageDeckSeed,
+    'top_cards': topCards.take(120).toList(),
+    'updated_at': DateTime.now().toUtc().toIso8601String(),
+  };
+
+  await pool.execute(
+    Sql.named('''
+      INSERT INTO commander_reference_profiles (
+        commander_name,
+        source,
+        deck_count,
+        profile_json,
+        updated_at
+      ) VALUES (
+        @commander,
+        'edhrec',
+        @deckCount,
+        @profile::jsonb,
+        NOW()
+      )
+      ON CONFLICT (commander_name)
+      DO UPDATE SET
+        source = EXCLUDED.source,
+        deck_count = EXCLUDED.deck_count,
+        profile_json = EXCLUDED.profile_json,
+        updated_at = NOW()
+    '''),
+    parameters: {
+      'commander': commander,
+      'deckCount': data.deckCount,
+      'profile': jsonEncode(profile),
+    },
+  );
+
+  return profile;
+}
+
+bool _hasExtendedCommanderReferenceBase(Map<String, dynamic> profile) {
+  final hasAverage = profile['average_type_distribution'] is Map;
+  final hasCurve = profile['mana_curve'] is Map;
+  final hasAverageDeckSeed = profile['average_deck_seed'] is List;
+  final referenceBases = profile['reference_bases'];
+  if (!hasAverage || !hasCurve || !hasAverageDeckSeed || referenceBases is! Map) {
+    return false;
+  }
+  final category = referenceBases['category']?.toString().toLowerCase();
+  return category == 'commander_only';
 }
 
 Future<Map<String, dynamic>> _refreshCommanderFromMtgTop8({

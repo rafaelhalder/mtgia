@@ -10,6 +10,56 @@ Este documento serve como guia definitivo para o entendimento, manutenção e ex
 
 ## 📋 Status Atual do Projeto
 
+### ✅ Atualização Técnica — Seed de montagem via EDHREC average-decks no fluxo complete (27/02/2026)
+
+**Motivação (o porquê)**
+- A base de `commanders/{slug}` é excelente para ranking/sinergia, mas não é a melhor fonte para montar um esqueleto inicial de 99 cartas.
+- Para reduzir montagens degeneradas e melhorar aderência a listas reais, o fluxo de `complete` passou a usar seed persistido de `average-decks/{slug}`.
+
+**Implementação (o como)**
+- O serviço `EdhrecService` ganhou suporte ao endpoint `average-decks` com parser dedicado e cache em memória.
+- O endpoint `GET /ai/commander-reference` agora também persiste `average_deck_seed` em `commander_reference_profiles.profile_json`.
+- O `reference_bases.saved_fields` inclui `average_deck_seed` para auditoria explícita da base salva.
+- O fluxo `POST /ai/optimize` em `mode=complete` passa a injetar esse seed na prioridade de candidatos antes do preenchimento determinístico.
+
+**Campos e contrato impactados**
+- `commander_profile.average_deck_seed`: lista com `{ name, quantity }` (sem básicos).
+- `consistency_slo.average_deck_seed_stage_used`: booleano indicando uso do seed no ciclo de complete.
+
+**Validação**
+- `test/commander_reference_atraxa_test.dart` valida presença de `average_deck_seed` no profile.
+- `test/ai_optimize_flow_test.dart` valida presença de `average_deck_seed_stage_used` em `consistency_slo` no complete mode.
+
+### ✅ Atualização Técnica — Persistência completa da base EDHREC por comandante (27/02/2026)
+
+**Motivação (o porquê)**
+- A otimização precisava de uma base consultável e persistente com contexto completo do comandante, não apenas top cards.
+- Foi necessário guardar também métricas estruturais (médias por tipo, curva de mana e artigos) para auditoria e referência futura.
+
+**Implementação (o como)**
+- O endpoint `GET /ai/commander-reference` agora persiste no `profile_json` de `commander_reference_profiles` os blocos:
+  - `average_type_distribution`
+  - `mana_curve`
+  - `articles`
+  - `reference_bases`
+- O bloco `reference_bases` marca explicitamente a origem e escopo da base:
+  - `provider: edhrec`
+  - `category: commander_only`
+  - descrição do escopo e lista de campos salvos.
+
+**Campos persistidos por comandante (resumo)**
+- `top_cards` com `category`, `synergy`, `inclusion`, `num_decks`
+- `themes`
+- `average_type_distribution` (land/creature/instant/sorcery/artifact/enchantment/planeswalker/battle/basic/nonbasic)
+- `mana_curve` (bins por CMC)
+- `articles` (title/date/href/excerpt/author)
+
+**Validação**
+- Teste de integração `test/commander_reference_atraxa_test.dart` atualizado para validar:
+  - `reference_bases.category == commander_only`
+  - presença de `average_type_distribution`
+  - presença de `mana_curve`
+
 ### ✅ **Implementado (Backend - Dart Frog)**
 - [x] Estrutura base do servidor (`dart_frog dev`)
 - [x] Conexão com PostgreSQL (`lib/database.dart` - Singleton Pattern)
@@ -7188,4 +7238,109 @@ Impacto:
 - `isWithinCommanderIdentity(...)` passa a comparar conjuntos reais de cores;
 - aumenta o pool elegível de cartas não-básicas no fluxo `optimize/complete`;
 - reduz risco de fallback degenerado causado por identidade mal normalizada.
+
+## 85. Baseline estrutural dos decks competitivos (formato/cor/tema)
+
+### 85.1 O porquê
+
+Para evitar decisões ad-hoc no `optimize/complete`, foi necessário provar que o backend consegue extrair padrões estruturais reais do acervo competitivo (média de lands, instants, sorceries, enchantments, etc.) e usar isso como base auditável.
+
+### 85.2 O como
+
+Novo script:
+- `server/bin/meta_profile_report.dart`
+
+Fluxo do script:
+- lê todos os decks de `meta_decks` originados do MTGTop8;
+- faz parse de `card_list` (ignorando sideboard);
+- cruza cartas com a tabela `cards` para identificar `type_line` e `color_identity`;
+- calcula métricas por deck;
+- agrega em dois níveis:
+  - por formato;
+  - por grupo `formato + cores + tema` (tema inferido de `archetype`).
+
+Métricas calculadas:
+- `avg_lands`, `avg_basic_lands`, `avg_creatures`, `avg_instants`, `avg_sorceries`,
+  `avg_enchantments`, `avg_artifacts`, `avg_planeswalkers`, além de `avg_total_cards`.
+
+Execução:
+- `cd server && dart run bin/meta_profile_report.dart`
+
+### 85.3 Validação (snapshot desta execução)
+
+- `total_competitive_decks`: `325`
+- `EDH` (33 decks): `avg_lands=37.21`, `avg_basic_lands=4.94`
+- `cEDH` (27 decks): `avg_lands=26.44`, `avg_basic_lands=1.15`
+
+Conclusão técnica:
+- é plenamente viável manter uma base pré-computada de estrutura por perfil competitivo;
+- esse baseline pode ser usado como referência de validação para reduzir saídas degeneradas no `complete`.
+
+## 86. Fallback EDHREC por comandante com cache persistido
+
+### 86.1 O porquê
+
+Quando um comandante não tem cobertura suficiente em `meta_decks` (MTGTop8), o sistema não deve depender de heurística pura. Foi adicionado fallback EDHREC para construir uma referência estruturada por comandante e salvar para reuso futuro.
+
+### 86.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/commander-reference/index.dart`
+
+Integração aplicada:
+- usa `EdhrecService` (`server/lib/ai/edhrec_service.dart`) quando não há decks suficientes no acervo competitivo local;
+- monta `commander_profile` com:
+  - `source: edhrec`,
+  - `themes`,
+  - `top_cards` (categoria, synergy, inclusão, num_decks),
+  - `recommended_structure` com metas por categoria não-terreno;
+- persiste perfil em cache no banco para referência futura.
+
+Persistência:
+- tabela criada sob demanda: `commander_reference_profiles`
+  - `commander_name` (PK)
+  - `source`
+  - `deck_count`
+  - `profile_json` (JSONB)
+  - `updated_at`
+- `UPSERT` por `commander_name` para manter versão mais recente.
+
+### 86.3 Resultado
+
+No endpoint `GET /ai/commander-reference`:
+- se houver cobertura MTGTop8, mantém modelo competitivo local;
+- se não houver, retorna referência EDHREC com `commander_profile` e salva para reuso;
+- reduz dependência de “achismo” para comandantes fora do recorte competitivo coletado.
+
+## 87. Uso do perfil por comandante no optimize/complete + teste Atraxa
+
+### 87.1 O porquê
+
+Não basta expor o perfil de referência; o fluxo de montagem (`optimize/complete`) precisa consumi-lo para reduzir degeneração em casos sem cobertura competitiva local.
+
+### 87.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Integrações aplicadas no `complete`:
+- leitura de `commander_reference_profiles.profile_json` por comandante;
+- uso de `recommended_structure.lands` para definir alvo de terrenos no fallback inteligente;
+- uso de `top_cards` do perfil para priorização de nomes quando o sinal competitivo local (`meta_decks`) estiver fraco.
+
+Helpers adicionados:
+- `_loadCommanderReferenceProfileFromCache(...)`
+- `_extractRecommendedLandsFromProfile(...)`
+- `_extractTopCardNamesFromProfile(...)`
+
+### 87.3 Teste automático (Atraxa)
+
+Novo teste de integração:
+- `server/test/commander_reference_atraxa_test.dart`
+
+Validações:
+- endpoint `GET /ai/commander-reference` responde 200 para Atraxa;
+- `commander_profile` presente com `source=edhrec`;
+- `reference_cards` não vazio;
+- `recommended_structure.lands` presente e dentro de faixa razoável (`28..42`).
 
