@@ -1,0 +1,35 @@
+{
+  "source_deck_id": "0b163477-2e8a-488a-8883-774fcd05281f",
+  "source_available": false,
+  "source_snapshot": {
+    "_source_route": "unavailable",
+    "_source_private_status": 404,
+    "_source_private_body": {
+      "error": "Deck not found or you do not have permission to view it."
+    },
+    "_source_public_status": 404,
+    "_source_public_body": {
+      "error": "Deck not found or is not public."
+    }
+  },
+  "cloned_deck_id": "6ab41bd6-ad6e-40ae-8a33-0ad9ee726694",
+  "optimize_request": {
+    "deck_id": "6ab41bd6-ad6e-40ae-8a33-0ad9ee726694",
+    "archetype": "Control",
+    "keep_theme": true
+  },
+  "optimize_status": 422,
+  "optimize_response": {
+    "error": "Complete mode não atingiu qualidade mínima para montagem competitiva.",
+    "quality_error": {
+      "code": "COMPLETE_QUALITY_PARTIAL",
+      "message": "Não foi possível completar o deck com qualidade mínima: adições insuficientes.",
+      "target_additions": 99,
+      "added_total": 61,
+      "basic_added": 27,
+      "non_basic_added": 34
+    },
+    "mode": "complete",
+    "target_additions": 99
+  }
+}

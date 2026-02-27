@@ -5684,6 +5684,32 @@ Melhorias aplicadas:
 - menor variância de qualidade entre endpoints de IA;
 - melhor alinhamento com o objetivo do produto: construir, entender e melhorar decks com consistência.
 
+## 55. Resolução de `API_BASE_URL` no Flutter (debug vs produção)
+
+### 55.1 O Porquê
+
+Foi identificado erro recorrente de login no app iOS em debug com `Failed host lookup` para o domínio de produção, mesmo com backend local disponível.
+
+Em desenvolvimento, depender do DNS externo reduz confiabilidade do fluxo de QA e aumenta falsos negativos de autenticação/rede.
+
+### 55.2 O Como
+
+Arquivo alterado:
+- `app/lib/core/api/api_client.dart`
+
+Nova estratégia de resolução do `baseUrl`:
+1. Se `API_BASE_URL` for definido via `--dart-define`, ele sempre prevalece.
+2. Se não houver override e o app estiver em `kDebugMode`, usa backend local por padrão:
+  - Android emulator: `http://10.0.2.2:8080`
+  - iOS simulator/macOS/web: `http://localhost:8080`
+3. Em release/profile, mantém domínio de produção.
+
+### 55.3 Benefício
+
+- login e rotas protegidas ficam estáveis em debug local;
+- desenvolvimento deixa de depender de DNS externo;
+- produção permanece inalterada.
+
 ## 55. Prompt otimizado para performance e robustez (optimize)
 
 ### 55.1 O Porquê
@@ -6828,3 +6854,158 @@ Resultado:
 - **Entrega incremental com gate real**: estabiliza menor unidade antes de escalar cobertura.
 - **Fail-fast externo, fallback interno**: menor dependência de latência do provedor de IA.
 - **Rastreabilidade de evolução**: matriz não foi removida, apenas pausada para retomada segura.
+
+## 74. Regressão com deck fixo + artefato JSON de retorno (validação contínua)
+
+### 74.1 O porquê
+
+Como o fluxo de otimização é o carro-chefe do produto, foi necessário garantir uma validação repetível com um deck de referência fixo e preservar o retorno completo para auditoria funcional.
+
+### 74.2 O como
+
+Arquivo alterado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Foi adicionado um teste de integração dedicado que:
+- usa explicitamente o deck de referência `0b163477-2e8a-488a-8883-774fcd05281f`;
+- busca o deck fonte, clona as cartas para um deck do usuário de teste e roda `POST /ai/optimize`;
+- quando `mode=complete`, tenta aplicar o resultado via `POST /decks/:id/cards/bulk`;
+- imprime os retornos no log do teste e salva artefatos JSON para validação manual.
+
+Artefatos gerados automaticamente:
+- `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`
+- `server/test/artifacts/ai_optimize/source_deck_optimize_<timestamp>.json`
+
+Conteúdo do artefato:
+- `source_deck_id` e `cloned_deck_id`;
+- request de optimize;
+- status/body de optimize;
+- status/body de bulk (quando aplicável).
+
+### 74.3 Benefício prático
+
+- Permite comparar execuções reais ao longo do tempo sem depender só de assertion.
+- Dá visibilidade imediata de regressão na qualidade/consistência do retorno.
+- Cria trilha auditável para revisão humana do que a IA/heurística entregou.
+
+## 75. Especificação formal de validações de criação/completação de deck
+
+### 75.1 O porquê
+
+Foi identificado um problema crítico de qualidade no fluxo `mode=complete`: em cenários degradados, o sistema ainda podia fechar 100 cartas com excesso de terrenos básicos.
+
+Mesmo com validação estrutural correta (legalidade/identidade/tamanho), isso não atende o objetivo do produto.
+
+### 75.2 O como
+
+Foi criado o documento normativo:
+
+- `server/doc/DECK_CREATION_VALIDATIONS.md`
+
+Esse arquivo define:
+
+- pipeline de validação obrigatório (payload → existência → legalidade → regras de formato → identidade → bracket);
+- validações de qualidade de composição no `complete` (faixas mínimas/máximas e critérios de bloqueio);
+- política de fallback permitida e proibida;
+- requisitos de observabilidade/auditoria;
+- DoD específico para o carro-chefe de otimização.
+
+### 75.3 Efeito esperado
+
+- Evitar retorno “tecnicamente válido porém estrategicamente ruim”.
+- Tornar explícito o que deve bloquear resposta `complete` com baixa qualidade.
+- Padronizar critérios para backend, QA e evolução do motor de otimização.
+
+## 76. Blueprint de consistência do carro-chefe (Deck Engine local-first)
+
+### 76.1 O porquê
+
+O fluxo de montagem de deck é o principal diferencial do produto e não pode oscilar por disponibilidade de terceiros (EDHREC/Scryfall/OpenAI).
+
+Foi necessário formalizar uma arquitetura em que:
+- a conclusão do deck seja determinística e previsível;
+- fontes externas sejam insumo de priorização, não dependência crítica;
+- a sinergia evolua para um ativo próprio do produto.
+
+### 76.2 O como
+
+Documento criado:
+
+- `server/doc/DECK_ENGINE_CONSISTENCY_FLOW.md`
+
+Conteúdo formalizado no blueprint:
+- pipeline único de montagem: normalização -> pool elegível -> slot plan -> scoring híbrido -> solver -> fallback local garantido -> IA opcional;
+- papel da IA como ranking/explicação (sem responsabilidade de fechar deck);
+- estratégia local-first para sinergia usando `meta_decks`, `card_meta_insights`, `synergy_packages` e `archetype_patterns`;
+- plano incremental de adaptação (fases 1..3) sem big-bang;
+- SLOs de consistência para produção (taxa de complete, fallback, p95, qualidade por slot).
+
+### 76.3 Benefício prático
+
+- Reduz variabilidade operacional do carro-chefe.
+- Mantém aproveitamento de dados externos sem acoplar sucesso da montagem a APIs de terceiros.
+- Cria direção técnica clara para transformar sinergia em conhecimento próprio contínuo.
+
+## 77. Fase 1 implementada: fallback determinístico por slots no `complete`
+
+### 77.1 O porquê
+
+Mesmo com fallback de cartas não-terreno, o fluxo `mode=complete` ainda oscilava por falta de priorização funcional (ramp/draw/removal/etc.), resultando em preenchimento inconsistente.
+
+### 77.2 O como
+
+Arquivo alterado:
+- `server/routes/ai/optimize/index.dart`
+
+Mudanças aplicadas:
+- inclusão de classificação funcional de cartas (`ramp`, `draw`, `removal`, `interaction`, `engine`, `wincon`, `utility`);
+- cálculo determinístico de necessidade por slot com base no estado atual do deck e arquétipo alvo;
+- novo carregador `_loadDeterministicSlotFillers(...)` que ordena candidatos por déficit de slot antes de adicionar no fallback final;
+- integração desse carregador no ponto final de preenchimento do `complete`.
+
+Também foi restaurado o baseline do teste de regressão para `bracket: 2` em:
+- `server/test/ai_optimize_flow_test.dart`
+
+### 77.3 Resultado observado
+
+- O teste focado de regressão (`sourceDeckId` fixo) continuou estável e passou.
+- O fluxo mantém proteção de qualidade (`422 + quality_error`) quando não alcança mínimo competitivo.
+- A seleção de fillers passa a ser orientada por função, abrindo caminho para o solver completo de slots nas próximas etapas.
+
+## 78. Etapas consolidadas e validação do fluxo consistente
+
+### 78.1 O que foi implementado
+
+No endpoint `POST /ai/optimize` em `mode=complete`:
+
+1. **Solver determinístico por slots**
+  - fallback não-terreno priorizado por função (`ramp/draw/removal/interaction/engine/wincon/utility`);
+  - ranqueamento por déficit funcional do deck atual.
+
+2. **IA como auxiliar de ranking**
+  - nomes sugeridos pela IA entram apenas como `boost` de prioridade no solver;
+  - fechamento não depende mais de resposta externa para seguir.
+
+3. **Fallback local garantido de tamanho**
+  - quando necessário, etapa final local completa tamanho alvo do formato;
+  - depois disso, qualidade é revalidada antes de aceitar o resultado.
+
+4. **Sinais de consistência (SLO) no payload**
+  - `consistency_slo` adicionado na resposta do `complete` com flags de estágios usados e métricas de adição.
+
+5. **Revalidação de qualidade endurecida**
+  - novo bloqueio `COMPLETE_QUALITY_BASIC_OVERFLOW` para excesso de básicos em cenários de adição alta;
+  - evita aceitar deck completo porém degenerado.
+
+### 78.2 Validação executada
+
+- teste focado de regressão (`sourceDeckId` fixo) executado após as mudanças;
+- comportamento validado: resultado degenerado agora retorna `422` com `quality_error` explícito, em vez de sucesso falso;
+- artefato de auditoria atualizado em `server/test/artifacts/ai_optimize/source_deck_optimize_latest.json`.
+
+### 78.3 Impacto prático
+
+- reduz inconsistência operacional do carro-chefe;
+- separa melhor responsabilidade entre IA (priorização) e motor local (decisão final);
+- mantém trilha auditável de quando e por que o `complete` é bloqueado por qualidade.
+

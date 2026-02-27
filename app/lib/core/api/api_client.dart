@@ -18,6 +18,8 @@ class ApiClient {
 
   /// URL do servidor de produção (EasyPanel / Digital Ocean).
   static const String _productionUrl = 'https://evolution-cartinhas.8ktevp.easypanel.host';
+  static const String _localhostUrl = 'http://localhost:8080';
+  static const String _androidEmulatorUrl = 'http://10.0.2.2:8080';
 
   // ──────────────────────────────────────────
   // Cache do token em memória (evita SharedPreferences a cada request)
@@ -38,8 +40,18 @@ class ApiClient {
     if (_envBaseUrl.trim().isNotEmpty) {
       return _envBaseUrl.trim().replaceAll(RegExp(r'/$'), '');
     }
-    // Todas as plataformas usam o servidor de produção (EasyPanel).
-    // Para dev local, passe --dart-define=API_BASE_URL=http://localhost:8080
+
+    // Em debug, preferimos backend local por padrão para evitar dependência de DNS externo.
+    // Se quiser forçar outro host, use --dart-define=API_BASE_URL=...
+    if (kDebugMode) {
+      if (kIsWeb) return _localhostUrl;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return _androidEmulatorUrl;
+      }
+      return _localhostUrl;
+    }
+
+    // Release/profile: usa produção.
     return _productionUrl;
   }
 
