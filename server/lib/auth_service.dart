@@ -4,6 +4,7 @@ import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 import 'database.dart';
+import 'plan_service.dart';
 
 /// Serviço centralizado de autenticação
 /// 
@@ -152,6 +153,8 @@ class AuthService {
 
     // Gerar token
     final token = generateToken(userId, returnedUsername);
+
+    await PlanService(conn).ensureFreePlan(userId);
 
     return {
       'userId': userId,

@@ -223,6 +223,84 @@ final migrations = <Migration>[
       DROP TABLE IF EXISTS ai_user_preferences CASCADE;
     ''',
   ),
+  Migration(
+    version: '010',
+    name: 'create_activation_funnel_events',
+    up: '''
+      CREATE TABLE IF NOT EXISTS activation_funnel_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        event_name TEXT NOT NULL,
+        format TEXT,
+        deck_id UUID REFERENCES decks(id) ON DELETE SET NULL,
+        source TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_activation_funnel_user_created
+      ON activation_funnel_events (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_activation_funnel_event_created
+      ON activation_funnel_events (event_name, created_at DESC);
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_activation_funnel_event_created;
+      DROP INDEX IF EXISTS idx_activation_funnel_user_created;
+      DROP TABLE IF EXISTS activation_funnel_events CASCADE;
+    ''',
+  ),
+  Migration(
+    version: '011',
+    name: 'create_user_plans',
+    up: '''
+      CREATE TABLE IF NOT EXISTS user_plans (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        plan_name TEXT NOT NULL DEFAULT 'free',
+        status TEXT NOT NULL DEFAULT 'active',
+        started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        renews_at TIMESTAMP WITH TIME ZONE,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT chk_user_plans_name CHECK (plan_name IN ('free', 'pro')),
+        CONSTRAINT chk_user_plans_status CHECK (status IN ('active', 'canceled'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_plans_plan_status
+      ON user_plans (plan_name, status);
+
+      INSERT INTO user_plans (user_id, plan_name, status)
+      SELECT u.id, 'free', 'active'
+      FROM users u
+      WHERE NOT EXISTS (
+        SELECT 1 FROM user_plans p WHERE p.user_id = u.id
+      );
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_user_plans_plan_status;
+      DROP TABLE IF EXISTS user_plans CASCADE;
+    ''',
+  ),
+  Migration(
+    version: '012',
+    name: 'add_hot_query_indexes',
+    up: '''
+      CREATE INDEX IF NOT EXISTS idx_cards_set_code_lower
+      ON cards (LOWER(set_code));
+
+      CREATE INDEX IF NOT EXISTS idx_cards_name_set_lower
+      ON cards (LOWER(name), LOWER(set_code));
+
+      CREATE INDEX IF NOT EXISTS idx_sets_release_date_desc
+      ON sets (release_date DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_card_legalities_format_status
+      ON card_legalities (format, status);
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_card_legalities_format_status;
+      DROP INDEX IF EXISTS idx_sets_release_date_desc;
+      DROP INDEX IF EXISTS idx_cards_name_set_lower;
+      DROP INDEX IF EXISTS idx_cards_set_code_lower;
+    ''',
+  ),
 ];
 
 class Migration {

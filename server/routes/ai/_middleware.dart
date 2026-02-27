@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
 import '../../lib/auth_middleware.dart';
+import '../../lib/plan_middleware.dart';
 import '../../lib/rate_limit_middleware.dart';
 
 /// Middleware de autenticação e rate limiting para rotas de IA
@@ -15,5 +16,6 @@ import '../../lib/rate_limit_middleware.dart';
 Handler middleware(Handler handler) {
   return handler
       .use(authMiddleware())
+  .use(aiPlanLimitMiddleware())
       .use(aiRateLimit());
 }

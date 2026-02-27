@@ -15,6 +15,20 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 1.1 Planos de assinatura (Free/Pro)
+CREATE TABLE IF NOT EXISTS user_plans (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    plan_name TEXT NOT NULL DEFAULT 'free', -- free | pro
+    status TEXT NOT NULL DEFAULT 'active', -- active | canceled
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    renews_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_user_plans_name CHECK (plan_name IN ('free', 'pro')),
+    CONSTRAINT chk_user_plans_status CHECK (status IN ('active', 'canceled'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_plans_plan_status ON user_plans (plan_name, status);
+
 -- Para bancos existentes (idempotente)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
@@ -226,6 +240,23 @@ CREATE TABLE IF NOT EXISTS sync_state (
     value TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 11.2 Tabela de eventos do funil de ativação (Sprint 4)
+CREATE TABLE IF NOT EXISTS activation_funnel_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    event_name TEXT NOT NULL,
+    format TEXT,
+    deck_id UUID REFERENCES decks(id) ON DELETE SET NULL,
+    source TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activation_funnel_user_created
+ON activation_funnel_events (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activation_funnel_event_created
+ON activation_funnel_events (event_name, created_at DESC);
 
 -- 12. Tabela de Counters por Arquétipo (Hate Cards e Counter-Strategies)
 -- Armazena cartas e estratégias para countar arquétipos específicos

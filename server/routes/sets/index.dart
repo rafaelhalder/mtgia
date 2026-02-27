@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../lib/endpoint_cache.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
@@ -19,6 +20,12 @@ Future<Response> onRequest(RequestContext context) async {
   final safeLimit = limit.clamp(1, 200);
   final safePage = page < 1 ? 1 : page;
   final offset = (safePage - 1) * safeLimit;
+  final cacheKey = 'sets:${context.request.uri.query}';
+
+  final cached = EndpointCache.instance.get(cacheKey);
+  if (cached != null) {
+    return Response.json(body: cached);
+  }
 
   final where = <String>[];
   final sqlParams = <String, dynamic>{
@@ -63,14 +70,15 @@ Future<Response> onRequest(RequestContext context) async {
       };
     }).toList();
 
-    return Response.json(
-      body: {
-        'data': sets,
-        'page': safePage,
-        'limit': safeLimit,
-        'total_returned': sets.length,
-      },
-    );
+    final payload = {
+      'data': sets,
+      'page': safePage,
+      'limit': safeLimit,
+      'total_returned': sets.length,
+    };
+
+    EndpointCache.instance.set(cacheKey, payload, ttl: const Duration(seconds: 60));
+    return Response.json(body: payload);
   } catch (e) {
     print('[ERROR] Erro interno ao buscar sets: $e');
     return Response.json(

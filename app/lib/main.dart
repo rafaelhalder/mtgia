@@ -41,6 +41,7 @@ import 'features/messages/providers/message_provider.dart';
 import 'features/messages/screens/message_inbox_screen.dart';
 import 'features/notifications/providers/notification_provider.dart';
 import 'features/notifications/screens/notification_screen.dart';
+import 'features/home/onboarding_core_flow_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -142,7 +143,8 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             location.startsWith('/community') ||
             location.startsWith('/trades') ||
             location.startsWith('/messages') ||
-            location.startsWith('/notifications');
+          location.startsWith('/notifications') ||
+          location.startsWith('/onboarding');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
           debugPrint('[🧭 Router] → /login (rota protegida sem auth)');
@@ -177,6 +179,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             GoRoute(
               path: '/home',
               builder: (context, state) => const HomeScreen(),
+            ),
+            GoRoute(
+              path: '/onboarding/core-flow',
+              builder: (context, state) => const OnboardingCoreFlowScreen(),
             ),
             GoRoute(
               path: '/decks',

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/services/activation_funnel_service.dart';
 import '../../../core/utils/logger.dart';
 import '../models/deck.dart';
 import '../models/deck_details.dart';
@@ -266,6 +267,11 @@ class DeckProvider extends ChangeNotifier {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await fetchDecks(); // Recarrega a lista
+        await ActivationFunnelService.instance.track(
+          'deck_created',
+          format: format,
+          source: 'deck_provider.createDeck',
+        );
         return true;
       }
 
@@ -499,6 +505,16 @@ class DeckProvider extends ChangeNotifier {
         final data = (response.data as Map).cast<String, dynamic>();
         await _saveOptimizeDebug(response: data);
         AppLogger.debug('🧪 [AI Optimize] response=${jsonEncode(data)}');
+        await ActivationFunnelService.instance.track(
+          'deck_optimized',
+          deckId: deckId,
+          source: 'deck_provider.optimizeDeck',
+          metadata: {
+            'archetype': archetype,
+            if (bracket != null) 'bracket': bracket,
+            'keep_theme': keepTheme,
+          },
+        );
         return data;
       } else {
         await _saveOptimizeDebug(

@@ -8,7 +8,9 @@ import 'package:dart_frog/dart_frog.dart';
 
 import '../routes/index.dart' as index;
 import '../routes/users/me/index.dart' as users_me_index;
+import '../routes/users/me/plan/index.dart' as users_me_plan_index;
 import '../routes/users/me/fcm-token/index.dart' as users_me_fcm_token_index;
+import '../routes/users/me/activation-events/index.dart' as users_me_activation_events_index;
 import '../routes/users/[id]/following/index.dart' as users_$id_following_index;
 import '../routes/users/[id]/followers/index.dart' as users_$id_followers_index;
 import '../routes/users/[id]/follow/index.dart' as users_$id_follow_index;
@@ -155,7 +157,9 @@ Handler buildRootHandler() {
     ..mount('/users/<id>/follow', (context,id,) => buildUsers$idFollowHandler(id,)(context))
     ..mount('/users/<id>/followers', (context,id,) => buildUsers$idFollowersHandler(id,)(context))
     ..mount('/users/<id>/following', (context,id,) => buildUsers$idFollowingHandler(id,)(context))
+    ..mount('/users/me/activation-events', (context) => buildUsersMeActivationEventsHandler()(context))
     ..mount('/users/me/fcm-token', (context) => buildUsersMeFcmTokenHandler()(context))
+    ..mount('/users/me/plan', (context) => buildUsersMePlanHandler()(context))
     ..mount('/users/me', (context) => buildUsersMeHandler()(context))
     ..mount('/', (context) => buildHandler()(context));
   return pipeline.addHandler(router);
@@ -539,10 +543,24 @@ Handler buildUsers$idFollowingHandler(String id,) {
   return pipeline.addHandler(router);
 }
 
+Handler buildUsersMeActivationEventsHandler() {
+  final pipeline = const Pipeline().addMiddleware(users_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => users_me_activation_events_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
 Handler buildUsersMeFcmTokenHandler() {
   final pipeline = const Pipeline().addMiddleware(users_middleware.middleware);
   final router = Router()
     ..all('/', (context) => users_me_fcm_token_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildUsersMePlanHandler() {
+  final pipeline = const Pipeline().addMiddleware(users_middleware.middleware);
+  final router = Router()
+    ..all('/', (context) => users_me_plan_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

@@ -67,6 +67,20 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => context.go('/onboarding/core-flow'),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Criar e otimizar deck'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.manaViolet,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -195,6 +209,12 @@ class HomeScreen extends StatelessWidget {
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppTheme.textSecondary,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/onboarding/core-flow'),
+                      icon: const Icon(Icons.flag_outlined),
+                      label: const Text('Iniciar fluxo guiado'),
                     ),
                   ],
                 ),

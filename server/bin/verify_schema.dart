@@ -18,6 +18,9 @@ void main() async {
       'users': [
         'id', 'username', 'email', 'password_hash', 'display_name', 'avatar_url', 'created_at', 'updated_at'
       ],
+      'user_plans': [
+        'user_id', 'plan_name', 'status', 'started_at', 'renews_at', 'updated_at'
+      ],
       'cards': [
         'id', 'scryfall_id', 'name', 'mana_cost', 'type_line', 'oracle_text', 
         'colors', 'image_url', 'set_code', 'rarity', 'ai_description', 'price', 'created_at'
@@ -82,6 +85,10 @@ void main() async {
       ],
       'rate_limit_events': [
         'id', 'bucket', 'identifier', 'created_at'
+      ],
+      'activation_funnel_events': [
+        'id', 'user_id', 'event_name', 'format', 'deck_id', 'source',
+        'metadata', 'created_at'
       ],
     };
 

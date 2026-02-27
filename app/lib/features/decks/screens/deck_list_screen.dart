@@ -233,6 +233,12 @@ class _DeckListScreenState extends State<DeckListScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/onboarding/core-flow'),
+                    icon: const Icon(Icons.flag_outlined),
+                    label: const Text('Fluxo guiado'),
+                  ),
                 ],
               ),
             );

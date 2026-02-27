@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../lib/endpoint_cache.dart';
 
 String? _normalizeScryfallImageUrl(String? url) {
   if (url == null) return null;
@@ -54,6 +55,12 @@ Future<Response> onRequest(RequestContext context) async {
   final safeLimit = limit.clamp(1, 200);
   final safePage = page < 1 ? 1 : page;
   final offset = (safePage - 1) * safeLimit;
+  final cacheKey = 'cards:${context.request.uri.query}';
+
+  final cached = EndpointCache.instance.get(cacheKey);
+  if (cached != null) {
+    return Response.json(body: cached);
+  }
 
   try {
     final query = _buildQuery(
@@ -92,12 +99,15 @@ Future<Response> onRequest(RequestContext context) async {
       };
     }).toList();
 
-    return Response.json(body: {
+    final payload = {
       'data': cards,
       'page': safePage,
       'limit': safeLimit,
       'total_returned': cards.length,
-    });
+    };
+
+    EndpointCache.instance.set(cacheKey, payload, ttl: const Duration(seconds: 45));
+    return Response.json(body: payload);
   } catch (e) {
     print('[ERROR] Erro interno ao buscar cartas: $e');
     return Response.json(

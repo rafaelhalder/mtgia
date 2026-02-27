@@ -6616,3 +6616,140 @@ Implementação:
 - **Reuso de contrato existente**: sem criar endpoint novo desnecessário, usando `/sets` e `/cards`.
 - **UX orientada a tarefa**: acesso em 1 clique para o caso “ver a última coleção”.
 - **Mudança mínima e segura**: sem alterar schema de banco nem payloads de API existentes.
+
+## 69. Sprint 4 — UX de ativação (onboarding + funil)
+
+### 69.1 O porquê
+
+Para reduzir TTV no fluxo core (`criar -> analisar -> otimizar`), foi necessário guiar explicitamente o usuário novo em 3 passos, expor um CTA principal único e instrumentar o funil com eventos rastreáveis no backend.
+
+### 69.2 O como
+
+#### Onboarding de 3 passos no app
+
+Arquivos:
+- `app/lib/features/home/onboarding_core_flow_screen.dart` (novo)
+- `app/lib/main.dart`
+
+Implementação:
+- nova rota protegida `'/onboarding/core-flow'`;
+- tela com 3 etapas objetivas:
+  1) seleção de formato,
+  2) escolha de base (gerar IA ou importar),
+  3) instrução de otimização guiada no detalhe do deck.
+
+#### CTA principal único + estado vazio guiado
+
+Arquivos:
+- `app/lib/features/home/home_screen.dart`
+- `app/lib/features/decks/screens/deck_list_screen.dart`
+
+Implementação:
+- botão principal no Home: **Criar e otimizar deck**;
+- entrypoint para onboarding no empty state de Home e Decks (`Fluxo guiado`).
+
+#### Instrumentação completa do funil de ativação
+
+Arquivos backend:
+- `server/database_setup.sql`
+- `server/bin/migrate.dart` (migração `010_create_activation_funnel_events`)
+- `server/bin/verify_schema.dart`
+- `server/routes/users/me/activation-events/index.dart` (novo)
+
+Arquivos app:
+- `app/lib/core/services/activation_funnel_service.dart` (novo)
+- `app/lib/features/decks/providers/deck_provider.dart`
+- `app/lib/features/home/onboarding_core_flow_screen.dart`
+
+Eventos implementados:
+- `core_flow_started`
+- `format_selected`
+- `base_choice_generate`
+- `base_choice_import`
+- `deck_created`
+- `deck_optimized`
+- `onboarding_completed`
+
+Endpoint:
+- `POST /users/me/activation-events` (registra evento)
+- `GET /users/me/activation-events?days=30` (resumo agregado por evento)
+
+### 69.3 Padrões aplicados
+
+- **Guided-first UX**: foco no caminho de maior valor para novo usuário.
+- **Telemetria não-bloqueante**: falha de evento não quebra fluxo principal.
+- **Compatibilidade incremental**: sem romper rotas antigas; onboarding é opt-in por rota.
+
+## 70. Sprint 5 — Monetização inicial (Free/Pro + paywall leve)
+
+### 70.1 O porquê
+
+Para controlar custo de IA por usuário e preparar monetização, foi implementada uma camada mínima de planos (`free`/`pro`) com limites mensais de uso de endpoints IA e feedback explícito de upgrade.
+
+### 70.2 O como
+
+Arquivos alterados:
+- `server/database_setup.sql`
+- `server/bin/migrate.dart` (migração `011_create_user_plans`)
+- `server/bin/verify_schema.dart`
+- `server/lib/plan_service.dart` (novo)
+- `server/lib/plan_middleware.dart` (novo)
+- `server/lib/auth_service.dart`
+- `server/routes/ai/_middleware.dart`
+- `server/routes/users/me/plan/index.dart` (novo)
+- `ROADMAP.md`
+
+Implementação:
+- nova tabela `user_plans` com:
+  - `plan_name`: `free` | `pro`
+  - `status`: `active` | `canceled`
+  - timestamps de ciclo;
+- backfill de usuários existentes para plano `free`;
+- novos usuários já recebem plano `free` no registro;
+- limites de IA por plano aplicados no middleware de IA:
+  - Free: `120` req/30d
+  - Pro: `2500` req/30d
+- ao atingir limite, retorna `402 Payment Required` com payload de upgrade (paywall leve);
+- endpoint `GET /users/me/plan` retorna:
+  - plano atual,
+  - uso/limite de IA,
+  - custo estimado por usuário (baseado em tokens de `ai_logs`),
+  - bloco de oferta de upgrade Pro.
+
+### 70.3 Padrões aplicados
+
+- **Cost guardrails first**: limite por plano antes de ampliar consumo IA.
+- **Monetização progressiva**: paywall leve sem bloquear fluxos não-IA.
+- **Telemetria orientada a decisão**: exposição de uso e custo estimado por usuário.
+
+## 71. Sprint 6 — Escala e readiness
+
+### 71.1 O porquê
+
+A fase final do ciclo exigia preparar o backend para crescimento com risco operacional menor: queries mais eficientes, cache para endpoints quentes, artefatos de carga/capacidade e checklist final de go-live.
+
+### 71.2 O como
+
+Arquivos alterados:
+- `server/bin/migrate.dart` (migração `012_add_hot_query_indexes`)
+- `server/lib/endpoint_cache.dart` (novo)
+- `server/routes/cards/index.dart`
+- `server/routes/sets/index.dart`
+- `server/bin/load_test_core_flow.dart` (novo)
+- `server/doc/CAPACITY_PLAN_10K_MAU.md` (novo)
+- `CHECKLIST_GO_LIVE_FINAL.md` (novo)
+
+Implementação:
+- índices adicionais para consultas críticas (`cards`, `sets`, `card_legalities`);
+- cache in-memory com TTL curto para endpoints quentes públicos:
+  - `/cards` (45s)
+  - `/sets` (60s)
+- script de carga mínima para cenários core com saída de `avg` e `p95`;
+- plano de capacidade para 10k MAU com metas e próximos passos;
+- checklist final de go-live cobrindo core, segurança, IA, dados, performance e qualidade.
+
+### 71.3 Padrões aplicados
+
+- **Performance pragmática**: otimização incremental com baixo risco de regressão.
+- **Readiness orientada por evidências**: carga + checklist + plano operacional.
+- **Compatibilidade operacional**: mudanças não quebram contratos existentes de API.

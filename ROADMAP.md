@@ -218,11 +218,11 @@ Para cada item de sprint:
 ## Sprint 4 (Semanas 7-8) — UX de ativação
 
 ### Entregas
-- [ ] Onboarding em 3 passos no app.
-- [ ] Estado vazio guiado para primeiro resultado.
-- [ ] CTA principal único para fluxo core.
-- [ ] Mensagens de erro/recuperação simplificadas.
-- [ ] Instrumentação de funil de ativação completa.
+- [x] Onboarding em 3 passos no app.
+- [x] Estado vazio guiado para primeiro resultado.
+- [x] CTA principal único para fluxo core.
+- [x] Mensagens de erro/recuperação simplificadas.
+- [x] Instrumentação de funil de ativação completa.
 
 ### Critério de aceite
 - TTV < 10 minutos para primeiro deck otimizado.
@@ -230,11 +230,11 @@ Para cada item de sprint:
 ## Sprint 5 (Semanas 9-10) — Monetização inicial
 
 ### Entregas
-- [ ] Definição de planos Free/Pro.
-- [ ] Limites por plano em endpoints de IA.
-- [ ] Telemetria de uso por plano e custo por usuário.
-- [ ] Experimento de paywall leve.
-- [ ] Critérios de upgrade com valor percebido claro.
+- [x] Definição de planos Free/Pro.
+- [x] Limites por plano em endpoints de IA.
+- [x] Telemetria de uso por plano e custo por usuário.
+- [x] Experimento de paywall leve.
+- [x] Critérios de upgrade com valor percebido claro.
 
 ### Critério de aceite
 - Experimento ativo com métrica de conversão definida.
@@ -242,11 +242,11 @@ Para cada item de sprint:
 ## Sprint 6 (Semanas 11-12) — Escala e readiness
 
 ### Entregas
-- [ ] Revisão de queries críticas e otimizações finais.
-- [ ] Estratégia de cache para endpoints quentes.
-- [ ] Teste de carga para cenários principais.
-- [ ] Plano de capacidade para 10k MAU.
-- [ ] Checklist final de Go-Live.
+- [x] Revisão de queries críticas e otimizações finais.
+- [x] Estratégia de cache para endpoints quentes.
+- [x] Teste de carga para cenários principais.
+- [x] Plano de capacidade para 10k MAU.
+- [x] Checklist final de Go-Live.
 
 ### Critério de aceite
 - Ambiente apto para crescimento com risco operacional reduzido.
