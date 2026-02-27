@@ -25,6 +25,9 @@
 - Ajuste de qualidade no fallback não-terreno:
   - Adicionada deduplicação por `name` nos pools de fallback (`_loadUniversalCommanderFallbacks`, `_loadMetaInsightFillers`, `_loadBroadCommanderNonLandFillers`, `_loadCompetitiveNonLandFillers`, `_loadEmergencyNonBasicFillers`).
   - Motivo: múltiplas printagens da mesma carta ocupavam slots de sugestão; na aplicação final (Commander), duplicatas por nome eram descartadas e reduziam drasticamente `non_basic_added`.
+  - Complemento: quando o fallback universal não atinge `spellsNeeded`, o fluxo passa a completar com `_loadBroadCommanderNonLandFillers` (respeitando identidade/bracket), aumentando cobertura de não-básicas antes de recorrer a básicos.
+  - Salvaguarda adicional: se o broad pool ainda retornar vazio, o fluxo usa `_loadIdentitySafeNonLandFillers`, que aplica filtro de identidade em memória (Dart) após consulta ampla legal/non-land. Isso evita dependência de edge-cases SQL e mantém robustez no complete.
+  - Fallback por nomes preferidos: adicionada etapa `_loadPreferredNameFillers` usando `aiSuggestedNames` (derivados de EDHREC average/top/priorities). Isso prioriza cartas já alinhadas ao comandante e evita degradar para básicos cedo demais quando a IA timeouta.
 
 ### Por que essa abordagem
 - Evita bloquear o complete por metadado incompleto no deck (ausência de `is_commander`).
@@ -37,6 +40,19 @@
 
 ### Exemplo de extensão
 - Se no futuro existir campo `deck.color_identity` persistido, ele pode entrar como primeira fonte de fallback antes de `deckColors`, mantendo a mesma lógica de proteção contra identidade vazia.
+
+### Hotfix adicional — bloqueio de cartas off-color no retorno final (27/02/2026)
+
+**Motivação (o porquê)**
+- Após estabilizar o `complete` para retornar `200`, o gate ainda podia falhar no `bulk save` porque algumas sugestões finais continham cartas fora da identidade do comandante (ex.: `Beast Within` em commander mono-blue).
+
+**Implementação (o como)**
+- Arquivo alterado: `server/routes/ai/optimize/index.dart`.
+- No loop final de montagem de `additionsDetailed` para não-terrenos, foi adicionada verificação obrigatória com `isWithinCommanderIdentity(...)` antes de aceitar cada carta.
+- O loader `_loadUniversalCommanderFallbacks` passou a retornar também `type_line`, `oracle_text`, `colors` e `color_identity` (além de `id` e `name`), permitindo validar identidade de forma consistente mesmo no fallback universal.
+
+**Resultado esperado**
+- O endpoint deixa de sugerir cartas off-color na resposta final de `complete`, evitando erro de regra no endpoint de aplicação em lote (`/decks/:id/cards/bulk`).
 
 # Manual de Instrução e Documentação Técnica - ManaLoom
 

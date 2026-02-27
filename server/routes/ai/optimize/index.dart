@@ -1111,6 +1111,28 @@ Future<Response> onRequest(RequestContext context) async {
                 competitiveModelStageUsed = true;
               }
             }
+
+            if (aiSuggestedNames.isEmpty) {
+              try {
+                final liveEdhrec = await EdhrecService()
+                    .fetchCommanderData(commanderName);
+                if (liveEdhrec != null && liveEdhrec.topCards.isNotEmpty) {
+                  final liveNames = liveEdhrec.topCards
+                      .map((card) => card.name.trim().toLowerCase())
+                      .where((name) => name.isNotEmpty)
+                      .take(180)
+                      .toList();
+                  if (liveNames.isNotEmpty) {
+                    aiSuggestedNames.addAll(liveNames);
+                    averageDeckSeedStageUsed = true;
+                    Log.d(
+                        'Complete fallback: aiSuggestedNames alimentado via EDHREC live (${liveNames.length} cartas).');
+                  }
+                }
+              } catch (e) {
+                Log.w('Falha ao carregar EDHREC live para fallback complete: $e');
+              }
+            }
           }
         }
 
@@ -1381,12 +1403,87 @@ Future<Response> onRequest(RequestContext context) async {
                   selectedSpells = universalFallback;
                 }
               }
+
+              if (selectedSpells.length < spellsNeeded) {
+                Log.d(
+                    '  Expansão de spells ativada: selected=${selectedSpells.length}, spellsNeeded=$spellsNeeded, identity=${commanderColorIdentity.join(',')}');
+                final alreadySelectedNames = selectedSpells
+                    .map((e) => ((e['name'] as String?) ?? '').toLowerCase())
+                    .where((name) => name.isNotEmpty)
+                    .toSet();
+
+                final preferredPool = await _loadPreferredNameFillers(
+                  pool: pool,
+                  preferredNames: aiSuggestedNames,
+                  commanderColorIdentity: commanderColorIdentity,
+                  excludeNames: existingNames.union(alreadySelectedNames),
+                  limit: spellsNeeded - selectedSpells.length,
+                );
+
+                if (preferredPool.isNotEmpty) {
+                  Log.d(
+                      '  Fallback preferred-name aplicado (+${preferredPool.length} cartas).');
+                  selectedSpells = [...selectedSpells, ...preferredPool];
+                }
+
+                if (selectedSpells.length < spellsNeeded) {
+                  final broadPool = await _loadBroadCommanderNonLandFillers(
+                    pool: pool,
+                    commanderColorIdentity: commanderColorIdentity,
+                    excludeNames: existingNames.union(alreadySelectedNames),
+                    bracket: bracket,
+                    limit: spellsNeeded - selectedSpells.length,
+                  );
+
+                  Log.d('  Broad pool retornou: ${broadPool.length} cartas.');
+
+                  if (broadPool.isNotEmpty) {
+                    Log.d(
+                        '  Fallback broad pool aplicado (+${broadPool.length} cartas).');
+                    selectedSpells = [...selectedSpells, ...broadPool];
+                  }
+                }
+
+                if (selectedSpells.length < spellsNeeded) {
+                  final emergencyIdentityPool =
+                      await _loadIdentitySafeNonLandFillers(
+                    pool: pool,
+                    commanderColorIdentity: commanderColorIdentity,
+                    excludeNames: existingNames.union(alreadySelectedNames),
+                    limit: spellsNeeded - selectedSpells.length,
+                  );
+
+                  if (emergencyIdentityPool.isNotEmpty) {
+                    Log.d(
+                        '  Fallback identity-safe aplicado (+${emergencyIdentityPool.length} cartas).');
+                    selectedSpells = [
+                      ...selectedSpells,
+                      ...emergencyIdentityPool,
+                    ];
+                  }
+                }
+              }
               
               for (final spell in selectedSpells) {
                 if (virtualTotal >= maxTotal) break;
                 final id = spell['id'] as String;
                 final name = spell['name'] as String;
                 final nameLower = name.toLowerCase();
+                final spellColors =
+                    (spell['colors'] as List?)?.cast<String>() ?? const <String>[];
+                final spellIdentity =
+                    (spell['color_identity'] as List?)?.cast<String>() ??
+                        const <String>[];
+
+                final withinIdentity = isWithinCommanderIdentity(
+                  cardIdentity:
+                      spellIdentity.isNotEmpty ? spellIdentity : spellColors,
+                  commanderIdentity: commanderColorIdentity,
+                );
+                if (!withinIdentity) {
+                  continue;
+                }
+
                 final maxCopies = _maxCopiesForFormat(
                   deckFormat: deckFormat,
                   typeLine: '',
@@ -3560,7 +3657,7 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
 
   final result = await pool.execute(
     Sql.named('''
-      SELECT id::text, name
+      SELECT id::text, name, type_line, oracle_text, colors, color_identity
       FROM cards
       WHERE name = ANY(@names)
       ORDER BY name ASC
@@ -3576,6 +3673,11 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
+        'type_line': (row[2] as String?) ?? '',
+        'oracle_text': (row[3] as String?) ?? '',
+        'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
+        'color_identity':
+          (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
 
@@ -3983,8 +4085,21 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
           (
             c.color_identity IS NOT NULL
             AND (
-              c.color_identity <@ @identity::text[]
-              OR c.color_identity = '{}'
+              (
+                c.color_identity IS NOT NULL
+                AND (
+                  c.color_identity <@ @identity::text[]
+                  OR c.color_identity = '{}'
+                )
+              )
+              OR (
+                c.color_identity IS NULL
+                AND (
+                  c.colors <@ @identity::text[]
+                  OR c.colors = '{}'
+                  OR c.colors IS NULL
+                )
+              )
             )
           )
           OR (
@@ -4031,6 +4146,8 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
   if (limit <= 0) return const [];
 
   final identity = commanderColorIdentity.toList();
+  Log.d(
+      '  [broad] start limit=$limit identity=${identity.join(',')} exclude=${excludeNames.length}');
   final result = await pool.execute(
     Sql.named('''
       SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
@@ -4071,6 +4188,8 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
     },
   );
 
+  Log.d('  [broad] sql rows=${result.length}');
+
     var candidates = result
       .map((row) => {
             'id': row[0] as String,
@@ -4083,6 +4202,7 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
           })
       .toList();
     candidates = _dedupeCandidatesByName(candidates);
+    Log.d('  [broad] dedup rows=${candidates.length}');
 
   if (bracket != null && candidates.isNotEmpty) {
     final decision = applyBracketPolicyToAdditions(
@@ -4101,11 +4221,14 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
     final filtered = candidates
         .where((c) => allowedSet.contains((c['name'] as String).toLowerCase()))
         .toList();
+    Log.d(
+        '  [broad] bracket=$bracket allowed=${allowedSet.length} filtered=${filtered.length}');
     if (filtered.isNotEmpty) {
       candidates = filtered;
     }
   }
 
+  Log.d('  [broad] final rows=${candidates.length}');
   return _dedupeCandidatesByName(candidates).take(limit).toList();
 }
 
@@ -4407,6 +4530,129 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
   }
 
   return _dedupeCandidatesByName(candidates).take(limit).toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadIdentitySafeNonLandFillers({
+  required Pool pool,
+  required Set<String> commanderColorIdentity,
+  required Set<String> excludeNames,
+  required int limit,
+}) async {
+  if (limit <= 0) return const [];
+
+  Log.d(
+      '  [identity-safe] start limit=$limit identity=${commanderColorIdentity.join(',')} exclude=${excludeNames.length}');
+
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
+      FROM cards c
+      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+        AND c.type_line NOT ILIKE '%land%'
+        AND c.name NOT LIKE 'A-%'
+        AND c.name NOT LIKE '\_%' ESCAPE '\\'
+        AND c.name NOT LIKE '%World Champion%'
+        AND c.name NOT LIKE '%Heroes of the Realm%'
+      ORDER BY c.name ASC
+      LIMIT 4000
+    '''),
+  );
+
+  Log.d('  [identity-safe] sql rows=${result.length}');
+
+  final filtered = <Map<String, dynamic>>[];
+  for (final row in result) {
+    final id = row[0] as String;
+    final name = row[1] as String;
+    final lowerName = name.toLowerCase();
+    if (excludeNames.contains(lowerName)) continue;
+
+    final typeLine = (row[2] as String?) ?? '';
+    final oracleText = (row[3] as String?) ?? '';
+    final colors = (row[4] as List?)?.cast<String>() ?? const <String>[];
+    final colorIdentity =
+        (row[5] as List?)?.cast<String>() ?? const <String>[];
+
+    final withinIdentity = isWithinCommanderIdentity(
+      cardIdentity: colorIdentity.isNotEmpty ? colorIdentity : colors,
+      commanderIdentity: commanderColorIdentity,
+    );
+    if (!withinIdentity) continue;
+
+    filtered.add({
+      'id': id,
+      'name': name,
+      'type_line': typeLine,
+      'oracle_text': oracleText,
+      'colors': colors,
+      'color_identity': colorIdentity,
+    });
+  }
+
+  Log.d('  [identity-safe] filtered rows=${filtered.length}');
+
+  return _dedupeCandidatesByName(filtered).take(limit).toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadPreferredNameFillers({
+  required Pool pool,
+  required Set<String> preferredNames,
+  required Set<String> commanderColorIdentity,
+  required Set<String> excludeNames,
+  required int limit,
+}) async {
+  if (limit <= 0 || preferredNames.isEmpty) return const [];
+
+  final normalizedPreferred = preferredNames
+      .map((name) => name.trim().toLowerCase())
+      .where((name) => name.isNotEmpty)
+      .toSet();
+  if (normalizedPreferred.isEmpty) return const [];
+
+  final result = await pool.execute(
+    Sql.named('''
+      SELECT id::text, name, type_line, oracle_text, colors, color_identity
+      FROM cards
+      WHERE LOWER(name) = ANY(@preferred::text[])
+        AND type_line NOT ILIKE '%land%'
+      ORDER BY name ASC
+    '''),
+    parameters: {
+      'preferred': normalizedPreferred.toList(),
+    },
+  );
+
+  final filtered = <Map<String, dynamic>>[];
+  for (final row in result) {
+    final id = row[0] as String;
+    final name = row[1] as String;
+    final lowerName = name.toLowerCase();
+    if (excludeNames.contains(lowerName)) continue;
+
+    final typeLine = (row[2] as String?) ?? '';
+    final oracleText = (row[3] as String?) ?? '';
+    final colors = (row[4] as List?)?.cast<String>() ?? const <String>[];
+    final colorIdentity =
+        (row[5] as List?)?.cast<String>() ?? const <String>[];
+
+    final withinIdentity = isWithinCommanderIdentity(
+      cardIdentity: colorIdentity.isNotEmpty ? colorIdentity : colors,
+      commanderIdentity: commanderColorIdentity,
+    );
+    if (!withinIdentity) continue;
+
+    filtered.add({
+      'id': id,
+      'name': name,
+      'type_line': typeLine,
+      'oracle_text': oracleText,
+      'colors': colors,
+      'color_identity': colorIdentity,
+    });
+  }
+
+  return _dedupeCandidatesByName(filtered).take(limit).toList();
 }
 
 /// Busca cartas substitutas sinérgicas quando filtros de cor/bracket
