@@ -6753,3 +6753,44 @@ Implementação:
 - **Performance pragmática**: otimização incremental com baixo risco de regressão.
 - **Readiness orientada por evidências**: carga + checklist + plano operacional.
 - **Compatibilidade operacional**: mudanças não quebram contratos existentes de API.
+
+## 72. Regressão pesada do `/ai/optimize` (matriz completa de brackets x tamanhos)
+
+### 72.1 O porquê
+
+Foi necessário validar um bug crítico reportado em produção no fluxo de otimização/completar deck (respostas com comportamento inconsistente e risco de recomendações inválidas). O objetivo foi elevar a cobertura para cenários extremos de decks incompletos e garantir evidência concreta por combinação de entrada.
+
+### 72.2 O como
+
+Arquivo alterado:
+- `server/test/ai_optimize_flow_test.dart`
+
+Implementação de suíte de integração estendida:
+- usa o deck de referência `0b163477-2e8a-488a-8883-774fcd05281f` para tentar extrair o comandante automaticamente;
+- fallback resiliente para comandantes conhecidos quando o deck de referência não estiver acessível no ambiente de teste;
+- gera decks Commander com tamanhos: `1, 2, 5, 10, 15, 20, 40, 60, 80, 97, 99`;
+- testa todos os brackets suportados pela política EDH (`1..4`), com payload:
+  - `archetype: "Control"`
+  - `bracket: <1..4>`
+  - `keep_theme: true`
+- valida contrato de retorno (`mode`, `reasoning`, `deck_analysis`, `target_additions`, `additions_detailed`);
+- valida deduplicação por nome e proteção contra quantidades absurdas em staples sensíveis (`Sol Ring`, `Counterspell`, `Cyclonic Rift`);
+- agrega falhas para analisar **todos os retornos** antes de falhar o teste (não interrompe na primeira ocorrência).
+
+Execução:
+```bash
+cd server
+RUN_INTEGRATION_TESTS=1 TEST_API_BASE_URL=http://localhost:8080 dart test test/ai_optimize_flow_test.dart -r expanded
+```
+
+### 72.3 Resultado observado
+
+- A matriz completa executou `44` combinações (`11 tamanhos x 4 brackets`).
+- Resultado atual do ambiente testado: `500` em todas as combinações da matriz (diagnóstico de falha sistêmica no endpoint em modo integração).
+- Conclusão: o teste está cumprindo papel de **gate de regressão** e agora reproduz o problema de forma determinística e abrangente.
+
+### 72.4 Padrões aplicados
+
+- **Teste orientado a evidência**: cobertura explícita de entradas críticas reportadas.
+- **Fail-late com diagnóstico completo**: agrega erros para não perder visibilidade dos demais cenários.
+- **Compatibilidade**: sem alterar contrato público da API durante o reforço da suíte.

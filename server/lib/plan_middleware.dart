@@ -3,13 +3,20 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
-import 'auth_middleware.dart';
 import 'plan_service.dart';
 
 Middleware aiPlanLimitMiddleware() {
   return (handler) {
     return (context) async {
-      final userId = getUserId(context);
+      String? userId;
+      try {
+        userId = context.read<String>();
+      } catch (_) {
+        // Se o usuário ainda não foi injetado (ou rota pública),
+        // não aplica limite de plano aqui e deixa o próximo middleware decidir.
+        return handler(context);
+      }
+
       final pool = context.read<Pool>();
       final snapshot = await PlanService(pool).getSnapshot(userId);
 

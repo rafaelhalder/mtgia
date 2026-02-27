@@ -1008,6 +1008,13 @@ Future<Response> onRequest(RequestContext context) async {
         final maxIterations = 4;
         final virtualDeck = List<Map<String, dynamic>>.from(allCardData);
         final virtualCountsById = Map<String, int>.from(originalCountsById);
+        final virtualCountsByName = <String, int>{};
+        for (final card in virtualDeck) {
+          final name = ((card['name'] as String?) ?? '').trim().toLowerCase();
+          if (name.isEmpty) continue;
+          final quantity = (card['quantity'] as int?) ?? 1;
+          virtualCountsByName[name] = (virtualCountsByName[name] ?? 0) + quantity;
+        }
 
         final addedCountsById = <String, int>{};
         final blockedByBracketAll = <Map<String, dynamic>>[];
@@ -1020,19 +1027,28 @@ Future<Response> onRequest(RequestContext context) async {
           iterations++;
           final missingNow = maxTotal - virtualTotal;
 
-          final iterResponse = await optimizer.completeDeck(
-            deckData: {
-              'cards': virtualDeck,
-              'colors': deckColors.toList(),
-            },
-            commanders: commanders,
-            targetArchetype: targetArchetype,
-            targetAdditions: missingNow,
-            bracket: bracket,
-            keepTheme: keepTheme,
-            detectedTheme: themeProfile.theme,
-            coreCards: themeProfile.coreCards,
-          );
+          Map<String, dynamic> iterResponse;
+          try {
+            iterResponse = await optimizer.completeDeck(
+              deckData: {
+                'cards': virtualDeck,
+                'colors': deckColors.toList(),
+              },
+              commanders: commanders,
+              targetArchetype: targetArchetype,
+              targetAdditions: missingNow,
+              bracket: bracket,
+              keepTheme: keepTheme,
+              detectedTheme: themeProfile.theme,
+              coreCards: themeProfile.coreCards,
+            );
+          } catch (e) {
+            Log.w(
+              'Falha no completeDeck da IA; aplicando fallback determinístico. '
+              'iteration=$iterations missing=$missingNow error=$e',
+            );
+            break;
+          }
 
           final rawAdditions =
               (iterResponse['additions'] as List?)?.cast<String>() ?? const [];
@@ -1138,13 +1154,23 @@ Future<Response> onRequest(RequestContext context) async {
             final name = c['name'] as String;
             final typeLine = (c['type_line'] as String).toLowerCase();
             final isBasic = typeLine.contains('basic land');
+            final nameLower = name.toLowerCase();
+            final maxCopies = _maxCopiesForFormat(
+              deckFormat: deckFormat,
+              typeLine: typeLine,
+              name: name,
+            );
 
-            if (!isBasic) {
-              // Já existe?
-              if ((virtualCountsById[id] ?? 0) > 0) continue;
+            if (!isBasic && (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+              continue;
+            }
+
+            if ((virtualCountsById[id] ?? 0) > 0 && (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+              continue;
             }
 
             virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+            virtualCountsByName[nameLower] = (virtualCountsByName[nameLower] ?? 0) + 1;
             addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
             virtualTotal += 1;
             addedThisIter += 1;
@@ -1243,10 +1269,20 @@ Future<Response> onRequest(RequestContext context) async {
                 if (virtualTotal >= maxTotal) break;
                 final id = spell['id'] as String;
                 final name = spell['name'] as String;
+                final nameLower = name.toLowerCase();
+                final maxCopies = _maxCopiesForFormat(
+                  deckFormat: deckFormat,
+                  typeLine: '',
+                  name: name,
+                );
                 
-                if ((virtualCountsById[id] ?? 0) > 0) continue; // já existe
+                if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+                  continue;
+                }
                 
                 virtualCountsById[id] = 1;
+                virtualCountsByName[nameLower] =
+                    (virtualCountsByName[nameLower] ?? 0) + 1;
                 addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
                 virtualTotal += 1;
                 
@@ -1349,7 +1385,7 @@ Future<Response> onRequest(RequestContext context) async {
     // devolve diretamente sem passar pelo fluxo antigo de validação por nomes.
     if (jsonResponse['mode'] == 'complete' &&
         jsonResponse['additions_detailed'] is List) {
-      final additionsDetailed = (jsonResponse['additions_detailed'] as List)
+      final rawAdditionsDetailed = (jsonResponse['additions_detailed'] as List)
           .whereType<Map>()
           .map((m) {
             final mm = m.cast<String, dynamic>();
@@ -1361,18 +1397,68 @@ Future<Response> onRequest(RequestContext context) async {
           .where((m) => (m['card_id'] as String?)?.isNotEmpty ?? false)
           .toList();
 
-      final ids = additionsDetailed.map((e) => e['card_id'] as String).toList();
-      final namesById = <String, String>{};
+      final ids = rawAdditionsDetailed.map((e) => e['card_id'] as String).toList();
+      final cardInfoById = <String, Map<String, String>>{};
+      var additionsDetailed = <Map<String, dynamic>>[];
       Map<String, dynamic>? postAnalysisComplete;
       
       if (ids.isNotEmpty) {
         final r = await pool.execute(
-          Sql.named('SELECT id::text, name FROM cards WHERE id = ANY(@ids)'),
+          Sql.named('SELECT id::text, name, type_line FROM cards WHERE id = ANY(@ids)'),
           parameters: {'ids': ids},
         );
         for (final row in r) {
-          namesById[row[0] as String] = row[1] as String;
+          cardInfoById[row[0] as String] = {
+            'name': row[1] as String,
+            'type_line': (row[2] as String?) ?? '',
+          };
         }
+
+        // Colapsa por NOME (não por printing/card_id), aplicando limite de cópias por formato.
+        final aggregatedByName = <String, Map<String, dynamic>>{};
+        for (final entry in rawAdditionsDetailed) {
+          final cardId = entry['card_id'] as String;
+          final cardInfo = cardInfoById[cardId];
+          if (cardInfo == null) continue;
+
+          final name = cardInfo['name'] ?? '';
+          final typeLine = cardInfo['type_line'] ?? '';
+          if (name.trim().isEmpty) continue;
+
+          final maxCopies = _maxCopiesForFormat(
+            deckFormat: deckFormat,
+            typeLine: typeLine,
+            name: name,
+          );
+
+          final existing = aggregatedByName[name.toLowerCase()];
+          final currentQty = (existing?['quantity'] as int?) ?? 0;
+          final incomingQty = (entry['quantity'] as int?) ?? 1;
+          final allowedToAdd = (maxCopies - currentQty).clamp(0, incomingQty);
+          if (allowedToAdd <= 0) continue;
+
+          if (existing == null) {
+            aggregatedByName[name.toLowerCase()] = {
+              'card_id': cardId,
+              'quantity': allowedToAdd,
+              'name': name,
+              'type_line': typeLine,
+            };
+          } else {
+            aggregatedByName[name.toLowerCase()] = {
+              ...existing,
+              'quantity': currentQty + allowedToAdd,
+            };
+          }
+        }
+
+        additionsDetailed = aggregatedByName.values
+            .map((e) => {
+                  'card_id': e['card_id'],
+                  'quantity': e['quantity'],
+                  'name': e['name'],
+                })
+            .toList();
         
         // === Gerar post_analysis para modo complete ===
         try {
@@ -1414,11 +1500,18 @@ Future<Response> onRequest(RequestContext context) async {
           
           // Expandir adições pelo quantity
           for (final add in additionsDetailed) {
-            final cardId = add['card_id'] as String;
             final qty = add['quantity'] as int;
             final data = additionsData.firstWhere(
-              (d) => (d['name'] as String).toLowerCase() == (namesById[cardId] ?? '').toLowerCase(),
-              orElse: () => {'name': namesById[cardId] ?? '', 'type_line': '', 'mana_cost': '', 'colors': <String>[], 'cmc': 0.0, 'oracle_text': ''},
+              (d) => (d['name'] as String).toLowerCase() ==
+                  ((add['name'] as String?) ?? '').toLowerCase(),
+              orElse: () => {
+                'name': add['name'] ?? '',
+                'type_line': '',
+                'mana_cost': '',
+                'colors': <String>[],
+                'cmc': 0.0,
+                'oracle_text': ''
+              },
             );
             for (var i = 0; i < qty; i++) {
               virtualDeck.add(data);
@@ -1443,13 +1536,13 @@ Future<Response> onRequest(RequestContext context) async {
         'target_additions': jsonResponse['target_additions'],
         'iterations': jsonResponse['iterations'],
         'additions': additionsDetailed
-            .map((e) => namesById[e['card_id'] as String] ?? e['card_id'])
+          .map((e) => e['name'] ?? e['card_id'])
             .toList(),
         'additions_detailed': additionsDetailed
             .map((e) => {
                   'card_id': e['card_id'],
                   'quantity': e['quantity'],
-                  'name': namesById[e['card_id'] as String],
+              'name': e['name'],
                 })
             .toList(),
         'removals': const <String>[],
@@ -1792,8 +1885,20 @@ Future<Response> onRequest(RequestContext context) async {
 
       // Agrega as adições atuais por nome (quantidade 1 por ocorrência)
       final countsByName = <String, int>{};
+      final basicNamesLower = _basicLandNamesForIdentity(commanderColorIdentity)
+          .map((e) => e.toLowerCase())
+          .toSet();
       for (final n in validAdditions) {
-        countsByName[n] = (countsByName[n] ?? 0) + 1;
+        final lower = n.toLowerCase();
+        final current = countsByName[n] ?? 0;
+        final isBasic = basicNamesLower.contains(lower) || lower == 'wastes';
+        if (!isBasic &&
+            (deckFormat.toLowerCase() == 'commander' ||
+                deckFormat.toLowerCase() == 'brawl') &&
+            current >= 1) {
+          continue;
+        }
+        countsByName[n] = current + 1;
       }
 
       // Se faltar, adiciona básicos para preencher
@@ -2962,6 +3067,26 @@ int _toInt(dynamic value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse(value.toString()) ?? 0;
+}
+
+int _maxCopiesForFormat({
+  required String deckFormat,
+  required String typeLine,
+  required String name,
+}) {
+  final normalizedFormat = deckFormat.toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final normalizedName = name.trim().toLowerCase();
+
+  final isBasicLand =
+      normalizedType.contains('basic land') || normalizedName == 'wastes';
+  if (isBasicLand) return 999;
+
+  if (normalizedFormat == 'commander' || normalizedFormat == 'brawl') {
+    return 1;
+  }
+
+  return 4;
 }
 
 List<String> _basicLandNamesForIdentity(Set<String> identity) {

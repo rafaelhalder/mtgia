@@ -17,6 +17,7 @@ void main() {
     'password': 'TestPassword123!',
     'username': 'test_optimize_flow_user',
   };
+  const sourceDeckId = '0b163477-2e8a-488a-8883-774fcd05281f';
 
   final createdDeckIds = <String>[];
   String? authToken;
@@ -75,6 +76,7 @@ void main() {
 
   Future<String> createDeck({
     required String format,
+    List<Map<String, dynamic>> cards = const [],
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/decks'),
@@ -83,7 +85,7 @@ void main() {
         'name': 'Optimize Flow ${DateTime.now().millisecondsSinceEpoch}',
         'format': format,
         'description': 'optimize flow test',
-        'cards': [],
+        'cards': cards,
       }),
     );
 
@@ -96,6 +98,130 @@ void main() {
       Uri.parse('$baseUrl/decks/$deckId'),
       headers: authHeaders(),
     );
+  }
+
+  Future<Map<String, dynamic>> findCardByName(String name) async {
+    final uri = Uri.parse('$baseUrl/cards?name=${Uri.encodeQueryComponent(name)}&limit=25&page=1');
+    final response = await http.get(uri, headers: authHeaders());
+    expect(response.statusCode, equals(200), reason: response.body);
+
+    final body = decodeJson(response);
+    final data = (body['data'] as List?)?.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList() ?? [];
+    expect(data, isNotEmpty, reason: 'Carta "$name" não encontrada para teste de integração.');
+
+    final exact = data.where((c) => (c['name']?.toString().toLowerCase() ?? '') == name.toLowerCase());
+    return exact.isNotEmpty ? exact.first : data.first;
+  }
+
+  Future<List<String>> commanderCandidatesFromSourceDeck() async {
+    final candidates = <String>[];
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/decks/$sourceDeckId'),
+        headers: authHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final body = decodeJson(response);
+        final cards = (body['cards'] as List?)
+                ?.whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList() ??
+            <Map<String, dynamic>>[];
+
+        for (final card in cards) {
+          final isCommander = card['is_commander'] == true;
+          final name = card['name']?.toString().trim() ?? '';
+          if (isCommander && name.isNotEmpty) {
+            candidates.add(name);
+          }
+        }
+      }
+    } catch (_) {
+      // fallback abaixo
+    }
+
+    final fallback = <String>[
+      'Atraxa, Praetors\' Voice',
+      'Talrand, Sky Summoner',
+      'Niv-Mizzet, Parun',
+      'Krenko, Mob Boss',
+    ];
+
+    return [...candidates, ...fallback].toSet().toList();
+  }
+
+  Future<String> createCommanderDeckWithCount(int totalCards) async {
+    expect(totalCards >= 1, isTrue);
+
+    final commanderCandidates = await commanderCandidatesFromSourceDeck();
+
+    Map<String, dynamic>? commander;
+    for (final candidate in commanderCandidates) {
+      try {
+        commander = await findCardByName(candidate);
+        if (commander['id'] != null) break;
+      } catch (_) {
+        // tenta próximo candidato
+      }
+    }
+
+    expect(commander, isNotNull,
+        reason: 'Nenhum comandante comum encontrado para montar deck de teste.');
+
+    final island = await findCardByName('Island');
+
+    final cards = <Map<String, dynamic>>[
+      {
+        'card_id': commander!['id'],
+        'quantity': 1,
+        'is_commander': true,
+      },
+      if (totalCards > 1)
+        {
+          'card_id': island['id'],
+          'quantity': totalCards - 1,
+        },
+    ];
+
+    return createDeck(format: 'commander', cards: cards);
+  }
+
+  void assertNoDuplicateNamesAndNoAbsurdCopies(
+    List<Map<String, dynamic>> details, {
+    required int size,
+    required int bracket,
+  }) {
+    final names = details
+        .map((e) => (e['name']?.toString().trim().toLowerCase() ?? ''))
+        .where((n) => n.isNotEmpty)
+        .toList();
+
+    final uniqueNames = names.toSet();
+    expect(
+      uniqueNames.length,
+      equals(names.length),
+      reason:
+          'Deck size=$size bracket=$bracket retornou nomes duplicados em additions_detailed.',
+    );
+
+    final qtyByName = <String, int>{};
+    for (final entry in details) {
+      final name = (entry['name']?.toString().trim().toLowerCase() ?? '');
+      if (name.isEmpty) continue;
+      final qty = (entry['quantity'] as int?) ?? 0;
+      qtyByName[name] = (qtyByName[name] ?? 0) + qty;
+    }
+
+    for (final key in ['sol ring', 'counterspell', 'cyclonic rift']) {
+      expect(
+        (qtyByName[key] ?? 0) <= 1,
+        isTrue,
+        reason:
+            'Deck size=$size bracket=$bracket retornou quantidade absurda para "$key".',
+      );
+    }
   }
 
   setUpAll(() async {
@@ -212,6 +338,158 @@ void main() {
         }
       },
       skip: skipIntegration,
+    );
+
+    test(
+      'complete mode does not duplicate card names absurdly for 1/10/20-card commander decks',
+      () async {
+        final deckSizes = [1, 10, 20];
+        final serverErrors = <String>[];
+
+        for (final size in deckSizes) {
+          final deckId = await createCommanderDeckWithCount(size);
+          createdDeckIds.add(deckId);
+
+          final response = await http.post(
+            Uri.parse('$baseUrl/ai/optimize'),
+            headers: authHeaders(withContentType: true),
+            body: jsonEncode({
+              'deck_id': deckId,
+              'archetype': 'control',
+            }),
+          );
+
+          expect(response.statusCode, anyOf(200, 500), reason: 'deck size $size => ${response.body}');
+
+          if (response.statusCode == 500) {
+            serverErrors.add('size=$size => ${response.body}');
+            continue;
+          }
+
+          final body = decodeJson(response);
+          final details = (body['additions_detailed'] as List?)
+                  ?.whereType<Map>()
+                  .map((e) => e.cast<String, dynamic>())
+                  .toList() ??
+              <Map<String, dynamic>>[];
+
+          assertNoDuplicateNamesAndNoAbsurdCopies(details, size: size, bracket: 2);
+        }
+
+        expect(
+          serverErrors,
+          isEmpty,
+          reason:
+              'Optimize retornou 500 em cenários 1/10/20: ${serverErrors.join(' | ')}',
+        );
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'stress matrix: optimize with all brackets and sizes 1,2,5,10,15,20,40,60,80,97,99',
+      () async {
+        final deckSizes = [1, 2, 5, 10, 15, 20, 40, 60, 80, 97, 99];
+        final brackets = [1, 2, 3, 4];
+        final failures = <String>[];
+        var evaluated = 0;
+
+        for (final bracket in brackets) {
+          for (final size in deckSizes) {
+            final deckId = await createCommanderDeckWithCount(size);
+            createdDeckIds.add(deckId);
+
+            final response = await http.post(
+              Uri.parse('$baseUrl/ai/optimize'),
+              headers: authHeaders(withContentType: true),
+              body: jsonEncode({
+                'deck_id': deckId,
+                'archetype': 'Control',
+                'bracket': bracket,
+                'keep_theme': true,
+              }),
+            );
+
+            expect(
+              response.statusCode,
+              anyOf(200, 500),
+              reason: 'size=$size bracket=$bracket => ${response.body}',
+            );
+            evaluated += 1;
+            if (response.statusCode == 500) {
+              failures.add('500 size=$size bracket=$bracket body=${response.body}');
+              continue;
+            }
+
+            final body = decodeJson(response);
+            final mode = body['mode'];
+            if (mode is! String || !['optimize', 'complete'].contains(mode)) {
+              failures.add('contract size=$size bracket=$bracket mode inválido: $mode');
+              continue;
+            }
+            if (body['reasoning'] is! String) {
+              failures.add('contract size=$size bracket=$bracket reasoning inválido');
+            }
+            if (body['deck_analysis'] is! Map<String, dynamic>) {
+              failures.add('contract size=$size bracket=$bracket deck_analysis inválido');
+            }
+            if (body['target_additions'] is! int) {
+              failures.add('contract size=$size bracket=$bracket target_additions inválido');
+              continue;
+            }
+
+            final gotBracket = body['bracket'];
+            if (gotBracket is int) {
+              if (gotBracket != bracket) {
+                failures.add(
+                    'contract size=$size bracket=$bracket returnedBracket=$gotBracket');
+              }
+            }
+
+            final details = (body['additions_detailed'] as List?)
+                    ?.whereType<Map>()
+                    .map((e) => e.cast<String, dynamic>())
+                    .toList() ??
+                <Map<String, dynamic>>[];
+
+            for (final entry in details) {
+              if (entry['card_id'] is! String) {
+                failures.add('contract size=$size bracket=$bracket card_id inválido');
+              }
+              if (entry['quantity'] is! int || (entry['quantity'] as int) < 1) {
+                failures.add('contract size=$size bracket=$bracket quantity inválido');
+              }
+            }
+
+            try {
+              assertNoDuplicateNamesAndNoAbsurdCopies(
+                details,
+                size: size,
+                bracket: bracket,
+              );
+            } catch (e) {
+              failures.add('dedupe size=$size bracket=$bracket => $e');
+            }
+
+            final totalDetailed = details.fold<int>(0, (acc, e) => acc + ((e['quantity'] as int?) ?? 0));
+            final targetAdditions = body['target_additions'] as int;
+            if (totalDetailed > targetAdditions) {
+              failures.add(
+                  'contract size=$size bracket=$bracket totalDetailed=$totalDetailed > target=$targetAdditions');
+            }
+          }
+        }
+
+        expect(evaluated, equals(deckSizes.length * brackets.length));
+        expect(
+          failures,
+          isEmpty,
+          reason:
+              'Falhas na matriz completa (${failures.length}): ${failures.take(20).join(' | ')}',
+        );
+      },
+      skip: skipIntegration,
+      timeout: const Timeout(Duration(minutes: 12)),
     );
   });
 }
