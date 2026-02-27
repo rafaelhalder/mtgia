@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:postgres/postgres.dart';
 import '../lib/database.dart';
 
 void main() async {
   final db = Database();
-  await db.connect();
-  final conn = db.connection;
+  var hasErrors = false;
 
   try {
+    await db.connect();
+    final conn = db.connection;
+
     print('Verificando schema do banco de dados...');
 
     // Definição do schema esperado (Tabela -> Lista de Colunas)
@@ -86,8 +90,6 @@ void main() async {
       currentSchema[tableName]!.add(columnName);
     }
 
-    bool hasErrors = false;
-
     // Comparação
     for (final table in expectedSchema.keys) {
       if (!currentSchema.containsKey(table)) {
@@ -122,8 +124,9 @@ void main() async {
 
   } catch (e) {
     print('Erro ao verificar schema: $e');
+    hasErrors = true;
   } finally {
-    // await db.close(); // Database class doesn't expose close easily on instance but connection is a Pool
-    // Assuming script termination closes it or we can just exit.
+    await db.close();
+    exit(hasErrors ? 1 : 0);
   }
 }

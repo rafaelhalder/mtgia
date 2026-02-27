@@ -99,10 +99,48 @@ void main() {
 
         if (body['status'] == 'ok') {
           expect(body['window_days'], equals(7));
-          expect(body['global'], isA<Map<String, dynamic>>());
-          expect(body['window'], isA<Map<String, dynamic>>());
           expect(body['current_user_window'], isA<Map<String, dynamic>>());
+          expect(body['current_user_by_day'], isA<List>());
+          expect(body['scope'], isA<Map<String, dynamic>>());
         }
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'returns 400 for invalid days',
+      () async {
+        final token = await getAuthToken();
+
+        final response = await http.get(
+          Uri.parse('$baseUrl/ai/optimize/telemetry?days=abc'),
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+        expect(response.statusCode, equals(400), reason: response.body);
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'returns 403 for global scope without admin privileges',
+      () async {
+        final token = await getAuthToken();
+
+        final response = await http.get(
+          Uri.parse('$baseUrl/ai/optimize/telemetry?include_global=true'),
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+        expect(response.statusCode, equals(403), reason: response.body);
+        final body = decodeJson(response);
+        expect(body['error'], isA<String>());
       },
       skip: skipIntegration,
     );

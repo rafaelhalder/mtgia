@@ -6094,3 +6094,68 @@ Cenários cobertos:
 - endpoint único para dashboard/observabilidade do optimize;
 - leitura rápida de tendência global, janela operacional e recorte do usuário autenticado;
 - menor dependência de logs e menor atrito para operação diária.
+
+## 62. Hardening completo do endpoint de telemetria (conclusão do assunto)
+
+### 62.1 O Porquê
+
+Após criar o endpoint dedicado, ainda faltavam camadas de robustez para operação em produção:
+
+- validação rígida de query params;
+- controle de escopo global (admin) para evitar exposição indevida de métricas;
+- séries temporais prontas para gráfico;
+- filtros operacionais para análise direcionada;
+- correção de estabilidade no `verify_schema` (encerramento/exit code).
+
+Objetivo: encerrar o tema de telemetria com contrato sólido, seguro e pronto para dashboard.
+
+### 62.2 O Como
+
+Arquivos alterados:
+- `server/routes/ai/optimize/telemetry/index.dart`
+- `server/test/ai_optimize_telemetry_contract_test.dart`
+- `server/bin/verify_schema.dart`
+
+Melhorias aplicadas no endpoint:
+
+1) Validação de query params (fail-fast)
+- `days`: obrigatório válido quando informado (inteiro entre 1 e 90), senão `400`;
+- `mode`: somente `optimize|complete`, senão `400`;
+- `deck_id` e `user_id`: UUID válido, senão `400`.
+
+2) Segurança de escopo global (admin)
+- `include_global=true` exige privilégio admin;
+- admin definido por `TELEMETRY_ADMIN_USER_IDS` (UUIDs) e `TELEMETRY_ADMIN_EMAILS` (emails);
+- fallback operacional configurado para reconhecer `rafaelhalder@gmail.com` como admin no endpoint de telemetria;
+- sem privilégio: `403`.
+
+3) Filtros operacionais
+- suporte a filtros por `mode`, `deck_id`, `user_id` (este último no escopo global/admin);
+- janela temporal configurável por `days`.
+
+4) Série temporal diária
+- inclusão de `window_by_day` (escopo global/admin) e `current_user_by_day` (usuário autenticado);
+- payload já pronto para gráficos sem transformação adicional no frontend.
+
+5) Diagnóstico de motivos
+- agregado inclui `fallback_not_applied_count` além de `no_candidate_count` e `no_replacement_count`.
+
+6) Estabilidade do script de schema
+- `verify_schema.dart` passa a:
+  - fechar pool explicitamente (`await db.close()`),
+  - retornar exit code consistente (`0` sucesso, `1` divergência/erro).
+
+### 62.3 Testes de contrato atualizados
+
+`server/test/ai_optimize_telemetry_contract_test.dart` agora cobre:
+- `401` sem token;
+- `200` autenticado com shape principal;
+- `400` para `days` inválido;
+- `403` para `include_global=true` sem privilégio admin.
+
+### 62.4 Resultado final esperado
+
+- endpoint de telemetria pronto para uso em dashboard operacional;
+- menor risco de exposição de métricas globais;
+- leitura histórica e temporal acionável para decisões de prompt/modelo/fallback;
+- workflow local mais previsível com `verify_schema` estável.
