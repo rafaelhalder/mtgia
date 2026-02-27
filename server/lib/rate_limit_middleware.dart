@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:dotenv/dotenv.dart';
+import 'package:postgres/postgres.dart';
+
+import 'distributed_rate_limiter.dart';
 
 /// Rate Limiter Middleware para prevenir abuso de endpoints
 /// 
@@ -113,6 +116,41 @@ bool _isProduction() {
   return mode == 'production';
 }
 
+bool _useDistributedRateLimitInProd() {
+  final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+  final raw = (env['RATE_LIMIT_DISTRIBUTED'] ??
+          Platform.environment['RATE_LIMIT_DISTRIBUTED'] ??
+          'true')
+      .toLowerCase()
+      .trim();
+  return raw == '1' || raw == 'true' || raw == 'yes';
+}
+
+Future<bool?> _isAllowedDistributedIfAvailable(
+  RequestContext context, {
+  required String bucket,
+  required String clientId,
+  required int maxRequests,
+  required int windowSeconds,
+}) async {
+  if (!_isProduction() || !_useDistributedRateLimitInProd()) {
+    return null;
+  }
+
+  try {
+    final pool = context.read<Pool>();
+    final limiter = DistributedRateLimiter(
+      pool: pool,
+      bucket: bucket,
+      maxRequests: maxRequests,
+      windowSeconds: windowSeconds,
+    );
+    return limiter.isAllowed(clientId);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Middleware factory para diferentes níveis de rate limiting
 Middleware rateLimitMiddleware({
   int maxRequests = 100,
@@ -175,6 +213,31 @@ Middleware authRateLimit() {
         return handler(context);
       }
 
+      final distributedAllowed = await _isAllowedDistributedIfAvailable(
+        context,
+        bucket: 'auth',
+        clientId: clientId,
+        maxRequests: limiter.maxRequests,
+        windowSeconds: limiter.windowSeconds,
+      );
+
+      if (distributedAllowed == false) {
+        return Response.json(
+          statusCode: HttpStatus.tooManyRequests,
+          body: {
+            'error': 'Too Many Login Attempts',
+            'message': 'Você fez muitas tentativas de login. Aguarde 1 minuto.',
+            'retry_after': 60,
+            'rate_limit_backend': 'distributed',
+          },
+          headers: {'Retry-After': '60'},
+        );
+      }
+
+      if (distributedAllowed == true) {
+        return handler(context);
+      }
+
       if (!limiter.isAllowed(clientId)) {
         return Response.json(
           statusCode: HttpStatus.tooManyRequests,
@@ -182,6 +245,7 @@ Middleware authRateLimit() {
             'error': 'Too Many Login Attempts',
             'message': 'Você fez muitas tentativas de login. Aguarde 1 minuto.',
             'retry_after': 60,
+            'rate_limit_backend': 'in_memory_fallback',
           },
           headers: {'Retry-After': '60'},
         );
@@ -199,6 +263,31 @@ Middleware aiRateLimit() {
       final limiter = _isProduction() ? _aiRateLimiter : _aiRateLimiterDev;
       final clientId = RateLimiter._defaultIdentifier(context);
 
+      final distributedAllowed = await _isAllowedDistributedIfAvailable(
+        context,
+        bucket: 'ai',
+        clientId: clientId,
+        maxRequests: limiter.maxRequests,
+        windowSeconds: limiter.windowSeconds,
+      );
+
+      if (distributedAllowed == false) {
+        return Response.json(
+          statusCode: HttpStatus.tooManyRequests,
+          body: {
+            'error': 'Too Many AI Requests',
+            'message': 'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
+            'retry_after': 60,
+            'rate_limit_backend': 'distributed',
+          },
+          headers: {'Retry-After': '60'},
+        );
+      }
+
+      if (distributedAllowed == true) {
+        return handler(context);
+      }
+
       if (!limiter.isAllowed(clientId)) {
         return Response.json(
           statusCode: HttpStatus.tooManyRequests,
@@ -206,6 +295,7 @@ Middleware aiRateLimit() {
             'error': 'Too Many AI Requests',
             'message': 'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
             'retry_after': 60,
+            'rate_limit_backend': 'in_memory_fallback',
           },
           headers: {'Retry-After': '60'},
         );

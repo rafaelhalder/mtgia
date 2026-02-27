@@ -71,6 +71,9 @@ void main() async {
         'applied', 'no_candidate', 'no_replacement', 'candidate_count',
         'replacement_count', 'pair_count', 'created_at'
       ],
+      'rate_limit_events': [
+        'id', 'bucket', 'identifier', 'created_at'
+      ],
     };
 
     // Busca todas as colunas do banco

@@ -161,6 +161,24 @@ final migrations = <Migration>[
       DROP TABLE IF EXISTS ai_optimize_fallback_telemetry CASCADE;
     ''',
   ),
+  Migration(
+    version: '008',
+    name: 'create_rate_limit_events',
+    up: '''
+      CREATE TABLE IF NOT EXISTS rate_limit_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        bucket TEXT NOT NULL,
+        identifier TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_rate_limit_bucket_identifier_created
+      ON rate_limit_events (bucket, identifier, created_at DESC);
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_rate_limit_bucket_identifier_created;
+      DROP TABLE IF EXISTS rate_limit_events CASCADE;
+    ''',
+  ),
 ];
 
 class Migration {

@@ -32,6 +32,7 @@ import '../routes/health/index.dart' as health_index;
 import '../routes/health/ready/index.dart' as health_ready_index;
 import '../routes/health/metrics/index.dart' as health_metrics_index;
 import '../routes/health/live/index.dart' as health_live_index;
+import '../routes/health/dashboard/index.dart' as health_dashboard_index;
 import '../routes/decks/index.dart' as decks_index;
 import '../routes/decks/[id]/index.dart' as decks_$id_index;
 import '../routes/decks/[id]/validate/index.dart' as decks_$id_validate_index;
@@ -135,6 +136,7 @@ Handler buildRootHandler() {
     ..mount('/decks/<id>/validate', (context,id,) => buildDecks$idValidateHandler(id,)(context))
     ..mount('/decks/<id>', (context,id,) => buildDecks$idHandler(id,)(context))
     ..mount('/decks', (context) => buildDecksHandler()(context))
+    ..mount('/health/dashboard', (context) => buildHealthDashboardHandler()(context))
     ..mount('/health/live', (context) => buildHealthLiveHandler()(context))
     ..mount('/health/metrics', (context) => buildHealthMetricsHandler()(context))
     ..mount('/health/ready', (context) => buildHealthReadyHandler()(context))
@@ -401,6 +403,13 @@ Handler buildDecksHandler() {
   final pipeline = const Pipeline().addMiddleware(decks_middleware.middleware);
   final router = Router()
     ..all('/', (context) => decks_index.onRequest(context,));
+  return pipeline.addHandler(router);
+}
+
+Handler buildHealthDashboardHandler() {
+  final pipeline = const Pipeline();
+  final router = Router()
+    ..all('/', (context) => health_dashboard_index.onRequest(context,));
   return pipeline.addHandler(router);
 }
 

@@ -249,6 +249,18 @@ CREATE INDEX IF NOT EXISTS idx_archetype_counters_archetype ON archetype_counter
 CREATE INDEX IF NOT EXISTS idx_archetype_counters_format ON archetype_counters (format);
 CREATE INDEX IF NOT EXISTS idx_archetype_counters_priority ON archetype_counters (priority);
 
+-- 17. Eventos de Rate Limit Distribuído
+-- Permite rate limiting compartilhado entre múltiplas instâncias do backend.
+CREATE TABLE IF NOT EXISTS rate_limit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bucket TEXT NOT NULL, -- ex: auth, ai
+    identifier TEXT NOT NULL, -- IP ou identificador de cliente
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_bucket_identifier_created
+    ON rate_limit_events (bucket, identifier, created_at DESC);
+
 -- Dados iniciais de hate cards por arquétipo (pode ser expandido via sync)
 INSERT INTO archetype_counters (archetype, hate_cards, priority, notes, effectiveness_score) VALUES
     ('graveyard', ARRAY['Rest in Peace', 'Grafdigger''s Cage', 'Soul-Guide Lantern', 'Leyline of the Void', 'Bojuka Bog', 'Tormod''s Crypt', 'Relic of Progenitus'], 1, 'Essencial contra Muldrotha, Meren, Karador', 9),
