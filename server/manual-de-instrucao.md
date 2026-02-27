@@ -6588,3 +6588,31 @@ Resultado:
 - **Backpressure controlado**: concorrência limitada em operações massivas.
 - **Fonte única de verdade**: status de sprint alinhado ao roadmap oficial.
 - **Mudança mínima compatível**: sem quebra de contrato de API e sem alterar formato de dados.
+
+## 68. UX: botão e tela da última edição lançada
+
+### 68.1 O porquê
+
+Foi solicitada uma forma direta para o usuário ver a coleção completa da edição mais recente, sem precisar buscar manualmente por set code.
+
+### 68.2 O como
+
+Arquivos alterados (Flutter):
+- `app/lib/features/collection/screens/collection_screen.dart`
+- `app/lib/features/collection/screens/latest_set_collection_screen.dart` (novo)
+- `app/lib/main.dart`
+
+Implementação:
+- adicionado botão `Última edição` (ícone `new_releases`) no AppBar da tela Coleção;
+- nova rota protegida `'/collection/latest-set'`;
+- nova tela `LatestSetCollectionScreen` que:
+  - consulta `GET /sets?limit=1&page=1` para obter a edição mais recente (ordenada por `release_date DESC`);
+  - consulta `GET /cards?set=<CODE>&limit=100&page=N&dedupe=true` para listar as cartas da edição;
+  - exibe metadados da edição (nome, código, data) + lista paginada com imagem, tipo e raridade;
+  - suporta scroll infinito e estado de erro com retry.
+
+### 68.3 Padrões aplicados
+
+- **Reuso de contrato existente**: sem criar endpoint novo desnecessário, usando `/sets` e `/cards`.
+- **UX orientada a tarefa**: acesso em 1 clique para o caso “ver a última coleção”.
+- **Mudança mínima e segura**: sem alterar schema de banco nem payloads de API existentes.

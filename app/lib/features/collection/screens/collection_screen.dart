@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../binder/screens/binder_screen.dart' show BinderTabContent;
 import '../../binder/screens/marketplace_screen.dart' show MarketplaceTabContent;
@@ -43,6 +44,13 @@ class _CollectionScreenState extends State<CollectionScreen>
       appBar: AppBar(
         title: const Text('Coleção'),
         backgroundColor: AppTheme.surfaceSlate2,
+        actions: [
+          IconButton(
+            tooltip: 'Última edição',
+            onPressed: () => context.push('/collection/latest-set'),
+            icon: const Icon(Icons.new_releases_outlined),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.manaViolet,

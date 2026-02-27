@@ -36,6 +36,7 @@ import 'features/trades/screens/trade_inbox_screen.dart';
 import 'features/trades/screens/trade_detail_screen.dart';
 import 'features/trades/screens/create_trade_screen.dart';
 import 'features/collection/screens/collection_screen.dart';
+import 'features/collection/screens/latest_set_collection_screen.dart';
 import 'features/messages/providers/message_provider.dart';
 import 'features/messages/screens/message_inbox_screen.dart';
 import 'features/notifications/providers/notification_provider.dart';
@@ -222,6 +223,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
                 final tab = int.tryParse(tabStr ?? '') ?? 0;
                 return CollectionScreen(initialTab: tab);
               },
+            ),
+            GoRoute(
+              path: '/collection/latest-set',
+              builder: (context, state) => const LatestSetCollectionScreen(),
             ),
             GoRoute(
               path: '/market',
