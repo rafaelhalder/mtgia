@@ -22,6 +22,9 @@
   - `cache_key` de optimize agora inclui `mode` (`optimize`/`complete`) e versão foi elevada para `v4`.
   - O `mode` usado na chave é o **mode efetivo** (inclui auto-complete quando deck de Commander/Brawl está incompleto), evitando colisão com requisições sem `mode` explícito.
   - Motivo: evitar servir resposta antiga de `complete` após mudança de lógica (stale cache mascarando correção).
+- Ajuste de qualidade no fallback não-terreno:
+  - Adicionada deduplicação por `name` nos pools de fallback (`_loadUniversalCommanderFallbacks`, `_loadMetaInsightFillers`, `_loadBroadCommanderNonLandFillers`, `_loadCompetitiveNonLandFillers`, `_loadEmergencyNonBasicFillers`).
+  - Motivo: múltiplas printagens da mesma carta ocupavam slots de sugestão; na aplicação final (Commander), duplicatas por nome eram descartadas e reduziam drasticamente `non_basic_added`.
 
 ### Por que essa abordagem
 - Evita bloquear o complete por metadado incompleto no deck (ausência de `is_commander`).

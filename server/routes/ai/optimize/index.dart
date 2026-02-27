@@ -3443,6 +3443,21 @@ int _toInt(dynamic value) {
   return int.tryParse(value.toString()) ?? 0;
 }
 
+List<T> _dedupeCandidatesByName<T extends Map<String, Object?>>(
+  List<T> input,
+) {
+  final seen = <String>{};
+  final output = <T>[];
+  for (final item in input) {
+    final rawName = item['name'];
+    final name = (rawName is String ? rawName : '').trim().toLowerCase();
+    if (name.isEmpty || seen.contains(name)) continue;
+    seen.add(name);
+    output.add(item);
+  }
+  return output;
+}
+
 bool _isBasicLandName(String name) {
   final normalized = name.trim().toLowerCase();
   return normalized == 'plains' ||
@@ -3557,12 +3572,14 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
     },
   );
 
-  return result
+  final mapped = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
           })
       .toList();
+
+  return _dedupeCandidatesByName(mapped).take(limit).toList();
 }
 
 Future<List<String>> _loadCommanderCompetitivePriorities({
@@ -3989,7 +4006,7 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
     },
   );
 
-  return result
+    final mapped = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4000,6 +4017,8 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
+
+    return _dedupeCandidatesByName(mapped).take(limit).toList();
 }
 
 Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
@@ -4052,7 +4071,7 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
     },
   );
 
-  var candidates = result
+    var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4063,6 +4082,7 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
+    candidates = _dedupeCandidatesByName(candidates);
 
   if (bracket != null && candidates.isNotEmpty) {
     final decision = applyBracketPolicyToAdditions(
@@ -4086,7 +4106,7 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
     }
   }
 
-  return candidates.take(limit).toList();
+  return _dedupeCandidatesByName(candidates).take(limit).toList();
 }
 
 Future<List<Map<String, dynamic>>> _loadGuaranteedNonBasicFillers({
@@ -4225,7 +4245,7 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
     },
   );
 
-  var candidates = result
+    var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4236,6 +4256,7 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
+    candidates = _dedupeCandidatesByName(candidates);
 
   // Fallback: se pool ficou pequeno, adicionar staples universais (ramp/draw/removal)
   if (candidates.length < limit) {
@@ -4283,6 +4304,7 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
         .where((c) => !excludeNames.contains((c['name'] as String).toLowerCase()))
         .toList();
     candidates.addAll(stapleCandidates);
+    candidates = _dedupeCandidatesByName(candidates);
     // Log explicito
     if (candidates.isEmpty) {
       print('[COMPLETE FILLER] Pool vazio, fallback para staples universais.');
@@ -4317,7 +4339,7 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
     }
   }
 
-  return candidates.take(limit).toList();
+  return _dedupeCandidatesByName(candidates).take(limit).toList();
 }
 
 Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
@@ -4349,7 +4371,7 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
     },
   );
 
-  var candidates = result
+    var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4360,6 +4382,7 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
+    candidates = _dedupeCandidatesByName(candidates);
 
   if (bracket != null && candidates.isNotEmpty) {
     final decision = applyBracketPolicyToAdditions(
@@ -4383,7 +4406,7 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
     }
   }
 
-  return candidates.take(limit).toList();
+  return _dedupeCandidatesByName(candidates).take(limit).toList();
 }
 
 /// Busca cartas substitutas sinérgicas quando filtros de cor/bracket
