@@ -14,7 +14,9 @@ import '../models/deck_details.dart';
 import '../../cards/providers/card_provider.dart';
 import '../widgets/deck_analysis_tab.dart';
 import '../widgets/deck_progress_indicator.dart';
+import '../widgets/sample_hand_widget.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../cards/screens/card_detail_screen.dart';
 
 class DeckDetailsScreen extends StatefulWidget {
   final String deckId;
@@ -1110,7 +1112,14 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
               ),
 
               // Tab 3: Análise
-              DeckAnalysisTab(deck: deck),
+              SingleChildScrollView(
+                child: Column(
+                  children: [
+                    SampleHandWidget(deck: deck),
+                    DeckAnalysisTab(deck: deck),
+                  ],
+                ),
+              ),
             ],
           );
         },
@@ -1503,12 +1512,27 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                   ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Fechar'),
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CardDetailScreen(card: card),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          label: const Text('Ver Detalhes'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Fechar'),
+                        ),
+                      ],
                     ),
                   ),
                 ],

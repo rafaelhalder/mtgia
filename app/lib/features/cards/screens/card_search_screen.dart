@@ -6,6 +6,7 @@ import '../../../core/widgets/cached_card_image.dart';
 import '../../decks/providers/deck_provider.dart';
 import '../../decks/models/deck_card_item.dart';
 import '../../decks/models/deck_details.dart';
+import 'card_detail_screen.dart';
 import 'dart:async';
 
 class CardSearchScreen extends StatefulWidget {
@@ -302,6 +303,14 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                           ? isCommanderEligible
                           : allowedByIdentity);
               return ListTile(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CardDetailScreen(card: card),
+                    ),
+                  );
+                },
                 leading: ClipRRect(
                   borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   child: CachedCardImage(

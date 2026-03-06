@@ -109,7 +109,7 @@ class _DeckAnalysisTabState extends State<DeckAnalysisTab> {
     final manaCurve = _cachedManaCurve;
     final colorCounts = _cachedColorCounts;
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

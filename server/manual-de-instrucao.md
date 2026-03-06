@@ -7421,3 +7421,55 @@ Validações:
 - `reference_cards` não vazio;
 - `recommended_structure.lands` presente e dentro de faixa razoável (`28..42`).
 
+
+## 88. Revisão UX — Novas Telas e Ferramentas para Jogadores (Flutter)
+
+### 88.1 O porquê
+
+Revisão completa do app sob a perspectiva de um jogador de MTG. Foram identificadas lacunas críticas na experiência do usuário que impediam engajamento:
+- Não havia tela dedicada para ver detalhes de uma carta (oracle text, legalidade, set, raridade)
+- Não havia ferramenta para testar mão inicial (opening hand), essencial para avaliar consistência
+- Não havia contador de vida para uso em partidas reais
+- A Home Screen não oferecia acesso direto a ferramentas de jogo
+
+### 88.2 Novas Telas/Widgets
+
+#### CardDetailScreen (`app/lib/features/cards/screens/card_detail_screen.dart`)
+- Tela dedicada com CustomScrollView + SliverAppBar
+- Imagem grande da carta (tappable para zoom fullscreen com InteractiveViewer)
+- Símbolos de mana coloridos (WUBRG + colorless + genérico)
+- Oracle text em container estilizado
+- Grid de detalhes: set, raridade (com dot colorido), cores, CMC, número de colecionador
+- Acessível via `Navigator.push` de: busca de cartas, detalhes do deck, community deck
+
+#### SampleHandWidget (`app/lib/features/decks/widgets/sample_hand_widget.dart`)
+- Widget embutido no tab Análise do DeckDetailsScreen
+- Compra 7 cartas aleatórias do pool do deck (respeitando quantities)
+- Suporta mulligan (nova mão com -1 carta)
+- Mostra breakdown: terrenos vs magias vs total
+- Cards horizontais com thumbnail, nome e indicação visual de terrenos
+- Animação fade-in na compra
+
+#### LifeCounterScreen (`app/lib/features/home/life_counter_screen.dart`)
+- Rota: `/life-counter` (protegida por auth)
+- Suporte a 2, 3 ou 4 jogadores
+- Vida inicial configurável: 20 (Standard), 25 (Brawl), 30 (Oathbreaker), 40 (Commander)
+- Painel rotado para oponente em modo 2 jogadores
+- Haptic feedback nos toques
+- Bottom sheet de configurações
+- Cores distintas por jogador
+
+### 88.3 Alterações em Telas Existentes
+
+- **HomeScreen**: 2 novos atalhos rápidos — "Vida" (life counter) e "Marketplace"
+- **DeckDetailsScreen**: Botão "Ver Detalhes" no dialog de carta → abre CardDetailScreen
+- **CardSearchScreen**: `onTap` na ListTile → abre CardDetailScreen
+- **CommunityDeckDetailScreen**: `onTap` na carta → abre CardDetailScreen
+- **DeckAnalysisTab**: Removido SingleChildScrollView interno (agora é Padding) para composição com SampleHandWidget no tab pai
+- **main.dart**: Nova rota `/life-counter`, import do LifeCounterScreen
+
+### 88.4 Rota adicionada
+
+```
+/life-counter → LifeCounterScreen (protegida)
+```

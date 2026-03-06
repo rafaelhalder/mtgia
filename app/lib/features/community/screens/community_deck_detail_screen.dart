@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/cached_card_image.dart';
+import '../../decks/models/deck_card_item.dart';
 import '../../decks/providers/deck_provider.dart';
 import '../../social/screens/user_profile_screen.dart';
+import '../../cards/screens/card_detail_screen.dart';
 import '../providers/community_provider.dart';
 
 class CommunityDeckDetailScreen extends StatefulWidget {
@@ -343,6 +345,15 @@ class _CommunityDeckDetailScreenState
           borderRadius: BorderRadius.circular(AppTheme.radiusSm)),
       child: ListTile(
         dense: true,
+        onTap: () {
+          final deckCard = DeckCardItem.fromJson(card);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CardDetailScreen(card: deckCard),
+            ),
+          );
+        },
         leading: CachedCardImage(
           imageUrl: imageUrl,
           width: 32,

@@ -124,6 +124,28 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.favorite,
+                    label: 'Vida',
+                    color: const Color(0xFFEF4444),
+                    onTap: () => context.go('/life-counter'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.store,
+                    label: 'Marketplace',
+                    color: const Color(0xFF22C55E),
+                    onTap: () => context.go('/collection?tab=1'),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 32),
 
             // Recent Decks

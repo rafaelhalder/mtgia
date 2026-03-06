@@ -42,6 +42,7 @@ import 'features/messages/screens/message_inbox_screen.dart';
 import 'features/notifications/providers/notification_provider.dart';
 import 'features/notifications/screens/notification_screen.dart';
 import 'features/home/onboarding_core_flow_screen.dart';
+import 'features/home/life_counter_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -144,7 +145,8 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             location.startsWith('/trades') ||
             location.startsWith('/messages') ||
           location.startsWith('/notifications') ||
-          location.startsWith('/onboarding');
+          location.startsWith('/onboarding') ||
+          location.startsWith('/life-counter');
 
         if (isProtectedRoute && !_authProvider.isAuthenticated) {
           debugPrint('[🧭 Router] → /login (rota protegida sem auth)');
@@ -179,6 +181,10 @@ class _ManaLoomAppState extends State<ManaLoomApp> {
             GoRoute(
               path: '/home',
               builder: (context, state) => const HomeScreen(),
+            ),
+            GoRoute(
+              path: '/life-counter',
+              builder: (context, state) => const LifeCounterScreen(),
             ),
             GoRoute(
               path: '/onboarding/core-flow',
