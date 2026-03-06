@@ -20,3 +20,4 @@ firebase-service-account.json
 
 # AtomicCards.json é muito grande
 AtomicCards.json
+.dart_frog/
