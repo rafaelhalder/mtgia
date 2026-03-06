@@ -284,10 +284,11 @@ class DeckRulesService {
     if (oracle.contains('can be your commander')) return true;
 
     // Nota: Background enchantments NÃO são elegíveis como comandante solo.
-    // Eles só podem ser comandantes quando pareados com uma criatura que
-    // tenha "Choose a Background" (par de 2 comandantes).
-    // Essa validação é feita em _validatePartnerPairing +
-    // guarda _isBackground no loop de verificação de 2 comandantes.
+    // Eles só podem ser usados como comandante quando PAREADOS com uma criatura
+    // que tenha "Choose a Background" (2 comandantes).
+    // O par é validado por _validateCommanderStyle → _validatePartnerPairing.
+    // No loop de 2 comandantes, o Background é aceito via guarda _isBackground(info)
+    // na condição: `if (!_isCommanderEligible(info) && !_isBackground(info))`.
 
     return false;
   }

@@ -111,9 +111,13 @@ void main() {
       expect(isBasicLandTypeLine('basic snow land — forest'), isTrue);
     });
 
-    test('"basic snow land" does NOT contain "basic land" as substring', () {
-      // Verifica o motivo do bug original
+    test('"basic snow land" does NOT contain "basic land" as substring (root cause)', () {
+      // Documenta o motivo do bug original: a string NÃO é um substring de si.
       expect('basic snow land — island'.contains('basic land'), isFalse);
+
+      // Mas a função corrigida lida com isso adicionando a segunda condição:
+      expect(isBasicLandTypeLine('basic snow land — island'), isTrue,
+          reason: 'isBasicLandTypeLine deve detectar Snow-Covered basics apesar do bug do contains');
     });
 
     test('Non-basic lands are NOT detected as basic', () {
