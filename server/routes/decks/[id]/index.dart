@@ -463,7 +463,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
     int calculateCmc(String? manaCost) {
       if (manaCost == null || manaCost.isEmpty) return 0;
       int cmc = 0;
-      final regex = RegExp(r'\{(\w+)\}');
+      final regex = RegExp(r'\{([^}]+)\}');
       final matches = regex.allMatches(manaCost);
       for (final match in matches) {
         final symbol = match.group(1)!;
@@ -472,7 +472,7 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
         } else if (symbol.toUpperCase() == 'X') {
           // X counts as 0
         } else {
-          // W, U, B, R, G, C, P, etc count as 1
+          // W, U, B, R, G, C, P, W/U, W/P, etc count as 1
           cmc += 1;
         }
       }

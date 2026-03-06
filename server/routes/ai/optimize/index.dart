@@ -1274,7 +1274,7 @@ Future<Response> onRequest(RequestContext context) async {
             final id = c['card_id'] as String;
             final name = c['name'] as String;
             final typeLine = (c['type_line'] as String).toLowerCase();
-            final isBasic = typeLine.contains('basic land');
+            final isBasic = _isBasicLandTypeLine(typeLine);
             final nameLower = name.toLowerCase();
             final maxCopies = _maxCopiesForFormat(
               deckFormat: deckFormat,
@@ -3562,7 +3562,19 @@ bool _isBasicLandName(String name) {
       normalized == 'swamp' ||
       normalized == 'mountain' ||
       normalized == 'forest' ||
-      normalized == 'wastes';
+      normalized == 'wastes' ||
+      normalized == 'snow-covered plains' ||
+      normalized == 'snow-covered island' ||
+      normalized == 'snow-covered swamp' ||
+      normalized == 'snow-covered mountain' ||
+      normalized == 'snow-covered forest';
+}
+
+/// Verifica se um type_line (já em minúsculas) representa um terreno básico.
+/// Cobre normais ("Basic Land — Island") e Snow-Covered ("Basic Snow Land — Island").
+bool _isBasicLandTypeLine(String typeLineLower) {
+  return typeLineLower.contains('basic land') ||
+      typeLineLower.contains('basic snow land');
 }
 
 int _maxCopiesForFormat({
@@ -3574,8 +3586,8 @@ int _maxCopiesForFormat({
   final normalizedType = typeLine.toLowerCase();
   final normalizedName = name.trim().toLowerCase();
 
-  final isBasicLand =
-      normalizedType.contains('basic land') || normalizedName == 'wastes';
+  final isBasicLand = _isBasicLandTypeLine(normalizedType) ||
+      normalizedName == 'wastes';
   if (isBasicLand) return 999;
 
   if (normalizedFormat == 'commander' || normalizedFormat == 'brawl') {
@@ -3604,7 +3616,7 @@ Future<Map<String, String>> _loadBasicLandIds(
       SELECT name, id::text
       FROM cards
       WHERE name = ANY(@names)
-        AND type_line LIKE 'Basic Land%'
+        AND (type_line LIKE 'Basic Land%' OR type_line LIKE 'Basic Snow Land%')
       ORDER BY name ASC
     '''),
     parameters: {'names': names},
@@ -4754,6 +4766,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
       WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
         AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
         AND c.type_line NOT LIKE 'Basic Land%'
+        AND c.type_line NOT LIKE 'Basic Snow Land%'
         AND c.name NOT LIKE 'A-%'
         AND c.name NOT LIKE '\_%' ESCAPE '\\'
         AND c.name NOT LIKE '%World Champion%'

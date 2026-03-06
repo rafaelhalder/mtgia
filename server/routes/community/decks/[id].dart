@@ -121,7 +121,7 @@ Future<Response> _getPublicDeck(RequestContext context, String deckId) async {
     int calculateCmc(String? manaCost) {
       if (manaCost == null || manaCost.isEmpty) return 0;
       int cmc = 0;
-      final regex = RegExp(r'\{(\w+)\}');
+      final regex = RegExp(r'\{([^}]+)\}');
       for (final match in regex.allMatches(manaCost)) {
         final symbol = match.group(1)!;
         if (int.tryParse(symbol) != null) {

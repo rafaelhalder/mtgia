@@ -35,7 +35,7 @@ class DeckRulesService {
       if (isCommander) continue;
 
       final typeLine = info.typeLine.toLowerCase();
-      final isBasicLand = typeLine.contains('basic land');
+      final isBasicLand = _isBasicLandTypeLine(typeLine);
       if (isBasicLand) continue;
 
       final key = info.name.trim().toLowerCase();
@@ -87,7 +87,7 @@ class DeckRulesService {
       }
 
       final typeLine = info.typeLine.toLowerCase();
-      final isBasicLand = typeLine.contains('basic land');
+      final isBasicLand = _isBasicLandTypeLine(typeLine);
 
       final limit =
           (normalizedFormat == 'commander' || normalizedFormat == 'brawl')
@@ -136,6 +136,16 @@ class DeckRulesService {
         cardsData: cardsData,
         strict: strict,
       );
+    } else {
+      // Formatos não-Commander (Standard, Modern, Pioneer, Legacy, Vintage, Pauper...)
+      // Mínimo de 60 cartas no main deck
+      final total =
+          cards.fold<int>(0, (sum, c) => sum + ((c['quantity'] as int?) ?? 1));
+      const minDeckSize = 60;
+      if (strict && total < minDeckSize) {
+        throw DeckRulesException(
+            'Regra violada: deck $normalizedFormat precisa de pelo menos $minDeckSize cartas (atual: $total).');
+      }
     }
   }
 
@@ -270,10 +280,14 @@ class DeckRulesService {
     final isCreature = typeLine.contains('creature');
     if (isLegendary && isCreature) return true;
 
-    // Planeswalkers e outras exceções com texto “can be your commander”.
+    // Planeswalkers e outras exceções com texto "can be your commander".
     if (oracle.contains('can be your commander')) return true;
-    // Background é elegível se o outro comandante tem "Choose a Background"
-    if (_isBackground(card)) return true;
+
+    // Nota: Background enchantments NÃO são elegíveis como comandante solo.
+    // Eles só podem ser comandantes quando pareados com uma criatura que
+    // tenha "Choose a Background" (par de 2 comandantes).
+    // Essa validação é feita em _validatePartnerPairing +
+    // guarda _isBackground no loop de verificação de 2 comandantes.
 
     return false;
   }
@@ -366,6 +380,19 @@ class DeckRulesService {
       return true;
     }
     return false;
+  }
+
+  /// Retorna `true` para terrenos básicos (incluindo Snow-Covered variants).
+  /// 
+  /// Tipo de linha das variações:
+  ///   - Normais:       "Basic Land — Plains/Island/Swamp/Mountain/Forest"
+  ///   - Snow-Covered:  "Basic Snow Land — Plains/Island/Swamp/Mountain/Forest"
+  ///   - Wastes:        "Basic Land" (sem subtipo)
+  static bool _isBasicLandTypeLine(String typeLineLower) {
+    // "basic land" cobre normais e Wastes.
+    // "basic snow land" cobre Snow-Covered variants.
+    return typeLineLower.contains('basic land') ||
+        typeLineLower.contains('basic snow land');
   }
 
   Future<Map<String, _CardData>> _loadCardsData(List<String> cardIds) async {

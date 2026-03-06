@@ -188,7 +188,7 @@ void main() {
     int calculateCmc(String? manaCost) {
       if (manaCost == null || manaCost.isEmpty) return 0;
       int cmc = 0;
-      final regex = RegExp(r'\{(\w+)\}');
+      final regex = RegExp(r'\{([^}]+)\}');
       final matches = regex.allMatches(manaCost);
       for (final match in matches) {
         final symbol = match.group(1)!;
@@ -197,7 +197,7 @@ void main() {
         } else if (symbol.toUpperCase() == 'X') {
           // X counts as 0
         } else {
-          // W, U, B, R, G, C, P, etc count as 1
+          // W, U, B, R, G, C, P, W/U, W/P, 2/W, etc count as 1
           cmc += 1;
         }
       }
@@ -230,19 +230,17 @@ void main() {
       expect(calculateCmc('{2}{X}'), equals(2)); // 2 + 0
     });
     
-    test('should handle phyrexian mana symbols (not captured by current regex)', () {
-      // NOTA: A regex \{(\w+)\} não captura "/" então {U/P} não gera match
-      // Isto é uma limitação conhecida da implementação atual
-      // CMC para phyrexian/hybrid deveria ser 1, mas implementação retorna 0
-      expect(calculateCmc('{U/P}'), equals(0)); // Nenhum match encontrado
-      expect(calculateCmc('{W/P}{W/P}'), equals(0)); // Nenhum match encontrado
+    test('should handle phyrexian mana symbols correctly', () {
+      // A regex \{([^}]+)\} captura "{U/P}" como "U/P", que não é um número nem X,
+      // portanto conta como 1 CMC.
+      expect(calculateCmc('{U/P}'), equals(1));
+      expect(calculateCmc('{W/P}{W/P}'), equals(2));
     });
     
-    test('should handle hybrid mana symbols (not captured by current regex)', () {
-      // Similar ao phyrexian, híbridos com "/" não são capturados
-      // Implementação atual não suporta estes símbolos complexos
-      expect(calculateCmc('{W/U}'), equals(0)); // Nenhum match encontrado
-      expect(calculateCmc('{2/W}'), equals(0)); // Nenhum match encontrado
+    test('should handle hybrid mana symbols correctly', () {
+      // A regex \{([^}]+)\} captura "{W/U}" como "W/U", que conta como 1 CMC.
+      expect(calculateCmc('{W/U}'), equals(1));
+      expect(calculateCmc('{2/W}'), equals(1));
     });
     
     test('should return 0 for empty or null mana cost', () {
