@@ -146,7 +146,7 @@ Future<Response> onRequest(RequestContext context) async {
           oracleText.contains('exile all') ||
           (oracleText.contains('all creatures get -') && oracleText.contains('/-')) ||
           (oracleText.contains('each creature') && oracleText.contains('damage')) ||
-          oracleText.contains('return all') && oracleText.contains('to their owner')) {
+          (oracleText.contains('return all') && oracleText.contains('to their owner'))) {
         boardWipeCount += quantity;
       }
 
@@ -319,13 +319,13 @@ Future<Response> onRequest(RequestContext context) async {
       final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
       if (oracle.contains('you win the game') ||
           oracle.contains('each opponent loses') ||
-          oracle.contains('infinite') ||
           oracle.contains('extra turn') ||
-          oracle.contains('commander damage') ||
           (oracle.contains('deal') && oracle.contains('damage to each opponent')) ||
           (typeLine.contains('creature') && oracle.contains('whenever') && oracle.contains('combat damage to a player')) ||
-          oracle.contains('drain') ||
-          (oracle.contains('x') && oracle.contains('each opponent') && oracle.contains('loses'))) {
+          (oracle.contains('x') && oracle.contains('each opponent') && oracle.contains('loses')) ||
+          (oracle.contains('damage to any target') && oracle.contains('x')) ||
+          oracle.contains('you gain control of target') ||
+          (oracle.contains('create') && oracle.contains('token') && oracle.contains('each'))) {
         winConditionCount += (card['quantity'] as int);
       }
     }

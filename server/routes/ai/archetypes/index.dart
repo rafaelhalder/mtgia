@@ -113,7 +113,7 @@ As opções devem considerar:
 
 Regras:
 1) Não repetir o mesmo plano com nomes diferentes.
-2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spell-slinger, Reanimator, Tokens, Control, Combo, Stax, Group Hug, Tribal, Landfall, Wheels, Enchantress).
+2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spellslinger, Reanimator, Tokens, Control, Combo, Stax, Group Hug, Tribal, Landfall, Wheels, Enchantress).
 3) Cada descrição deve explicar em até 2 frases: (a) o plano principal de jogo, (b) como o deck vence, e (c) o que precisa melhorar na lista atual.
 4) Dificuldade obrigatória em: Baixa, Média ou Alta (considerar complexidade de pilotagem e número de decisões por turno).
 5) Priorize consistência (mana base, curva, draw, ramp) e plano de vitória claro sobre "goodstuff".
