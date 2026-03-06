@@ -1108,13 +1108,25 @@ class DeckProvider extends ChangeNotifier {
       final isCommander = format == 'commander' || format == 'brawl';
       final defaultLimit = isCommander ? 1 : 4;
 
+      // Basic land names for fallback detection when type_line is not available
+      const basicLandNames = {
+        'plains', 'island', 'swamp', 'mountain', 'forest', 'wastes',
+        'snow-covered plains', 'snow-covered island', 'snow-covered swamp',
+        'snow-covered mountain', 'snow-covered forest',
+      };
+
       for (final addition in additionsDetailed) {
         final cardId = addition['card_id'] as String?;
-        if (cardId == null) continue;
+        if (cardId == null || cardId.isEmpty) continue;
 
+        // Check is_basic_land flag from server, fallback to type_line/name check
+        final isBasicFromServer = addition['is_basic_land'] as bool? ?? false;
         final typeLine =
             ((addition['type_line'] as String?) ?? '').toLowerCase();
-        final isBasicLand = typeLine.contains('basic land');
+        final cardName = ((addition['name'] as String?) ?? '').toLowerCase().trim();
+        final isBasicLand = isBasicFromServer ||
+            typeLine.contains('basic land') ||
+            basicLandNames.contains(cardName);
         final limit = isBasicLand ? 99 : defaultLimit;
 
         if (currentCards.containsKey(cardId)) {

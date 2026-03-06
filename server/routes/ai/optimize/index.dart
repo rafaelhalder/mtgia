@@ -1926,6 +1926,8 @@ Future<Response> onRequest(RequestContext context) async {
                   'card_id': e['card_id'],
                   'quantity': e['quantity'],
                   'name': e['name'],
+                  'is_basic_land': _isBasicLandName(
+                      ((e['name'] as String?) ?? '').trim()),
                 })
             .toList();
         
@@ -3450,12 +3452,14 @@ Map<String, dynamic> _buildRecommendationDetail({
   final confidenceScore = _confidenceScoreFromLevel(confidenceLevel);
   final action = type == 'add' ? 'entrada' : 'saída';
   final curveDelta = (cmcAfter - cmcBefore).toStringAsFixed(2);
+  final isBasicLand = _isBasicLandName(name);
 
   return {
     'type': type,
     'name': name,
     'card_id': cardId,
     'quantity': quantity,
+    'is_basic_land': isBasicLand,
     'reason':
         'Sugestão de $action para alinhar o deck ao plano ${targetArchetype.toLowerCase()} e melhorar consistência geral.',
     'confidence': {
