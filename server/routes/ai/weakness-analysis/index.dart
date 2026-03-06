@@ -111,27 +111,42 @@ Future<Response> onRequest(RequestContext context) async {
         creatureCount += quantity;
       }
 
-      // Detectar ramp
+      // Detectar ramp (expanded: mana dorks, treasure, mana rocks, land ramp)
       if (oracleText.contains('add {') || 
-          oracleText.contains('search your library for a') && oracleText.contains('land') ||
-          oracleText.contains('put a land card')) {
+          (oracleText.contains('search your library for a') && oracleText.contains('land')) ||
+          oracleText.contains('put a land card') ||
+          oracleText.contains('create a treasure') ||
+          oracleText.contains('create treasure') ||
+          (typeLineLower.contains('creature') && oracleText.contains('add') && oracleText.contains('mana')) ||
+          (typeLineLower.contains('artifact') && !typeLineLower.contains('creature') && oracleText.contains('add {') && cmc <= 3)) {
         rampCount += quantity;
       }
 
-      // Detectar card draw
-      if (oracleText.contains('draw') && oracleText.contains('card')) {
+      // Detectar card draw (expanded: "look at the top", impulse draw, "reveal...put into hand")
+      if ((oracleText.contains('draw') && oracleText.contains('card')) ||
+          (oracleText.contains('look at the top') && oracleText.contains('put') && oracleText.contains('hand')) ||
+          (oracleText.contains('exile') && oracleText.contains('may play') && !oracleText.contains('target')) ||
+          (oracleText.contains('exile') && oracleText.contains('may cast') && !oracleText.contains('target')) ||
+          (oracleText.contains('reveal') && oracleText.contains('put') && oracleText.contains('into your hand'))) {
         drawCount += quantity;
       }
 
-      // Detectar removal
+      // Detectar removal (expanded: -X/-X, sacrifice, bounce, counter)
       if (oracleText.contains('destroy target') || 
           oracleText.contains('exile target') ||
-          (oracleText.contains('deal') && oracleText.contains('damage to target'))) {
+          (oracleText.contains('deal') && oracleText.contains('damage to target')) ||
+          (oracleText.contains('target') && oracleText.contains('gets -') && oracleText.contains('/-')) ||
+          oracleText.contains('counter target spell') ||
+          (oracleText.contains('target') && oracleText.contains('owner\'s hand') && typeLineLower.contains('instant'))) {
         removalCount += quantity;
       }
 
-      // Detectar board wipes
-      if (oracleText.contains('destroy all') || oracleText.contains('exile all')) {
+      // Detectar board wipes (expanded: "all creatures get -X/-X", "each creature", "return all")
+      if (oracleText.contains('destroy all') || 
+          oracleText.contains('exile all') ||
+          (oracleText.contains('all creatures get -') && oracleText.contains('/-')) ||
+          (oracleText.contains('each creature') && oracleText.contains('damage')) ||
+          oracleText.contains('return all') && oracleText.contains('to their owner')) {
         boardWipeCount += quantity;
       }
 
@@ -140,6 +155,8 @@ Future<Response> onRequest(RequestContext context) async {
           oracleText.contains('indestructible') ||
           oracleText.contains('protection from') ||
           oracleText.contains('shroud') ||
+          oracleText.contains('ward') ||
+          oracleText.contains('counter target spell') ||
           name.toLowerCase().contains('teferi\'s protection') ||
           name.toLowerCase().contains('heroic intervention')) {
         protectionCount += quantity;
@@ -267,6 +284,79 @@ Future<Response> onRequest(RequestContext context) async {
         'recommendations': ['Lightning Greaves', 'Swiftfoot Boots', 'Heroic Intervention', 'Teferi\'s Protection'],
         'current_value': protectionCount,
         'recommended_value': 5,
+      });
+    }
+
+    // Verificar remoção de artefatos/encantamentos
+    int artifactEnchantmentRemovalCount = 0;
+    for (final card in cards) {
+      final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+      if (oracle.contains('destroy target artifact') ||
+          oracle.contains('destroy target enchantment') ||
+          oracle.contains('exile target artifact') ||
+          oracle.contains('exile target enchantment') ||
+          oracle.contains('destroy target nonland permanent') ||
+          oracle.contains('exile target nonland permanent') ||
+          oracle.contains('destroy target permanent')) {
+        artifactEnchantmentRemovalCount += (card['quantity'] as int);
+      }
+    }
+    if (artifactEnchantmentRemovalCount < 3) {
+      weaknesses.add({
+        'type': 'insufficient_artifact_enchantment_removal',
+        'severity': artifactEnchantmentRemovalCount == 0 ? 'critical' : 'medium',
+        'description': 'Deck tem apenas $artifactEnchantmentRemovalCount remoções de artefatos/encantamentos. Recomendado: 4-6.',
+        'recommendations': ['Nature\'s Claim', 'Beast Within', 'Generous Gift', 'Vandalblast', 'Austere Command'],
+        'current_value': artifactEnchantmentRemovalCount,
+        'recommended_value': 5,
+      });
+    }
+
+    // Verificar win conditions (cartas que podem fechar o jogo)
+    int winConditionCount = 0;
+    for (final card in cards) {
+      final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+      final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      if (oracle.contains('you win the game') ||
+          oracle.contains('each opponent loses') ||
+          oracle.contains('infinite') ||
+          oracle.contains('extra turn') ||
+          oracle.contains('commander damage') ||
+          (oracle.contains('deal') && oracle.contains('damage to each opponent')) ||
+          (typeLine.contains('creature') && oracle.contains('whenever') && oracle.contains('combat damage to a player')) ||
+          oracle.contains('drain') ||
+          (oracle.contains('x') && oracle.contains('each opponent') && oracle.contains('loses'))) {
+        winConditionCount += (card['quantity'] as int);
+      }
+    }
+    if (winConditionCount < 2) {
+      weaknesses.add({
+        'type': 'insufficient_win_conditions',
+        'severity': winConditionCount == 0 ? 'critical' : 'high',
+        'description': 'Deck tem apenas $winConditionCount condições de vitória claras. Recomendado: 2-3 caminhos distintos para vencer.',
+        'recommendations': ['Adicionar finalizadores que fechem o jogo', 'Considerar combos de 2-3 cartas', 'Incluir dano direto ou drain effects'],
+        'current_value': winConditionCount,
+        'recommended_value': 3,
+      });
+    }
+
+    // Verificar se o deck tem interação no turno dos oponentes (instant-speed)
+    int instantSpeedCount = 0;
+    for (final card in cards) {
+      final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+      if (typeLine.contains('instant') || oracle.contains('flash')) {
+        instantSpeedCount += (card['quantity'] as int);
+      }
+    }
+    if (isCommander && instantSpeedCount < 8) {
+      weaknesses.add({
+        'type': 'low_instant_speed_interaction',
+        'severity': instantSpeedCount < 4 ? 'high' : 'medium',
+        'description': 'Deck tem apenas $instantSpeedCount cartas instant-speed. Em multiplayer, interação nos turnos dos oponentes é crucial.',
+        'recommendations': ['Priorizar instants sobre sorceries', 'Adicionar counterspells', 'Incluir removal instant-speed como Swords to Plowshares'],
+        'current_value': instantSpeedCount,
+        'recommended_value': 10,
       });
     }
 

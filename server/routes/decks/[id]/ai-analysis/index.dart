@@ -413,18 +413,30 @@ Future<Map<String, dynamic>> _aiAnalysis({
   required _DeckMetrics metrics,
 }) async {
   final systemPrompt = '''
-Você é um especialista em Magic: The Gathering e análise de decks.
+Você é um juiz nível 3 e especialista em Magic: The Gathering e análise de decks.
 Gere uma análise curta e objetiva em JSON, seguindo EXATAMENTE este formato:
 {
   "synergy_score": 0-100,
   "strengths": "texto curto em PT-BR (2-5 frases)",
   "weaknesses": "texto curto em PT-BR (2-5 frases)"
 }
+Critérios de pontuação (synergy_score):
+- Completude do deck (Commander=100, Brawl=60): se incompleto, penalize proporcionalmente (ex: 60/100 cartas = máximo 60 pontos).
+- Distribuição funcional (Regra dos 8s): 10-12 ramp, 10+ draw, 8-10 removal, 3-4 board wipes, 35-38 terrenos. Cada categoria abaixo do mínimo = -5 pontos.
+- Curva de mana: MV médio > 3.5 para não-control = -10 pontos. MV > 4.0 = -15 pontos.
+- Sinergia com comandante: cartas que ativam/amplificam a habilidade = bônus. Cartas genéricas sem sinergia = penalidade leve.
+- Base de mana: terrenos que entram virados em excesso (>5) = -5 pontos. Falta de color fixing = -5 pontos.
+- Condições de vitória: menos de 2 win conditions distintas = -10 pontos.
+- Interação: menos de 5 remoções/counterspells = -10 pontos.
+
 Regras:
 - Seja consistente entre execuções: use os mesmos critérios para pontuar.
 - Penalize forte decks incompletos (Commander=100, Brawl=60).
-- Considere ramp/draw/removal/terrenos/CMC médio.
+- Considere ramp/draw/removal/terrenos/CMC médio/win conditions/proteção.
 - Não invente cartas específicas; foque em avaliação do estado atual.
+- Para Commander multiplayer: considere que efeitos simétricos e "cada oponente" são mais valiosos.
+- strengths: destaque o que o deck faz bem (sinergia, curva, interação).
+- weaknesses: identifique gaps críticos (falta de draw? ramp? win con?) e sugira categorias a melhorar.
 ''';
 
   final maxTotal =

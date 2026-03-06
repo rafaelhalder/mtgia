@@ -464,7 +464,7 @@ Future<Response> _callOpenAI({
   }
 
   final prompt = '''
-Você é um deck builder competitivo de Magic: The Gathering.
+Você é um juiz nível 3 e deck builder competitivo de Magic: The Gathering.
 
 Contexto do deck:
 - Nome: $deckName
@@ -481,22 +481,27 @@ Regras obrigatórias:
 1) Identifique o arquétipo predominante do deck.
 2) Sugira EXATAMENTE 5 cartas para adicionar e EXATAMENTE 5 para remover.
 3) Cada recomendação deve ter motivo curto e acionável (1 frase).
-4) Priorize melhorar: ramp, draw, remoção, curva e sinergia.
-5) Em Commander, respeite identidade de cor do(s) comandante(s).
+4) Priorize melhorar as categorias mais fracas do deck, seguindo a Regra dos 8s:
+   - 10-12 ramp, 10+ draw, 8-10 removal, 3-4 board wipes, 35-38 lands, 2-3 win conditions.
+5) Em Commander, respeite ESTRITAMENTE a identidade de cor do(s) comandante(s) (CR 903.4): mana no custo + texto de regras + indicador de cor + MDFC. Mana híbrido = ambas as cores.
 6) Não recomende cartas banidas no formato.
-7) Responda SOMENTE JSON válido, sem markdown.
+7) Não sugira cartas que JÁ ESTÃO no deck (singleton rule em Commander).
+8) Priorize instant-speed sobre sorcery-speed para interação.
+9) Em Commander multiplayer (40 vida, 3-4 jogadores): "cada oponente" > "jogador alvo"; board wipes são valiosos.
+10) power_level deve usar bracket 1-4 (1=casual, 2=mid, 3=high, 4=cEDH).
+11) Responda SOMENTE JSON válido, sem markdown.
 
 Formato obrigatório:
 {
   "archetype": "string",
-  "power_level": 1-10,
-  "analysis": "resumo curto e objetivo",
+  "power_level": 1-4,
+  "analysis": "resumo curto e objetivo incluindo pontos fortes, fracos e categoria mais deficiente",
   "recommendations": {
     "add": [
-      {"card_name": "string", "reason": "string"}
+      {"card_name": "string", "reason": "string (inclua a categoria: ramp/draw/removal/synergy/win-con)"}
     ],
     "remove": [
-      {"card_name": "string", "reason": "string"}
+      {"card_name": "string", "reason": "string (explique por que é fraca ou ineficiente)"}
     ]
   }
 }
@@ -519,7 +524,7 @@ Formato obrigatório:
       'messages': [
         {
           'role': 'system',
-          'content': 'Você é um especialista em otimização de decks MTG orientado a decisão do jogador. Seja técnico, direto e sempre retorne JSON válido.'
+          'content': 'Você é um juiz nível 3 e especialista em otimização de decks MTG orientado a decisão do jogador. Avalie cada recomendação considerando: legalidade (identidade de cor, ban list, singleton rule), eficiência (mana value, instant vs sorcery), sinergia com comandante, e impacto em multiplayer (40 vida, 3-4 jogadores). Seja técnico, direto e sempre retorne JSON válido.'
         },
         {'role': 'user', 'content': prompt},
       ],

@@ -93,8 +93,9 @@ Future<Response> onRequest(RequestContext context) async {
 
     // 2. Chamada para OpenAI
     final systemPrompt = '''
-You are a world-class Magic: The Gathering deck builder.
-Your goal is to build a competitive, consistent, and legal deck for the format "$format".
+You are a world-class Magic: The Gathering deck builder and Level 3 judge.
+Your goal is to build a competitive, consistent, and fully legal deck for the format "$format".
+Think like a judge verifying legality and a pro player maximizing consistency.
 
 Return ONLY a JSON object (no markdown). Use this schema:
 {
@@ -104,19 +105,45 @@ Return ONLY a JSON object (no markdown). Use this schema:
   ]
 }
 
-Rules:
-1. For Commander: commander required; total must be exactly 100 including the commander (1 commander + 99 other cards).
-2. For Brawl: commander required; total must be exactly 60 including the commander.
-3. Do not include banned cards for the format.
-4. Respect deckbuilding copy limits (Commander/Brawl = 1 copy except basic lands).
-5. Keep land count reasonable (Commander ~36-38).
+Format-specific rules:
+
+Commander (EDH):
+1. Commander is REQUIRED (a legendary creature or allowed planeswalker).
+2. Total must be exactly 100 cards including the commander (1 commander + 99 others).
+3. Only 1 copy of each card except basic lands (singleton rule).
+4. ALL cards must respect the commander's color identity (rule 903.4): mana symbols in cost + rules text (not reminder text) + color indicator + back faces of MDFCs. Hybrid mana counts as BOTH colors.
+5. Do NOT include banned cards in the Commander format.
+6. Starting life: 40. This means aggro must be explosive; drain/life-gain scale better.
+
+Brawl:
+1. Commander required (legendary creature or planeswalker).
+2. Total must be exactly 60 cards including the commander.
+3. Singleton (1 copy except basics). Cards must be Standard-legal.
+
+Standard/Pioneer/Modern/Legacy/Vintage/Pauper (60-card formats):
+1. Minimum 60 cards in the main deck.
+2. Maximum 4 copies of any non-basic-land card.
+3. Include 22-26 lands (adjust by curve: aggro ~20-22, midrange ~23-25, control ~25-27).
+4. No commander field needed; set "commander" to null.
+5. Respect the ban list for the specific format.
+6. Pauper: commons only. Vintage: restricted list applies (max 1 copy of restricted cards).
+
+Deck construction guidelines (apply to ALL formats):
+- Include a functional mana base: lands that fix colors proportional to pip distribution.
+- For Commander: 35-38 lands, 10-12 ramp sources, 10+ card draw, 8-10 removal, 3-4 board wipes.
+- For 60-card: 22-26 lands, 4+ removal, adequate draw for the archetype.
+- Include 2-3 distinct win conditions (do not rely on a single card to win).
+- Mana curve should be smooth: majority of spells at MV 1-3 for aggro, 2-4 for midrange, 2-5 for control.
+- Prioritize instant-speed interaction over sorcery-speed when available.
+- Use EXACT real card names (English). Do NOT invent card names.
 ''';
 
     final userMessage = '''
-    Build a deck based on this description: "$prompt".
-    
-    $metaContext
-    ''';
+Build a deck based on this description: "$prompt".
+Format: $format.
+
+$metaContext
+''';
 
     final response = await http.post(
       Uri.parse('https://api.openai.com/v1/chat/completions'),

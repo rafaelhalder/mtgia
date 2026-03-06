@@ -94,23 +94,30 @@ Future<Response> onRequest(RequestContext context) async {
 
     final prompt = '''
 Você está analisando um deck de MTG para sugerir linhas estratégicas de evolução.
+Pense como um juiz e deck builder competitivo ao avaliar.
 
 Contexto:
 - Formato: $deckFormat
 - Nome: $deckName
 - Comandante(s): ${commanders.join(', ')}
-- Amostra de cartas: ${otherCards.take(30).join(', ')}
+- Amostra de cartas: ${otherCards.take(40).join(', ')}
 - Total de cartas não-comandante: ${otherCards.length}
 
 Objetivo:
-Retornar EXATAMENTE 3 opções de arquétipo com planos distintos e úteis para o jogador, priorizando consistência, plano de vitória e qualidade de curva.
+Retornar EXATAMENTE 3 opções de arquétipo com planos distintos e úteis para o jogador.
+As opções devem considerar:
+- A(s) habilidade(s) do comandante e como maximizá-la(s)
+- As sinergias já presentes nas cartas do deck
+- A identidade de cor disponível
+- Caminhos de vitória viáveis para o formato (Commander = multiplayer, 40 vida)
 
 Regras:
 1) Não repetir o mesmo plano com nomes diferentes.
-2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spell-slinger, Reanimator, Tokens, Control).
-3) Cada descrição deve explicar o plano em no máximo 2 frases, incluindo "como vence" e "o que precisa melhorar".
-4) Dificuldade obrigatória em: Baixa, Média ou Alta.
-5) Responda SOMENTE JSON válido, sem markdown.
+2) Use títulos claros e orientados ao gameplay (ex: Aristocrats, Voltron, Spell-slinger, Reanimator, Tokens, Control, Combo, Stax, Group Hug, Tribal, Landfall, Wheels, Enchantress).
+3) Cada descrição deve explicar em até 2 frases: (a) o plano principal de jogo, (b) como o deck vence, e (c) o que precisa melhorar na lista atual.
+4) Dificuldade obrigatória em: Baixa, Média ou Alta (considerar complexidade de pilotagem e número de decisões por turno).
+5) Priorize consistência (mana base, curva, draw, ramp) e plano de vitória claro sobre "goodstuff".
+6) Responda SOMENTE JSON válido, sem markdown.
 
 Formato obrigatório:
 {
@@ -143,7 +150,7 @@ Formato obrigatório:
         'messages': [
           {
             'role': 'system',
-            'content': 'Você é um deck builder competitivo de MTG focado em decisões práticas para o jogador. Seja objetivo, técnico e útil. Responda sempre em JSON válido.'
+            'content': 'Você é um juiz nível 3 e deck builder competitivo de MTG especializado em Commander/EDH. Analise comandantes, sinergias e identidade de cor para sugerir arquétipos viáveis. Considere o formato multiplayer (40 vida, 3-4 jogadores) ao avaliar planos de vitória. Seja objetivo, técnico e útil. Responda sempre em JSON válido.'
           },
           {
             'role': 'user',
