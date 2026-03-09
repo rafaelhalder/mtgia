@@ -4,11 +4,29 @@ import 'package:postgres/postgres.dart';
 
 String? _normalizeScryfallImageUrl(String? url) {
   if (url == null) return null;
-  final trimmed = url.trim();
-  if (trimmed.isEmpty) return null;
-  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
+  var normalized = url.trim();
+  if (normalized.isEmpty) return null;
+
+  if (normalized.startsWith('ttps://')) {
+    normalized = 'h$normalized';
+  } else if (normalized.startsWith('//api.scryfall.com/')) {
+    normalized = 'https:$normalized';
+  } else if (normalized.startsWith('api.scryfall.com/')) {
+    normalized = 'https://$normalized';
+  } else if (normalized.startsWith('http://api.scryfall.com/')) {
+    normalized = normalized.replaceFirst(
+      'http://api.scryfall.com/',
+      'https://api.scryfall.com/',
+    );
+  }
+
+  final parsed = Uri.tryParse(normalized);
+  final isScryfall =
+      parsed != null && parsed.host.toLowerCase() == 'api.scryfall.com';
+  if (!isScryfall) return normalized;
+
   try {
-    final uri = Uri.parse(trimmed);
+    final uri = Uri.parse(normalized);
     final qp = Map<String, String>.from(uri.queryParameters);
     if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
     final exact = qp['exact'];
@@ -18,7 +36,10 @@ String? _normalizeScryfallImageUrl(String? url) {
     }
     return uri.replace(queryParameters: qp).toString();
   } catch (_) {
-    return trimmed;
+    return normalized.replaceAllMapped(
+      RegExp(r'([?&]set=)([^&]+)', caseSensitive: false),
+      (m) => '${m.group(1)}${(m.group(2) ?? '').toLowerCase()}',
+    );
   }
 }
 

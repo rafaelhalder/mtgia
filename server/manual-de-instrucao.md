@@ -1,3 +1,31 @@
+## 2026-03-09 — Hotfix de `image_url` malformada (cards/decks/comunidade)
+
+### O Porquê
+- A busca de cartas retornava `200`, mas algumas imagens não renderizavam no app por `image_url` malformada (`ttps://...`, `//api.scryfall.com/...`, `api.scryfall.com/...` ou `http://api.scryfall.com/...`).
+- Isso gerava inconsistência visual no fluxo principal de criação/edição de deck (buscar carta e validar imagem antes de adicionar).
+
+### O Como
+- Backend: a função `_normalizeScryfallImageUrl` foi reforçada nas rotas que retornam `image_url` de carta/deck/comunidade para:
+  - normalizar esquema quebrado para `https`;
+  - preservar retorno direto para hosts não-Scryfall;
+  - manter regras de MTG já existentes para split cards (`exact` com `//`) e `set` em lowercase;
+  - aplicar fallback seguro no `catch` (regex para `set` lowercase).
+- Flutter: `CachedCardImage` ganhou sanitização defensiva local antes do `CachedNetworkImage`, com fallback para placeholder quando a URI for inválida.
+
+### Arquivos alterados
+- `server/routes/cards/index.dart`
+- `server/routes/cards/printings/index.dart`
+- `server/routes/cards/resolve/index.dart`
+- `server/routes/community/decks/index.dart`
+- `server/routes/community/decks/[id].dart`
+- `server/routes/decks/index.dart`
+- `server/routes/decks/[id]/index.dart`
+- `app/lib/core/widgets/cached_card_image.dart`
+
+### Impacto esperado
+- Cartas pesquisadas passam a carregar imagem de forma consistente no app, mesmo com dados legados/parciais do banco.
+- Correção é idempotente e não altera o contrato público da API (`image_url` continua opcional e textual).
+
 ## 2026-02-27 — Fix crítico no `complete` para decks sem `is_commander`
 
 ### Contexto do problema

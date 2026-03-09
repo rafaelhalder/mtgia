@@ -35,14 +35,46 @@ class CachedCardImage extends StatelessWidget {
     this.borderRadius,
   });
 
+  String? _sanitizeImageUrl(String? rawUrl) {
+    final trimmed = rawUrl?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+
+    var normalized = trimmed;
+    if (normalized.startsWith('ttps://')) {
+      normalized = 'h$normalized';
+    } else if (normalized.startsWith('//')) {
+      normalized = 'https:$normalized';
+    } else if (!normalized.contains('://')) {
+      normalized = 'https://$normalized';
+    }
+
+    if (normalized.startsWith('http://')) {
+      normalized = 'https://${normalized.substring('http://'.length)}';
+    }
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return null;
+    }
+
+    if (uri.scheme != 'http' && uri.scheme != 'https') {
+      return null;
+    }
+
+    return uri.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (imageUrl == null || imageUrl!.isEmpty) {
+    final effectiveImageUrl = _sanitizeImageUrl(imageUrl);
+    if (effectiveImageUrl == null) {
       return _placeholder();
     }
 
     final image = CachedNetworkImage(
-      imageUrl: imageUrl!,
+      imageUrl: effectiveImageUrl,
       width: width,
       height: height,
       fit: fit,

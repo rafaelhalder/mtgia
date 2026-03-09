@@ -23,10 +23,12 @@ class _DeckListScreenState extends State<DeckListScreen> {
   }
 
   Future<void> _showCreateDeckDialog(BuildContext context) async {
+    final parentContext = context;
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     String selectedFormat = 'commander';
     bool isPublic = false;
+    bool isSubmitting = false;
     final formats = [
       'commander',
       'standard',
@@ -105,30 +107,54 @@ class _DeckListScreenState extends State<DeckListScreen> {
                     ),
                     ElevatedButton(
                       onPressed: () async {
-                        if (nameController.text.isEmpty) return;
+                        if (isSubmitting) return;
+
+                        final trimmedName = nameController.text.trim();
+                        final trimmedDescription = descriptionController.text
+                            .trim();
+
+                        if (trimmedName.isEmpty) {
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            const SnackBar(
+                              content: Text('Informe o nome do deck.'),
+                              backgroundColor: AppTheme.error,
+                            ),
+                          );
+                          return;
+                        }
+
+                        setState(() => isSubmitting = true);
 
                         final success = await context
                             .read<DeckProvider>()
                             .createDeck(
-                              name: nameController.text,
+                              name: trimmedName,
                               format: selectedFormat,
-                              description: descriptionController.text,
+                              description: trimmedDescription.isEmpty
+                                  ? null
+                                  : trimmedDescription,
                               isPublic: isPublic,
                             );
 
                         if (context.mounted) {
+                          setState(() => isSubmitting = false);
+                        }
+
+                        if (context.mounted) {
                           if (success) {
                             Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
                               const SnackBar(
                                 content: Text('Deck criado com sucesso!'),
                               ),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  context.read<DeckProvider>().errorMessage ??
+                                  parentContext
+                                          .read<DeckProvider>()
+                                          .errorMessage ??
                                       'Erro ao criar deck',
                                 ),
                                 backgroundColor: AppTheme.error,
@@ -137,7 +163,16 @@ class _DeckListScreenState extends State<DeckListScreen> {
                           }
                         }
                       },
-                      child: const Text('Criar'),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Criar'),
                     ),
                   ],
                 ),
