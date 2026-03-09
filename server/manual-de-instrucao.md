@@ -1,3 +1,20 @@
+## 2026-03-09 — Fix de build Docker sem `pubspec.lock`
+
+### O Porquê
+- O deploy no EasyPanel falhava no passo `COPY pubspec.yaml pubspec.lock ./` quando o repositório não continha `server/pubspec.lock`.
+- Resultado: build interrompido com erro de checksum (`/pubspec.lock: not found`).
+
+### O Como
+- Ajuste no `server/Dockerfile` para copiar apenas `pubspec.yaml` antes do `dart pub get`.
+- Mantivemos o padrão de cache de dependências e eliminamos o acoplamento a um lockfile opcional no contexto de build.
+
+### Arquivo alterado
+- `server/Dockerfile`
+
+### Impacto esperado
+- Pipeline de build/deploy volta a funcionar tanto com quanto sem `pubspec.lock` versionado.
+- Sem alteração de contrato de runtime da API.
+
 ## 2026-03-09 — Hotfix de `image_url` malformada (cards/decks/comunidade)
 
 ### O Porquê

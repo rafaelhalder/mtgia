@@ -6,7 +6,7 @@ WORKDIR /app
 ENV PATH="$PATH:/root/.pub-cache/bin"
 RUN dart pub global activate dart_frog_cli
 
-COPY pubspec.yaml pubspec.lock ./
+COPY pubspec.yaml ./
 RUN dart pub get
 
 COPY . .
