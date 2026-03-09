@@ -43,6 +43,19 @@
 - Cartas pesquisadas passam a carregar imagem de forma consistente no app, mesmo com dados legados/parciais do banco.
 - Correção é idempotente e não altera o contrato público da API (`image_url` continua opcional e textual).
 
+## 2026-03-09 — Ajuste de encoding (`+` → `%20`) em `image_url` da Scryfall
+
+### O Porquê
+- Em runtime Flutter, algumas URLs `cards/named?...format=image` retornavam `400`, embora o endpoint de busca retornasse `200`.
+- O padrão com `+` para espaços no parâmetro `exact` mostrou comportamento inconsistente no cliente de imagem.
+
+### O Como
+- Após gerar a URL normalizada com `Uri.replace(queryParameters: qp)`, adicionamos padronização final para `%20` (`replaceAll('+', '%20')`).
+- O ajuste foi aplicado nas mesmas rotas de serialização de cartas/decks/comunidade.
+
+### Impacto esperado
+- Redução de `400` ao carregar imagem em cartas com nomes compostos (vírgula/espaço), preservando o contrato de resposta atual.
+
 ## 2026-02-27 — Fix crítico no `complete` para decks sem `is_commander`
 
 ### Contexto do problema

@@ -78,9 +78,20 @@ class CachedCardImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
+      httpHeaders: const {'User-Agent': 'ManaLoom/1.0'},
       fadeInDuration: const Duration(milliseconds: 200),
       placeholder: (_, __) => _loadingWidget(),
-      errorWidget: (_, __, ___) => _errorWidget(),
+      errorWidget: (_, __, error) {
+        debugPrint('[🖼️ CachedCardImage] falha ao carregar $effectiveImageUrl -> $error');
+        return Image.network(
+          effectiveImageUrl,
+          width: width,
+          height: height,
+          fit: fit,
+          headers: const {'User-Agent': 'ManaLoom/1.0'},
+          errorBuilder: (_, __, ___) => _errorWidget(),
+        );
+      },
       // Cache por 30 dias (default do flutter_cache_manager)
       // As imagens do Scryfall raramente mudam, então cache longo é seguro.
     );

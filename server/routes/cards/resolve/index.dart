@@ -500,7 +500,7 @@ String? _normalizeScryfallImageUrl(String? url) {
       if (left.isNotEmpty) qp['exact'] = left;
     }
 
-    return uri.replace(queryParameters: qp).toString();
+    return uri.replace(queryParameters: qp).toString().replaceAll('+', '%20');
   } catch (_) {
     return normalized.replaceAllMapped(
       RegExp(r'([?&]set=)([^&]+)', caseSensitive: false),
