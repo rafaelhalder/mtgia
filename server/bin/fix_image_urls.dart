@@ -44,17 +44,12 @@ Future<void> main(List<String> args) async {
   print('');
 
   // Carrega .env
-  final env = DotEnv();
-  final envFile = File('.env');
-  if (envFile.existsSync()) {
-    env.load(['.env']);
-  }
+  final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
 
-  final dbUrl = Platform.environment['DATABASE_URL'] ??
-      env['DATABASE_URL'] ??
-      '';
+  final dbUrl = env['DATABASE_URL'] ?? '';
   if (dbUrl.isEmpty) {
     print('❌ DATABASE_URL não configurada');
+    print('   Certifique-se de ter um arquivo .env com DATABASE_URL');
     exit(1);
   }
 
