@@ -61,19 +61,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/login'),
         ),
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
+              Color(0xFF1A0A2E),
+              AppTheme.surfaceSlate2,
               AppTheme.backgroundAbyss,
-              theme.colorScheme.surface,
             ],
           ),
         ),
@@ -86,12 +89,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Título
-                    Text(
-                      'Criar Conta',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    // Título com gradiente
+                    ShaderMask(
+                      shaderCallback: (bounds) => AppTheme.primaryGradient.createShader(bounds),
+                      child: Text(
+                        'Criar Conta',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -231,39 +238,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
                     
-                    // Botão Registrar
+                    // Botão Registrar com gradiente
                     Consumer<AuthProvider>(
                       builder: (context, auth, child) {
-                        return ElevatedButton(
-                          onPressed: auth.status == AuthStatus.loading
-                              ? null
-                              : _handleRegister,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
+                        if (auth.status == AuthStatus.loading) {
+                          return Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              gradient: AppTheme.primaryGradient,
                               borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                             ),
+                            child: const Center(
+                              child: SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                        return Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.primaryGradient,
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.manaViolet.withValues(alpha: 0.35),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          child: auth.status == AuthStatus.loading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : const Text(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                              onTap: _handleRegister,
+                              child: const Center(
+                                child: Text(
                                   'Criar Conta',
                                   style: TextStyle(
+                                    color: Colors.white,
                                     fontSize: AppTheme.fontLg,
                                     fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3,
                                   ),
                                 ),
+                              ),
+                            ),
+                          ),
                         );
                       },
                     ),

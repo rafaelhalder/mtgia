@@ -27,108 +27,130 @@ class MainScaffold extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppTheme.backgroundAbyss,
-        elevation: 0,
-        toolbarHeight: 40,
-        automaticallyImplyLeading: false,
-        actions: [
-          // Ícone de mensagens com badge de não-lidas
-          Selector<MessageProvider, int>(
-            selector: (_, p) => p.unreadCount,
-            builder: (context, msgUnread, child) {
-              return IconButton(
-                icon: Badge(
-                  isLabelVisible: msgUnread > 0,
-                  label: Text(
-                    msgUnread > 99 ? '99+' : '$msgUnread',
-                    style: const TextStyle(fontSize: 9),
-                  ),
-                  backgroundColor: AppTheme.loomCyan,
-                  child: const Icon(Icons.chat_bubble_outline,
-                      color: AppTheme.textSecondary, size: 22),
-                ),
-                onPressed: () => context.push('/messages'),
-                tooltip: 'Mensagens',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              );
-            },
+      backgroundColor: AppTheme.backgroundAbyss,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(44),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.surfaceSlate2,
+            border: Border(
+              bottom: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
+            ),
           ),
-          // Ícone de notificações com badge
-          Selector<NotificationProvider, int>(
-            selector: (_, p) => p.unreadCount,
-            builder: (context, unreadCount, child) {
-              return IconButton(
-                icon: Badge(
-                  isLabelVisible: unreadCount > 0,
-                  label: Text(
-                    unreadCount > 99 ? '99+' : '$unreadCount',
-                    style: const TextStyle(fontSize: 9),
-                  ),
-                  backgroundColor: AppTheme.error,
-                  child: const Icon(Icons.notifications_outlined,
-                      color: AppTheme.textSecondary, size: 22),
-                ),
-                onPressed: () => context.push('/notifications'),
-                tooltip: 'Notificações',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              );
-            },
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            toolbarHeight: 44,
+            automaticallyImplyLeading: false,
+            actions: [
+              // Ícone de mensagens com badge de não-lidas
+              Selector<MessageProvider, int>(
+                selector: (_, p) => p.unreadCount,
+                builder: (context, msgUnread, child) {
+                  return IconButton(
+                    icon: Badge(
+                      isLabelVisible: msgUnread > 0,
+                      label: Text(
+                        msgUnread > 99 ? '99+' : '$msgUnread',
+                        style: const TextStyle(fontSize: 9),
+                      ),
+                      backgroundColor: AppTheme.loomCyan,
+                      child: const Icon(Icons.chat_bubble_outline,
+                          color: AppTheme.textSecondary, size: 22),
+                    ),
+                    onPressed: () => context.push('/messages'),
+                    tooltip: 'Mensagens',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  );
+                },
+              ),
+              // Ícone de notificações com badge
+              Selector<NotificationProvider, int>(
+                selector: (_, p) => p.unreadCount,
+                builder: (context, unreadCount, child) {
+                  return IconButton(
+                    icon: Badge(
+                      isLabelVisible: unreadCount > 0,
+                      label: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(fontSize: 9),
+                      ),
+                      backgroundColor: AppTheme.error,
+                      child: const Icon(Icons.notifications_outlined,
+                          color: AppTheme.textSecondary, size: 22),
+                    ),
+                    onPressed: () => context.push('/notifications'),
+                    tooltip: 'Notificações',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
-          const SizedBox(width: 8),
-        ],
+        ),
       ),
-      body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          switch (index) {
-            case 0:
-              context.go('/home');
-              break;
-            case 1:
-              context.go('/decks');
-              break;
-            case 2:
-              context.go('/collection');
-              break;
-            case 3:
-              context.go('/community');
-              break;
-            case 4:
-              context.go('/profile');
-              break;
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Início',
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: AppTheme.scaffoldGradient),
+        child: child,
+      ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.style_outlined),
-            selectedIcon: Icon(Icons.style),
-            label: 'Decks',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.collections_bookmark_outlined),
-            selectedIcon: Icon(Icons.collections_bookmark),
-            label: 'Coleção',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.public_outlined),
-            selectedIcon: Icon(Icons.public),
-            label: 'Comunidade',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Perfil',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: currentIndex,
+          onDestinationSelected: (index) {
+            switch (index) {
+              case 0:
+                context.go('/home');
+                break;
+              case 1:
+                context.go('/decks');
+                break;
+              case 2:
+                context.go('/collection');
+                break;
+              case 3:
+                context.go('/community');
+                break;
+              case 4:
+                context.go('/profile');
+                break;
+            }
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Início',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.style_outlined),
+              selectedIcon: Icon(Icons.style),
+              label: 'Decks',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.collections_bookmark_outlined),
+              selectedIcon: Icon(Icons.collections_bookmark),
+              label: 'Coleção',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.public_outlined),
+              selectedIcon: Icon(Icons.public),
+              label: 'Comunidade',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Perfil',
+            ),
+          ],
+        ),
       ),
     );
   }

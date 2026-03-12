@@ -30,6 +30,38 @@ class AppTheme {
   static const Color warning = Color(0xFFF97316);
   static const Color disabled = Color(0xFF6B7280);
 
+  // ── Gradients (MTG atmospheric feel) ─────────────────────
+  static const LinearGradient scaffoldGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [backgroundAbyss, Color(0xFF0C1020), Color(0xFF0A0D1A)],
+    stops: [0.0, 0.55, 1.0],
+  );
+
+  static const LinearGradient heroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF1A0A2E), Color(0xFF0F172A), backgroundAbyss],
+  );
+
+  static const LinearGradient primaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [manaViolet, Color(0xFF6D28D9)],
+  );
+
+  static const LinearGradient cardGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [surfaceSlate, surfaceSlate2],
+  );
+
+  static const LinearGradient goldAccentGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [mythicGold, Color(0xFFD97706)],
+  );
+
   // ── Border Radius Scale (5 tokens) ────────────────────────
   static const double radiusXs = 4;    // chips, badges, indicators
   static const double radiusSm = 8;    // buttons, small containers
@@ -132,15 +164,24 @@ class AppTheme {
     scaffoldBackgroundColor: backgroundAbyss,
     textTheme: _buildTextTheme(),
     appBarTheme: AppBarTheme(
-      backgroundColor: surfaceSlate,
+      backgroundColor: surfaceSlate2,
       foregroundColor: textPrimary,
       elevation: 0,
       centerTitle: true,
+      shadowColor: manaViolet.withValues(alpha: 0.1),
+      surfaceTintColor: Colors.transparent,
+      shape: const Border(
+        bottom: BorderSide(color: outlineMuted, width: 0.5),
+      ),
     ),
     cardTheme: CardThemeData(
       color: surfaceSlate,
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusMd)),
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.5),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        side: const BorderSide(color: outlineMuted, width: 0.5),
+      ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -148,12 +189,76 @@ class AppTheme {
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSm)),
+        elevation: 4,
+        shadowColor: manaViolet.withValues(alpha: 0.5),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: manaViolet,
+        side: const BorderSide(color: manaViolet, width: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSm)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: surfaceSlate,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(radiusMd)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: const BorderSide(color: outlineMuted, width: 0.5),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: const BorderSide(color: outlineMuted, width: 0.5),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: const BorderSide(color: manaViolet, width: 1.5),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: surfaceSlate2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusLg),
+        side: const BorderSide(color: outlineMuted, width: 0.5),
+      ),
+      elevation: 12,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surfaceSlate2,
+      indicatorColor: manaViolet.withValues(alpha: 0.2),
+      indicatorShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        side: BorderSide(color: manaViolet.withValues(alpha: 0.3), width: 0.5),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const TextStyle(
+            fontSize: fontXs,
+            fontWeight: FontWeight.w600,
+            color: manaViolet,
+          );
+        }
+        return const TextStyle(fontSize: fontXs, color: textSecondary);
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(color: manaViolet, size: 22);
+        }
+        return const IconThemeData(color: textSecondary, size: 22);
+      }),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: surfaceSlate,
+      selectedColor: manaViolet.withValues(alpha: 0.2),
+      labelStyle: const TextStyle(fontSize: fontSm, color: textPrimary),
+      side: const BorderSide(color: outlineMuted, width: 0.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusXs)),
+    ),
+    dividerTheme: const DividerThemeData(
+      color: outlineMuted,
+      thickness: 0.5,
     ),
   );
 }

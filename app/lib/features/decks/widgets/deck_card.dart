@@ -17,6 +17,20 @@ class DeckCard extends StatelessWidget {
     required this.onDelete,
   });
 
+  // Cor de destaque baseada no formato do deck
+  Color _formatAccentColor(String format) {
+    switch (format.toLowerCase()) {
+      case 'commander': return AppTheme.mythicGold;
+      case 'standard': return AppTheme.loomCyan;
+      case 'modern': return AppTheme.manaViolet;
+      case 'pioneer': return const Color(0xFF34D399); // verde esmeralda
+      case 'legacy': return const Color(0xFFEC4899);  // rosa
+      case 'vintage': return const Color(0xFFF97316); // laranja
+      case 'pauper': return AppTheme.textSecondary;
+      default: return AppTheme.manaViolet;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -24,100 +38,132 @@ class DeckCard extends StatelessWidget {
     final hasCommander =
         (deck.commanderName?.trim().isNotEmpty ?? false) ||
         (commanderImageUrl?.isNotEmpty ?? false);
+    final accentColor = _formatAccentColor(deck.format);
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
+      decoration: BoxDecoration(
+        gradient: AppTheme.cardGradient,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header (Nome + Formato)
-              Row(
+        border: Border(
+          left: BorderSide(color: accentColor, width: 3),
+          top: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
+          right: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
+          bottom: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(-2, 2),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            splashColor: accentColor.withValues(alpha: 0.1),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (hasCommander) ...[
-                    CachedCardImage(
-                      imageUrl: commanderImageUrl,
-                      width: 44,
-                      height: 62,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          deck.name,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                  // Header (Nome + Formato)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (hasCommander) ...[
+                        CachedCardImage(
+                          imageUrl: commanderImageUrl,
+                          width: 44,
+                          height: 62,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _FormatChip(format: deck.format),
-                            const SizedBox(width: 8),
-                            if (deck.isPublic)
-                              Icon(
-                                Icons.public,
-                                size: 16,
-                                color: theme.colorScheme.secondary,
+                            Text(
+                              deck.name,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                _FormatChip(format: deck.format, accentColor: accentColor),
+                                const SizedBox(width: 8),
+                                if (deck.isPublic)
+                                  Icon(
+                                    Icons.public,
+                                    size: 16,
+                                    color: theme.colorScheme.secondary,
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.more_vert, size: 20),
+                        onPressed: () => _showDeckMenu(context),
+                        color: AppTheme.textHint,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert, size: 20),
-                    onPressed: () => _showDeckMenu(context),
-                    color: theme.colorScheme.outline,
+
+                  // Descrição
+                  if (deck.description != null && deck.description!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      deck.description!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, thickness: 0.5),
+                  const SizedBox(height: 10),
+
+                  // Footer (Stats)
+                  Row(
+                    children: [
+                      DeckProgressChip(
+                        totalCards: deck.cardCount,
+                        maxCards: _getMaxCards(deck.format),
+                        hasCommander: hasCommander,
+                        format: deck.format,
+                      ),
+                      const SizedBox(width: 12),
+                      if (deck.synergyScore != null && deck.synergyScore! > 0)
+                        _StatChip(
+                          icon: Icons.auto_awesome,
+                          label: 'Sinergia ${deck.synergyScore}%',
+                          color: _getSynergyColor(deck.synergyScore!),
+                        ),
+                    ],
                   ),
                 ],
               ),
-
-              // Descrição
-              if (deck.description != null && deck.description!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  deck.description!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-
-              const SizedBox(height: 12),
-
-              // Footer (Stats)
-              Row(
-                children: [
-                  DeckProgressChip(
-                    totalCards: deck.cardCount,
-                    maxCards: _getMaxCards(deck.format),
-                    hasCommander: hasCommander,
-                    format: deck.format,
-                  ),
-                  const SizedBox(width: 12),
-                  if (deck.synergyScore != null && deck.synergyScore! > 0)
-                    _StatChip(
-                      icon: Icons.auto_awesome,
-                      label: 'Sinergia ${deck.synergyScore}%',
-                      color: _getSynergyColor(deck.synergyScore!),
-                    ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -169,23 +215,26 @@ class DeckCard extends StatelessWidget {
 
 class _FormatChip extends StatelessWidget {
   final String format;
+  final Color accentColor;
 
-  const _FormatChip({required this.format});
+  const _FormatChip({required this.format, required this.accentColor});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.2),
+        color: accentColor.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppTheme.radiusXs),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3), width: 0.5),
       ),
       child: Text(
         format.toUpperCase(),
         style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.primary,
+          color: accentColor,
           fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -207,7 +256,7 @@ class _StatChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: chipColor),
+        Icon(icon, size: 14, color: chipColor),
         const SizedBox(width: 4),
         Text(
           label,
