@@ -1,3 +1,61 @@
+## 2026-03-12 — Arquitetura async job para modo complete (otimização pesada)
+
+### O Porquê
+- O endpoint `POST /ai/optimize` no modo `complete` podia levar 30+ segundos (múltiplas chamadas à OpenAI + fallbacks + validações). Manter tudo numa única request HTTP síncrona era frágil: timeouts, conexões perdidas e UX ruim (tela congelada sem feedback).
+- A solução: **job-based async pattern** — o servidor cria um job em background, retorna 202 imediatamente, e o cliente faz polling com progress updates.
+
+### O Como — Server
+
+1. **`server/lib/ai/optimize_job.dart`** (NOVO): In-memory job store com `OptimizeJobStore` (static Map + autocleanup 30min). Cada job tem: id, status (pending→processing→completed/failed), stage, stageNumber, totalStages, result, error.
+
+2. **`server/routes/ai/optimize/jobs/[id].dart`** (NOVO): Endpoint GET de polling que herda JWT da middleware de `/ai/`. Retorna job.toJson() com status e progresso.
+
+3. **`server/routes/ai/optimize/index.dart`** (MODIFICADO):
+   - Modo **complete** agora é interceptado ANTES do processamento pesado:
+     - Cria job via `OptimizeJobStore.create()`
+     - Chama `unawaited(_processCompleteModeAsync(...))` (fire-and-forget via event loop)
+     - Retorna 202 com `job_id` + `poll_url` + `poll_interval_ms`
+   - Modo **optimize** (troca simples de cartas) continua síncrono.
+   - Função `_processCompleteModeAsync()` contém a lógica extraída dos ~800 lines do complete mode, com `OptimizeJobStore.progress()` chamado em 6 estágios.
+
+### O Como — Flutter Client
+
+4. **`app/lib/features/decks/providers/deck_provider.dart`** (MODIFICADO):
+   - `optimizeDeck()` aceita `onProgress` callback
+   - 202 → extrai `job_id` → chama `_pollOptimizeJob()` (max 150 polls × 2s = 5min)
+   - Cada poll chama `onProgress(stage, stageNumber, totalStages)`
+   - Quando `status == 'completed'` → retorna o result. `'failed'` → throw.
+
+5. **`app/lib/features/decks/screens/deck_details_screen.dart`** (MODIFICADO):
+   - Loading dialog usa `ValueNotifier<String>` + `ValueNotifier<double>` para atualizar stage text e progress bar em tempo real.
+   - `LinearProgressIndicator` mostra progresso determinístico quando há stageNumber > 0.
+
+### Fluxo completo (sequência)
+```
+Cliente POST /ai/optimize {deck_id, archetype, ...}
+  ↓ modo complete detectado
+Servidor cria job → retorna 202 {job_id, poll_url}
+  ↓ background: unawaited(_processCompleteModeAsync)
+    Stage 1: Preparando referências do commander
+    Stage 2: Consultando IA para sugestões
+    Stage 3: Preenchendo com cartas sinérgicas
+    Stage 4: Ajustando base de mana
+    Stage 5: (reservado)
+    Stage 6: Processando resultado final
+  ↓
+Cliente GET /ai/optimize/jobs/:id (a cada 2s)
+  ↓ status: processing → mostra stage no dialog
+  ↓ status: completed → retorna result
+  ↓ status: failed → throw Exception
+```
+
+### Decisão arquitetural: por que in-memory e não DB?
+- É um MVP: o job vive 30 minutos e serve apenas para a sessão ativa do usuário.
+- Pool é singleton — a closure captura a referência e continua operando após retornar 202.
+- Para scale-out (múltiplos pods), migrar para Redis ou tabela `optimize_jobs`.
+
+---
+
 ## 2026-03-12 — Fix pipeline de otimização IA: timeout, quality gate parcial e UX
 
 ### O Porquê
