@@ -64,7 +64,7 @@ class _TradeInboxTabContentState extends State<TradeInboxTabContent>
       children: [
         // Sub-tabs dentro da tab Trades
         Material(
-          color: AppTheme.surfaceSlate2,
+          color: AppTheme.surfaceElevated,
           child: TabBar(
             controller: _tabController,
             indicatorColor: AppTheme.manaViolet,

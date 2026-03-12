@@ -54,8 +54,8 @@ class _ScannerOverlayPainter extends CustomPainter {
     dimPath.fillType = PathFillType.evenOdd;
     canvas.drawPath(dimPath, dimPaint);
 
-    // Borda do guia — loomCyan (mythicGold se processando)
-    final borderColor = isProcessing ? AppTheme.mythicGold : AppTheme.loomCyan.withValues(alpha: 0.8);
+    // Borda do guia — primarySoft (mythicGold se processando)
+    final borderColor = isProcessing ? AppTheme.mythicGold : AppTheme.primarySoft.withValues(alpha: 0.8);
     final borderPaint = Paint()
       ..color = borderColor
       ..style = PaintingStyle.stroke

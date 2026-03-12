@@ -83,7 +83,7 @@ class _CommunityDeckDetailScreenState
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: Text(_deckData?['name'] ?? 'Deck Público'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
         actions: [
           if (_deckData != null)
             IconButton(
@@ -92,9 +92,9 @@ class _CommunityDeckDetailScreenState
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppTheme.loomCyan),
+                          strokeWidth: 2, color: AppTheme.primarySoft),
                     )
-                  : const Icon(Icons.copy, color: AppTheme.loomCyan),
+                  : const Icon(Icons.copy, color: AppTheme.primarySoft),
               tooltip: 'Copiar para meus decks',
               onPressed: _isCopying ? null : _copyDeck,
             ),
@@ -205,12 +205,12 @@ class _CommunityDeckDetailScreenState
                       child: Text(
                         deck['owner_username'] ?? 'Anônimo',
                         style: TextStyle(
-                          color: AppTheme.loomCyan,
+                          color: AppTheme.primarySoft,
                           fontSize: AppTheme.fontMd,
                           decoration: deck['owner_id'] != null
                               ? TextDecoration.underline
                               : null,
-                          decorationColor: AppTheme.loomCyan,
+                          decorationColor: AppTheme.primarySoft,
                         ),
                       ),
                     ),
@@ -275,7 +275,7 @@ class _CommunityDeckDetailScreenState
                   ? 'Copiando...'
                   : 'Copiar Deck para minha coleção'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.loomCyan,
+                backgroundColor: AppTheme.primarySoft,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
@@ -314,7 +314,7 @@ class _CommunityDeckDetailScreenState
                 Text(
                   '$type ($totalQty)',
                   style: const TextStyle(
-                    color: AppTheme.loomCyan,
+                    color: AppTheme.primarySoft,
                     fontWeight: FontWeight.bold,
                     fontSize: AppTheme.fontLg,
                   ),
@@ -339,7 +339,7 @@ class _CommunityDeckDetailScreenState
     final imageUrl = card['image_url'] as String?;
 
     return Card(
-      color: AppTheme.surfaceSlate2,
+      color: AppTheme.surfaceElevated,
       margin: const EdgeInsets.only(bottom: 4),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTheme.radiusSm)),

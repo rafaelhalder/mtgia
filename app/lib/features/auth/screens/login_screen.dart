@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
             end: Alignment.bottomRight,
             colors: [
               Color(0xFF1A0A2E),
-              AppTheme.surfaceSlate2,
+              AppTheme.surfaceElevated,
               AppTheme.backgroundAbyss,
             ],
           ),

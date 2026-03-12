@@ -1,48 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// ManaLoom Theme: "Arcane Weaver" Color Palette
-/// Inspired by weaving mana threads with technology
+/// ManaLoom Theme: "Calm Abyss" Palette
+/// Neutral dark UI — card artwork is the main visual focus.
+///
+/// DESIGN RULES:
+///   1. Single primary accent (violet). No cyan.
+///   2. Gradients only for hero sections and primary buttons.
+///   3. Surface hierarchy: backgroundAbyss < surfaceSlate < surfaceElevated.
 ///
 /// COLOR BUDGET (24 tokens):
 ///   10 brand/layout + 5 semantic + 6 WUBRG + 1 hint + 2 format extras = 24
-///   (formatPioneer + formatLegacy are the 2 new additions beyond the original 22)
 ///   Qualquer cor fora deste arquivo é violação.
 ///
 /// RADIUS SCALE: radiusXs(4) / radiusSm(8) / radiusMd(12) / radiusLg(16) / radiusXl(20)
 /// FONT SCALE:   fontXs(10) / fontSm(12) / fontMd(14) / fontLg(16) / fontXl(18) / fontXxl(20) / fontDisplay(32)
 class AppTheme {
   // ── Brand palette (layout) ──────────────────────────────────
-  static const Color backgroundAbyss = Color(0xFF0A0E14);
-  static const Color surfaceSlate = Color(0xFF1E293B);
-  static const Color surfaceSlate2 = Color(0xFF0F172A);
-  static const Color manaViolet = Color(0xFF8B5CF6);   // Primary
-  static const Color loomCyan = Color(0xFF06B6D4);     // Secondary
-  static const Color mythicGold = Color(0xFFF59E0B);   // Accent / Tertiary
+  static const Color backgroundAbyss = Color(0xFF0B0F1A);
+  static const Color surfaceSlate = Color(0xFF141B2D);
+  static const Color surfaceElevated = Color(0xFF1C2438);
+  static const Color manaViolet = Color(0xFF7C3AED);    // Primary
+  static const Color primarySoft = Color(0xFFA78BFA);    // Primary soft
+  static const Color mythicGold = Color(0xFFF59E0B);     // Accent / Tertiary
 
-  static const Color textPrimary = Color(0xFFF1F5F9);
-  static const Color textSecondary = Color(0xFF94A3B8);
-  static const Color textHint = Color(0xFF64748B);     // Hints, placeholders
-  static const Color outlineMuted = Color(0xFF334155);
+  static const Color textPrimary = Color(0xFFE5E7EB);
+  static const Color textSecondary = Color(0xFF9CA3AF);
+  static const Color textHint = Color(0xFF6B7280);       // Hints, placeholders
+  static const Color outlineMuted = Color(0xFF2A3552);
+
+  // ── Deprecated aliases (backward compat) ────────────────────
+  @Deprecated('Use primarySoft instead')
+  static const Color loomCyan = primarySoft;
+  @Deprecated('Use surfaceElevated instead')
+  static const Color surfaceSlate2 = surfaceElevated;
 
   // ── Semantic (feedback) ─────────────────────────────────────
   static const Color success = Color(0xFF22C55E);
   static const Color error = Color(0xFFEF4444);
-  static const Color warning = Color(0xFFF97316);
+  static const Color warning = Color(0xFFF59E0B);
   static const Color disabled = Color(0xFF6B7280);
 
-  // ── Gradients (MTG atmospheric feel) ─────────────────────
+  // ── Gradients ───────────────────────────────────────────────
+  // Gradients reserved for hero sections and primary buttons only.
+  // Cards/lists use flat surfaceSlate or surfaceElevated.
   static const LinearGradient scaffoldGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [backgroundAbyss, Color(0xFF0C1020), Color(0xFF0A0D1A)],
+    colors: [backgroundAbyss, Color(0xFF0D1224), Color(0xFF0B0F1A)],
     stops: [0.0, 0.55, 1.0],
   );
 
   static const LinearGradient heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF1A0A2E), Color(0xFF0F172A), backgroundAbyss],
+    colors: [Color(0xFF1A0A2E), surfaceSlate, backgroundAbyss],
   );
 
   static const LinearGradient primaryGradient = LinearGradient(
@@ -51,10 +63,11 @@ class AppTheme {
     colors: [manaViolet, Color(0xFF6D28D9)],
   );
 
+  /// Intentionally flat — no visible gradient on cards/list items.
   static const LinearGradient cardGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [surfaceSlate, surfaceSlate2],
+    colors: [surfaceSlate, surfaceSlate],
   );
 
   static const LinearGradient goldAccentGradient = LinearGradient(
@@ -98,7 +111,7 @@ class AppTheme {
 
   // ── Format accent colors (deck card frames) ───────────────
   static const Color formatCommander = mythicGold;
-  static const Color formatStandard = loomCyan;
+  static const Color formatStandard = primarySoft;
   static const Color formatModern = manaViolet;
   static const Color formatPioneer = Color(0xFF34D399);  // Emerald green
   static const Color formatLegacy = Color(0xFFEC4899);   // Rose pink
@@ -111,7 +124,7 @@ class AppTheme {
   static Color conditionColor(String condition) {
     switch (condition.toUpperCase()) {
       case 'NM': return success;
-      case 'LP': return loomCyan;
+      case 'LP': return primarySoft;
       case 'MP': return mythicGold;
       case 'HP': return warning;
       case 'DMG': return error;
@@ -162,10 +175,10 @@ class AppTheme {
     brightness: Brightness.dark,
     colorScheme: ColorScheme.dark(
       primary: manaViolet,
-      secondary: loomCyan,
+      secondary: primarySoft,
       tertiary: mythicGold,
       surface: surfaceSlate,
-      surfaceContainerHighest: surfaceSlate2,
+      surfaceContainerHighest: surfaceElevated,
       outline: outlineMuted,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
@@ -174,11 +187,11 @@ class AppTheme {
     scaffoldBackgroundColor: backgroundAbyss,
     textTheme: _buildTextTheme(),
     appBarTheme: AppBarTheme(
-      backgroundColor: surfaceSlate2,
+      backgroundColor: surfaceElevated,
       foregroundColor: textPrimary,
       elevation: 0,
       centerTitle: true,
-      shadowColor: manaViolet.withValues(alpha: 0.1),
+      shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       shape: const Border(
         bottom: BorderSide(color: outlineMuted, width: 0.5),
@@ -186,8 +199,8 @@ class AppTheme {
     ),
     cardTheme: CardThemeData(
       color: surfaceSlate,
-      elevation: 3,
-      shadowColor: Colors.black.withValues(alpha: 0.5),
+      elevation: 0,
+      shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusMd),
         side: const BorderSide(color: outlineMuted, width: 0.5),
@@ -199,14 +212,14 @@ class AppTheme {
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSm)),
-        elevation: 4,
-        shadowColor: manaViolet.withValues(alpha: 0.5),
+        elevation: 0,
+        shadowColor: Colors.transparent,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: manaViolet,
-        side: const BorderSide(color: manaViolet, width: 1),
+        foregroundColor: primarySoft,
+        side: const BorderSide(color: outlineMuted, width: 1),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusSm)),
       ),
@@ -228,19 +241,18 @@ class AppTheme {
       ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: surfaceSlate2,
+      backgroundColor: surfaceElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusLg),
         side: const BorderSide(color: outlineMuted, width: 0.5),
       ),
-      elevation: 12,
+      elevation: 8,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: surfaceSlate2,
-      indicatorColor: manaViolet.withValues(alpha: 0.2),
+      backgroundColor: surfaceElevated,
+      indicatorColor: manaViolet.withValues(alpha: 0.15),
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        side: BorderSide(color: manaViolet.withValues(alpha: 0.3), width: 0.5),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
@@ -261,7 +273,7 @@ class AppTheme {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: surfaceSlate,
-      selectedColor: manaViolet.withValues(alpha: 0.2),
+      selectedColor: manaViolet.withValues(alpha: 0.15),
       labelStyle: const TextStyle(fontSize: fontSm, color: textPrimary),
       side: const BorderSide(color: outlineMuted, width: 0.5),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusXs)),
@@ -269,6 +281,12 @@ class AppTheme {
     dividerTheme: const DividerThemeData(
       color: outlineMuted,
       thickness: 0.5,
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: surfaceElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusLg)),
+      ),
     ),
   );
 }

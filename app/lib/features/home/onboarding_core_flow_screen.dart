@@ -83,7 +83,7 @@ class _OnboardingCoreFlowScreenState extends State<OnboardingCoreFlowScreen> {
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Criar e Otimizar Deck'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

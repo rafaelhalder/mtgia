@@ -368,12 +368,12 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: deck.isPublic
-                              ? AppTheme.loomCyan.withValues(alpha: 0.15)
+                              ? AppTheme.primarySoft.withValues(alpha: 0.15)
                               : AppTheme.textHint.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                           border: Border.all(
                             color: deck.isPublic
-                                ? AppTheme.loomCyan
+                                ? AppTheme.primarySoft
                                 : AppTheme.textHint,
                             width: 0.5,
                           ),
@@ -385,7 +385,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                               deck.isPublic ? Icons.public : Icons.lock_outline,
                               size: 14,
                               color: deck.isPublic
-                                  ? AppTheme.loomCyan
+                                  ? AppTheme.primarySoft
                                   : AppTheme.textSecondary,
                             ),
                             const SizedBox(width: 4),
@@ -393,7 +393,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                               deck.isPublic ? 'Público' : 'Privado',
                               style: TextStyle(
                                 color: deck.isPublic
-                                    ? AppTheme.loomCyan
+                                    ? AppTheme.primarySoft
                                     : AppTheme.textSecondary,
                                 fontWeight: FontWeight.w600,
                                 fontSize: AppTheme.fontSm,
@@ -2573,7 +2573,7 @@ Color _conditionColor(CardCondition c) {
     case CardCondition.nm:
       return AppTheme.success;
     case CardCondition.lp:
-      return AppTheme.loomCyan;
+      return AppTheme.primarySoft;
     case CardCondition.mp:
       return AppTheme.mythicGold;
     case CardCondition.hp:

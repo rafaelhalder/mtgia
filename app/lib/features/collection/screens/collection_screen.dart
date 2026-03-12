@@ -43,7 +43,7 @@ class _CollectionScreenState extends State<CollectionScreen>
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Coleção'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
         actions: [
           IconButton(
             tooltip: 'Última edição',

@@ -133,17 +133,17 @@ class _MarketplaceTabContentState extends State<MarketplaceTabContent>
                     _doSearch();
                   },
                   selectedColor:
-                      AppTheme.loomCyan.withValues(alpha: 0.3),
+                      AppTheme.primarySoft.withValues(alpha: 0.3),
                   backgroundColor: AppTheme.surfaceSlate,
                   labelStyle: TextStyle(
                     color: _onlyTrade
-                        ? AppTheme.loomCyan
+                        ? AppTheme.primarySoft
                         : AppTheme.textSecondary,
                     fontSize: AppTheme.fontSm,
                   ),
                   side: BorderSide(
                     color: _onlyTrade
-                        ? AppTheme.loomCyan
+                        ? AppTheme.primarySoft
                         : AppTheme.outlineMuted,
                   ),
                 ),
@@ -413,7 +413,7 @@ class _MarketplaceCard extends StatelessWidget {
                   // Trade / Sale tags + price
                   Row(
                     children: [
-                      if (item.forTrade) _statusTag('Troca', AppTheme.loomCyan),
+                      if (item.forTrade) _statusTag('Troca', AppTheme.primarySoft),
                       if (item.forSale) ...[
                         if (item.forTrade) const SizedBox(width: 6),
                         _statusTag('Venda', AppTheme.mythicGold),
@@ -463,7 +463,7 @@ class _MarketplaceCard extends StatelessWidget {
                           child: Text(
                             item.ownerDisplayLabel,
                             style: const TextStyle(
-                              color: AppTheme.loomCyan,
+                              color: AppTheme.primarySoft,
                               fontSize: AppTheme.fontSm,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -526,11 +526,11 @@ class _MarketplaceCard extends StatelessWidget {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: item.forSale
                               ? AppTheme.mythicGold
-                              : AppTheme.loomCyan,
+                              : AppTheme.primarySoft,
                           side: BorderSide(
                             color: (item.forSale
                                     ? AppTheme.mythicGold
-                                    : AppTheme.loomCyan)
+                                    : AppTheme.primarySoft)
                                 .withValues(alpha: 0.5),
                           ),
                           padding:

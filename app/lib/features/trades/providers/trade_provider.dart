@@ -292,7 +292,7 @@ class TradeStatusHelper {
       case 'pending':
         return AppTheme.mythicGold;
       case 'accepted':
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case 'shipped':
         return AppTheme.manaViolet;
       case 'delivered':

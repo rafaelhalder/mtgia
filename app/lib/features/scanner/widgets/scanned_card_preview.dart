@@ -123,7 +123,7 @@ class _ScannedCardPreviewState extends State<ScannedCardPreview>
       child: Center(
         child: icon == Icons.hourglass_empty
             ? const CircularProgressIndicator(
-                strokeWidth: 2, color: AppTheme.loomCyan)
+                strokeWidth: 2, color: AppTheme.primarySoft)
             : Icon(icon, size: 48, color: AppTheme.textSecondary),
       ),
     );
@@ -328,7 +328,7 @@ class _ScannedCardPreviewState extends State<ScannedCardPreview>
       case CardCondition.nm:
         return AppTheme.success;
       case CardCondition.lp:
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case CardCondition.mp:
         return AppTheme.mythicGold;
       case CardCondition.hp:

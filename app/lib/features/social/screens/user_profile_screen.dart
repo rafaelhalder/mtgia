@@ -98,7 +98,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Perfil'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
       ),
       body: Consumer<SocialProvider>(
         builder: (context, provider, _) {
@@ -139,7 +139,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
               // === Header do perfil ===
               Container(
                 padding: const EdgeInsets.all(20),
-                color: AppTheme.surfaceSlate2,
+                color: AppTheme.surfaceElevated,
                 child: Column(
                   children: [
                     // Avatar
@@ -285,7 +285,7 @@ class _UserProfileScreenState extends State<UserProfileScreen>
               ),
               // === Tabs ===
               Container(
-                color: AppTheme.surfaceSlate2,
+                color: AppTheme.surfaceElevated,
                 child: TabBar(
                   controller: _tabController,
                   indicatorColor: AppTheme.manaViolet,
@@ -362,7 +362,7 @@ class _StatItem extends StatelessWidget {
       onTap: onTap,
       child: Column(
         children: [
-          Icon(icon, color: AppTheme.loomCyan, size: 20),
+          Icon(icon, color: AppTheme.primarySoft, size: 20),
           const SizedBox(height: 4),
           Text(
             '$value',
@@ -714,10 +714,10 @@ class _PublicBinderTabHaveWantState extends State<_PublicBinderTabHaveWant>
           child: TabBar(
             controller: _subTabController,
             indicatorColor: _subTabController.index == 0
-                ? AppTheme.loomCyan
+                ? AppTheme.primarySoft
                 : AppTheme.mythicGold,
             labelColor: _subTabController.index == 0
-                ? AppTheme.loomCyan
+                ? AppTheme.primarySoft
                 : AppTheme.mythicGold,
             unselectedLabelColor: AppTheme.textSecondary,
             labelStyle: const TextStyle(
@@ -874,7 +874,7 @@ class _PublicBinderListViewState extends State<_PublicBinderListView>
                                 : 'Este jogador QUER esta carta',
                             style: TextStyle(
                               color: isHave
-                                  ? AppTheme.loomCyan
+                                  ? AppTheme.primarySoft
                                   : AppTheme.mythicGold,
                               fontSize: AppTheme.fontSm,
                             ),
@@ -892,7 +892,7 @@ class _PublicBinderListViewState extends State<_PublicBinderListView>
                     child: Row(
                       children: [
                         if (item.forTrade)
-                          _interactTag('Aceita troca', AppTheme.loomCyan),
+                          _interactTag('Aceita troca', AppTheme.primarySoft),
                         if (item.forSale) ...[
                           if (item.forTrade) const SizedBox(width: 8),
                           _interactTag('À venda', AppTheme.mythicGold),
@@ -917,7 +917,7 @@ class _PublicBinderListViewState extends State<_PublicBinderListView>
                     _actionButton(
                       icon: Icons.swap_horiz,
                       label: 'Propor troca',
-                      color: AppTheme.loomCyan,
+                      color: AppTheme.primarySoft,
                       onTap: () {
                         Navigator.pop(ctx);
                         _openCreateTrade('trade', item);
@@ -1164,7 +1164,7 @@ class _PublicBinderItemCard extends StatelessWidget {
                         ],
                         if (item.forTrade) ...[
                           const SizedBox(width: 4),
-                          _binderStatusTag('Troca', AppTheme.loomCyan),
+                          _binderStatusTag('Troca', AppTheme.primarySoft),
                         ],
                         if (item.forSale) ...[
                           const SizedBox(width: 4),
@@ -1191,13 +1191,13 @@ class _PublicBinderItemCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: (isHave ? AppTheme.loomCyan : AppTheme.mythicGold)
+                  color: (isHave ? AppTheme.primarySoft : AppTheme.mythicGold)
                       .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                 ),
                 child: Icon(
                   isHave ? Icons.shopping_cart_outlined : Icons.sell_outlined,
-                  color: isHave ? AppTheme.loomCyan : AppTheme.mythicGold,
+                  color: isHave ? AppTheme.primarySoft : AppTheme.mythicGold,
                   size: 18,
                 ),
               ),

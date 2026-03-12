@@ -51,7 +51,7 @@ class _LifeCounterScreenState extends State<LifeCounterScreen> {
 
   static const _playerColors = [
     AppTheme.manaViolet,
-    AppTheme.loomCyan,
+    AppTheme.primarySoft,
     AppTheme.mythicGold,
     Color(0xFFEF4444),
   ];
@@ -228,7 +228,7 @@ class _LifeCounterScreenState extends State<LifeCounterScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
         title: const Text('Contador de Vida'),
         actions: [
           IconButton(
@@ -393,7 +393,7 @@ class _PlayerPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceSlate2,
+        color: AppTheme.surfaceElevated,
         border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
       ),
       child: Stack(
@@ -784,7 +784,7 @@ class _CountersSheetState extends State<_CountersSheet> {
               icon: Icons.star,
               label: 'Experiência (Experience)',
               value: _experience,
-              color: AppTheme.loomCyan,
+              color: AppTheme.primarySoft,
               onIncrement: () => _updateExperience(1),
               onDecrement: () => _updateExperience(-1),
             ),
@@ -827,7 +827,7 @@ class _CounterRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: isLethal
             ? AppTheme.error.withValues(alpha: 0.15)
-            : AppTheme.surfaceSlate2,
+            : AppTheme.surfaceElevated,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(
           color: isLethal

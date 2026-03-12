@@ -58,7 +58,7 @@ class _CommunityScreenState extends State<CommunityScreen>
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Comunidade'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.manaViolet,
@@ -155,7 +155,7 @@ class _ExploreTabState extends State<_ExploreTab>
         // Search bar + filters
         Container(
           padding: const EdgeInsets.all(12),
-          color: AppTheme.surfaceSlate2,
+          color: AppTheme.surfaceElevated,
           child: Column(
             children: [
               TextField(
@@ -165,7 +165,7 @@ class _ExploreTabState extends State<_ExploreTab>
                   hintText: 'Pesquisar decks públicos...',
                   hintStyle: const TextStyle(color: AppTheme.textSecondary),
                   prefixIcon:
-                      const Icon(Icons.search, color: AppTheme.loomCyan),
+                      const Icon(Icons.search, color: AppTheme.primarySoft),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.clear,
                         color: AppTheme.textSecondary, size: 18),
@@ -309,11 +309,11 @@ class _ExploreTabState extends State<_ExploreTab>
               fontSize: AppTheme.fontSm,
             )),
         selected: isSelected,
-        selectedColor: AppTheme.loomCyan,
+        selectedColor: AppTheme.primarySoft,
         backgroundColor: AppTheme.surfaceSlate,
         checkmarkColor: AppTheme.backgroundAbyss,
         side: BorderSide(
-          color: isSelected ? AppTheme.loomCyan : AppTheme.outlineMuted,
+          color: isSelected ? AppTheme.primarySoft : AppTheme.outlineMuted,
         ),
         onSelected: (_) {
           setState(() => _selectedFormat = format);
@@ -491,7 +491,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
         // Search bar
         Container(
           padding: const EdgeInsets.all(12),
-          color: AppTheme.surfaceSlate2,
+          color: AppTheme.surfaceElevated,
           child: TextField(
             controller: _searchController,
             style: const TextStyle(color: AppTheme.textPrimary),
@@ -499,7 +499,7 @@ class _UserSearchTabState extends State<_UserSearchTab>
               hintText: 'Buscar por nick ou nome de usuário...',
               hintStyle: const TextStyle(color: AppTheme.textSecondary),
               prefixIcon:
-                  const Icon(Icons.person_search, color: AppTheme.loomCyan),
+                  const Icon(Icons.person_search, color: AppTheme.primarySoft),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.clear,
                     color: AppTheme.textSecondary, size: 18),
@@ -696,14 +696,14 @@ class _CommunityDeckCard extends StatelessWidget {
                             deck.ownerUsername ?? 'Anônimo',
                             style: TextStyle(
                               color: deck.ownerId != null
-                                  ? AppTheme.loomCyan
+                                  ? AppTheme.primarySoft
                                   : AppTheme.textSecondary.withValues(
                                       alpha: 0.8),
                               fontSize: AppTheme.fontSm,
                               decoration: deck.ownerId != null
                                   ? TextDecoration.underline
                                   : null,
-                              decorationColor: AppTheme.loomCyan,
+                              decorationColor: AppTheme.primarySoft,
                             ),
                           ),
                         ),
@@ -957,7 +957,7 @@ class _UserCard extends StatelessWidget {
                       children: [
                         Icon(Icons.style,
                             size: 13,
-                            color: AppTheme.loomCyan.withValues(alpha: 0.7)),
+                            color: AppTheme.primarySoft.withValues(alpha: 0.7)),
                         const SizedBox(width: 4),
                         Text(
                           '${user.publicDeckCount} decks',
@@ -1110,7 +1110,7 @@ class _CotacoesTabState extends State<_CotacoesTab>
             _buildDateHeader(data, provider),
             // Sub-tabs Valorizando / Desvalorizando
             Container(
-              color: AppTheme.surfaceSlate2,
+              color: AppTheme.surfaceElevated,
               child: TabBar(
                 controller: _subTabController,
                 indicatorColor: AppTheme.mythicGold,
@@ -1144,7 +1144,7 @@ class _CotacoesTabState extends State<_CotacoesTab>
   Widget _buildDateHeader(MarketMoversData data, MarketProvider provider) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: AppTheme.surfaceSlate2.withValues(alpha: 0.5),
+      color: AppTheme.surfaceElevated.withValues(alpha: 0.5),
       child: Row(
         children: [
           const Icon(Icons.calendar_today, size: 14, color: AppTheme.textSecondary),
@@ -1220,7 +1220,7 @@ class _CotacoesTabState extends State<_CotacoesTab>
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: index < 3 ? changeColor.withValues(alpha: 0.2) : AppTheme.surfaceSlate2,
+                      color: index < 3 ? changeColor.withValues(alpha: 0.2) : AppTheme.surfaceElevated,
                       borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                     ),
                     alignment: Alignment.center,
@@ -1244,10 +1244,10 @@ class _CotacoesTabState extends State<_CotacoesTab>
                           ? CachedNetworkImage(
                               imageUrl: mover.imageUrl!,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
-                              errorWidget: (_, __, ___) => Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                              placeholder: (_, __) => Container(color: AppTheme.surfaceElevated, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                              errorWidget: (_, __, ___) => Container(color: AppTheme.surfaceElevated, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
                             )
-                          : Container(color: AppTheme.surfaceSlate2, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
+                          : Container(color: AppTheme.surfaceElevated, child: const Icon(Icons.style, size: 16, color: AppTheme.textSecondary)),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1334,7 +1334,7 @@ class _CotacoesTabState extends State<_CotacoesTab>
     return switch (rarity.toLowerCase()) {
       'mythic' => AppTheme.mythicGold,
       'rare' => AppTheme.mythicGold.withValues(alpha: 0.7),
-      'uncommon' => AppTheme.loomCyan,
+      'uncommon' => AppTheme.primarySoft,
       _ => AppTheme.textSecondary,
     };
   }

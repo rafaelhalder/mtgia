@@ -117,7 +117,7 @@ class HomeScreen extends StatelessWidget {
                         child: _QuickAction(
                           icon: Icons.collections_bookmark,
                           label: 'Minha Coleção',
-                          color: AppTheme.loomCyan,
+                          color: AppTheme.primarySoft,
                           onTap: () => context.go('/collection'),
                         ),
                       ),

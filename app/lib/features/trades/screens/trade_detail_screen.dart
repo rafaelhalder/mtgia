@@ -231,7 +231,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: AppTheme.loomCyan),
+              Icon(icon, size: 16, color: AppTheme.primarySoft),
               const SizedBox(width: 6),
               Text(
                 '$title (${items.length})',
@@ -699,7 +699,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   hintText: 'Escrever mensagem...',
                   hintStyle: const TextStyle(color: AppTheme.textHint),
                   filled: true,
-                  fillColor: AppTheme.surfaceSlate2,
+                  fillColor: AppTheme.surfaceElevated,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
@@ -816,7 +816,7 @@ class _TradeChat extends StatelessWidget {
                         Text(
                           msg.senderUsername ?? '',
                           style: const TextStyle(
-                            color: AppTheme.loomCyan,
+                            color: AppTheme.primarySoft,
                             fontSize: AppTheme.fontSm,
                             fontWeight: FontWeight.w600,
                           ),

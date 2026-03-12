@@ -75,7 +75,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             end: Alignment.bottomRight,
             colors: [
               Color(0xFF1A0A2E),
-              AppTheme.surfaceSlate2,
+              AppTheme.surfaceElevated,
               AppTheme.backgroundAbyss,
             ],
           ),

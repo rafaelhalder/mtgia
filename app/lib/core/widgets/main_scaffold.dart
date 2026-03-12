@@ -32,7 +32,7 @@ class MainScaffold extends StatelessWidget {
         preferredSize: const Size.fromHeight(44),
         child: Container(
           decoration: const BoxDecoration(
-            color: AppTheme.surfaceSlate2,
+            color: AppTheme.surfaceElevated,
             border: Border(
               bottom: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
             ),
@@ -54,7 +54,7 @@ class MainScaffold extends StatelessWidget {
                         msgUnread > 99 ? '99+' : '$msgUnread',
                         style: const TextStyle(fontSize: 9),
                       ),
-                      backgroundColor: AppTheme.loomCyan,
+                      backgroundColor: AppTheme.primarySoft,
                       child: const Icon(Icons.chat_bubble_outline,
                           color: AppTheme.textSecondary, size: 22),
                     ),

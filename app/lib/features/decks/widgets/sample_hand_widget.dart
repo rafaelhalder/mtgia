@@ -162,7 +162,7 @@ class _SampleHandWidgetState extends State<SampleHandWidget>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceSlate2,
+                color: AppTheme.surfaceElevated,
                 borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               child: Row(
@@ -176,7 +176,7 @@ class _SampleHandWidgetState extends State<SampleHandWidget>
                   _StatChip(
                     label: 'Magias',
                     value: '$_nonLandCount',
-                    color: AppTheme.loomCyan,
+                    color: AppTheme.primarySoft,
                   ),
                   _StatChip(
                     label: 'Total',
