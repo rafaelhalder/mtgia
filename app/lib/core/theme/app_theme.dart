@@ -187,7 +187,7 @@ class AppTheme {
     scaffoldBackgroundColor: backgroundAbyss,
     textTheme: _buildTextTheme(),
     appBarTheme: AppBarTheme(
-      backgroundColor: surfaceSlate,
+      backgroundColor: surfaceElevated,
       foregroundColor: textPrimary,
       elevation: 0,
       centerTitle: true,
@@ -249,7 +249,7 @@ class AppTheme {
       elevation: 8,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: surfaceSlate,
+      backgroundColor: surfaceElevated,
       indicatorColor: manaViolet.withValues(alpha: 0.15),
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radiusSm),
