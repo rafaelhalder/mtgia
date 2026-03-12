@@ -1,6 +1,6 @@
 # Relatório completo de cores, temas e gradientes
 
-> Gerado em: 2026-03-12T13:06:06.714647Z  
+> Gerado automaticamente por varredura do código-fonte local.  
 > Base: `app/lib/core/theme/app_theme.dart` + usos em `app/lib/**`
 
 ## 1) Onde o tema é aplicado
