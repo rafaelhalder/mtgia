@@ -271,11 +271,21 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(deck.name, style: theme.textTheme.headlineMedium),
+                    Text(
+                      deck.name,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Chip(label: Text(deck.format.toUpperCase())),
+                        if (deck.colorIdentity.isNotEmpty) ...[
+                          const SizedBox(width: 10),
+                          _ColorIdentityPips(colors: deck.colorIdentity),
+                        ],
                         const SizedBox(width: 8),
                         if (_isValidating)
                           const SizedBox(
@@ -991,6 +1001,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                             card.name,
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w600,
+                                              color: AppTheme.textPrimary,
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -1004,7 +1015,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                                         const SizedBox(height: 4),
                                         Text(
                                           card.typeLine,
-                                          style: theme.textTheme.bodySmall,
+                                          style: theme.textTheme.bodySmall?.copyWith(
+                                            color: AppTheme.textSecondary,
+                                          ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -1428,7 +1441,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                         Text(
                           card.name,
                           style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
                         ),
                         if (card.manaCost != null) ...[
                           const SizedBox(height: 4),
@@ -1436,7 +1452,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             children: [
                               Text(
                                 'Custo: ',
-                                style: Theme.of(context).textTheme.bodyMedium,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                ),
                               ),
                               _ManaCostRow(cost: card.manaCost),
                             ],
@@ -1832,7 +1850,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                     children: [
                       Text(
                         card.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -2177,7 +2198,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen>
                             children: [
                               Text(
                                 'Importar Lista',
-                                style: TextStyle(fontSize: AppTheme.fontXl),
+                                style: TextStyle(fontSize: AppTheme.fontXl, color: AppTheme.textPrimary),
                               ),
                               Text(
                                 'Adicionar cartas de outra fonte',
@@ -2901,7 +2922,7 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                     if (reasoning.isNotEmpty) ...[
                       Text(
                         reasoning,
-                        style: const TextStyle(fontStyle: FontStyle.italic),
+                        style: const TextStyle(fontStyle: FontStyle.italic, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: 16),
                       const Divider(),
@@ -2910,11 +2931,12 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                     if (deckAnalysis.isNotEmpty && postAnalysis.isNotEmpty) ...[
                       const Text(
                         'Antes vs Depois',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'CMC médio: ${deckAnalysis['average_cmc'] ?? '-'} → ${postAnalysis['average_cmc'] ?? '-'}',
+                        style: const TextStyle(color: AppTheme.textSecondary),
                       ),
                       Text(
                         'Curva: ${deckAnalysis['mana_curve_assessment'] ?? '-'}',
@@ -2935,13 +2957,14 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
                     if (warnings.isNotEmpty) ...[
                       const Text(
                         'Avisos:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                       ),
                       if (warnings['filtered_by_color_identity'] is Map)
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             '• Algumas adições foram removidas por estarem fora da identidade do comandante.',
+                            style: const TextStyle(color: AppTheme.textSecondary),
                           ),
                         ),
                       if (warnings['blocked_by_bracket'] is Map)
@@ -3446,6 +3469,77 @@ class _OptimizationSheetState extends State<_OptimizationSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Color Identity Pips (WUBRG) for deck details header ─────────────────────
+
+class _ColorIdentityPips extends StatelessWidget {
+  final List<String> colors;
+  const _ColorIdentityPips({required this.colors});
+
+  static const _wubrgOrder = ['W', 'U', 'B', 'R', 'G'];
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = List<String>.from(colors)
+      ..sort((a, b) {
+        final ai = _wubrgOrder.indexOf(a);
+        final bi = _wubrgOrder.indexOf(b);
+        return (ai == -1 ? 99 : ai).compareTo(bi == -1 ? 99 : bi);
+      });
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: sorted.map((c) {
+        return Padding(
+          padding: const EdgeInsets.only(right: 3),
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: SvgPicture.asset(
+              'assets/symbols/$c.svg',
+              placeholderBuilder: (_) => _FallbackColorPip(letter: c),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _FallbackColorPip extends StatelessWidget {
+  final String letter;
+  const _FallbackColorPip({required this.letter});
+
+  static const _colorMap = {
+    'W': Color(0xFFF9FAF4),
+    'U': Color(0xFF0E68AB),
+    'B': Color(0xFF150B00),
+    'R': Color(0xFFD3202A),
+    'G': Color(0xFF00733E),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: _colorMap[letter] ?? AppTheme.textHint,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.outlineMuted, width: 0.5),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        letter,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: letter == 'W' || letter == 'R' ? Colors.black87 : Colors.white,
+        ),
       ),
     );
   }

@@ -219,27 +219,41 @@ class _DeckListScreenState extends State<DeckListScreen> {
           // Error
           if (hasError && decks.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: theme.colorScheme.error,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    errorMessage ?? 'Erro desconhecido',
-                    style: theme.textTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () => context.read<DeckProvider>().fetchDecks(),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Tentar Novamente'),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      size: 56,
+                      color: AppTheme.textHint.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      errorMessage ?? 'Erro desconhecido',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: AppTheme.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Verifique sua conexão e tente novamente.',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontMd,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () => context.read<DeckProvider>().fetchDecks(),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Tentar Novamente'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -247,34 +261,41 @@ class _DeckListScreenState extends State<DeckListScreen> {
           // Empty State
           if (decks.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.style_outlined,
-                    size: 80,
-                    color: theme.colorScheme.secondary.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Nenhum deck criado',
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Toque no botão abaixo para começar',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: AppTheme.textSecondary,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.style_outlined,
+                      size: 64,
+                      color: AppTheme.textHint.withValues(alpha: 0.5),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => context.go('/onboarding/core-flow'),
-                    icon: const Icon(Icons.flag_outlined),
-                    label: const Text('Fluxo guiado'),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+                    Text(
+                      'Nenhum deck criado',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Crie seu primeiro deck ou gere um com IA',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontMd,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/onboarding/core-flow'),
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                      label: const Text('Fluxo guiado'),
+                    ),
+                  ],
+                ),
               ),
             );
           }

@@ -287,6 +287,46 @@ Future<Response> _listDecks(RequestContext context) async {
       return map;
     }).toList();
 
+    // ── Fetch color identity for each deck (batch) ──────────────
+    if (decks.isNotEmpty) {
+      try {
+        final colorResult = await conn.execute(
+          Sql.named('''
+            SELECT
+              dc.deck_id::text,
+              array_agg(DISTINCT unnested ORDER BY unnested) AS color_identity
+            FROM deck_cards dc
+            JOIN cards c ON c.id = dc.card_id
+            CROSS JOIN LATERAL unnest(COALESCE(c.color_identity, '{}')) AS unnested
+            WHERE dc.deck_id = ANY(
+              SELECT id FROM decks WHERE user_id = @userId
+            )
+            GROUP BY dc.deck_id
+          '''),
+          parameters: {'userId': userId},
+        );
+        final colorMap = <String, List<String>>{};
+        for (final row in colorResult) {
+          final m = row.toColumnMap();
+          final deckId = m['deck_id']?.toString() ?? '';
+          final colors = m['color_identity'];
+          if (colors is List) {
+            colorMap[deckId] = colors.map((e) => e.toString()).toList();
+          }
+        }
+        for (final deck in decks) {
+          final deckId = deck['id']?.toString() ?? '';
+          deck['color_identity'] = colorMap[deckId] ?? <String>[];
+        }
+      } catch (e) {
+        Log.e('⚠️ Falha ao buscar color_identity: $e');
+        // Non-critical — continue without color identity
+        for (final deck in decks) {
+          deck['color_identity'] = <String>[];
+        }
+      }
+    }
+
     Log.d('📤 Retornando resposta JSON.');
     return Response.json(body: decks);
   } catch (e, stackTrace) {

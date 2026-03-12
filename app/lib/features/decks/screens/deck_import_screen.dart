@@ -607,7 +607,7 @@ class _DeckImportScreenState extends State<DeckImportScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           ),
                           const SizedBox(width: 12),
-                          const Text('Importando...', style: TextStyle(fontSize: AppTheme.fontLg)),
+                          const Text('Importando...', style: TextStyle(fontSize: AppTheme.fontLg, color: AppTheme.textPrimary)),
                         ],
                       )
                     : Row(
@@ -617,7 +617,7 @@ class _DeckImportScreenState extends State<DeckImportScreen> {
                           const SizedBox(width: 8),
                           const Text(
                             'Criar Deck',
-                            style: TextStyle(fontSize: AppTheme.fontLg, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: AppTheme.fontLg, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
                           ),
                         ],
                       ),

@@ -403,22 +403,24 @@ class _QuickAction extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        splashColor: color.withValues(alpha: 0.08),
+        highlightColor: color.withValues(alpha: 0.04),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
+            color: AppTheme.surfaceSlate,
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(
-              color: color.withValues(alpha: 0.3),
+              color: AppTheme.outlineMuted,
               width: 0.5,
             ),
           ),
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
+                  color: color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -426,10 +428,10 @@ class _QuickAction extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 label,
-                style: TextStyle(
-                  color: color,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
                   fontSize: AppTheme.fontSm,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -493,6 +495,7 @@ class _RecentDeckTile extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: AppTheme.fontMd,
+                          color: AppTheme.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -612,6 +615,7 @@ class _StatTile extends StatelessWidget {
                 value,
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
                 ),
               ),
               Text(
@@ -648,7 +652,6 @@ class _MarketPreviewSectionState extends State<_MarketPreviewSection> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Consumer<MarketProvider>(
       builder: (context, provider, _) {
         final gainers = provider.moversData?.gainers.take(3).toList() ?? [];

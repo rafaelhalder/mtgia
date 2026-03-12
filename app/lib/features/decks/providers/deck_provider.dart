@@ -193,6 +193,9 @@ class DeckProvider extends ChangeNotifier {
         _deckDetailsCache[deckId] = _selectedDeck!;
         _deckDetailsCacheTime[deckId] = DateTime.now();
 
+        // Propaga color identity de volta para o item na lista de decks
+        _syncColorIdentityToList(deckId, _selectedDeck!.colorIdentity);
+
         _detailsErrorMessage = null;
         _detailsStatusCode = 200;
       } else {
@@ -214,6 +217,16 @@ class DeckProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Propaga a color identity obtida dos detalhes para o item correspondente
+  /// na lista de decks, para que os pips WUBRG apareçam na listagem.
+  void _syncColorIdentityToList(String deckId, List<String> colorIdentity) {
+    if (colorIdentity.isEmpty) return;
+    final idx = _decks.indexWhere((d) => d.id == deckId);
+    if (idx != -1 && _decks[idx].colorIdentity.isEmpty) {
+      _decks[idx] = _decks[idx].copyWith(colorIdentity: colorIdentity);
     }
   }
 

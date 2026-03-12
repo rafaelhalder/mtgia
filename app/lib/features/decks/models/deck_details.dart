@@ -22,6 +22,7 @@ class DeckDetails extends Deck {
     super.pricingTotal,
     super.pricingMissingCards,
     super.pricingUpdatedAt,
+    super.colorIdentity,
     required super.isPublic,
     required super.createdAt,
     super.cardCount,
@@ -54,6 +55,25 @@ class DeckDetails extends Deck {
     final inferredCommanderImageUrl =
         commanderList.isNotEmpty ? commanderList.first.imageUrl : null;
 
+    // Parse color_identity from API, or compute from cards as fallback
+    var colorIdentity = (json['color_identity'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const <String>[];
+    if (colorIdentity.isEmpty) {
+      final allCards = <DeckCardItem>[
+        ...commanderList,
+        ...mainBoardMap.values.expand((list) => list),
+      ];
+      final computed = <String>{};
+      for (final card in allCards) {
+        computed.addAll(card.colorIdentity);
+      }
+      if (computed.isNotEmpty) {
+        colorIdentity = computed.toList();
+      }
+    }
+
     return DeckDetails(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -75,6 +95,7 @@ class DeckDetails extends Deck {
           (json['pricing_updated_at'] != null)
               ? DateTime.tryParse(json['pricing_updated_at'] as String)
               : null,
+      colorIdentity: colorIdentity,
       isPublic: json['is_public'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       cardCount: json['stats']?['total_cards'] as int? ?? 0,
@@ -101,6 +122,7 @@ class DeckDetails extends Deck {
     double? pricingTotal,
     int? pricingMissingCards,
     DateTime? pricingUpdatedAt,
+    List<String>? colorIdentity,
     bool? isPublic,
     DateTime? createdAt,
     int? cardCount,
@@ -124,6 +146,7 @@ class DeckDetails extends Deck {
       pricingTotal: pricingTotal ?? this.pricingTotal,
       pricingMissingCards: pricingMissingCards ?? this.pricingMissingCards,
       pricingUpdatedAt: pricingUpdatedAt ?? this.pricingUpdatedAt,
+      colorIdentity: colorIdentity ?? this.colorIdentity,
       isPublic: isPublic ?? this.isPublic,
       createdAt: createdAt ?? this.createdAt,
       cardCount: cardCount ?? this.cardCount,

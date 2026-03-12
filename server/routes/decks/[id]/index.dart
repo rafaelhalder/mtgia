@@ -543,8 +543,20 @@ Future<Response> _getDeckById(RequestContext context, String deckId) async {
       }
     }
 
+    // Compute deck color identity from all cards
+    final deckColorIdentity = <String>{};
+    for (final card in cardsList) {
+      final ci = card['color_identity'] as List?;
+      if (ci != null) {
+        for (final c in ci) {
+          if (c is String) deckColorIdentity.add(c);
+        }
+      }
+    }
+
     final responseBody = {
       ...deckInfo,
+      'color_identity': deckColorIdentity.toList(),
       'stats': {
         'total_cards': cardsList.fold<int>(
             0, (sum, item) => sum + (item['quantity'] as int)),
