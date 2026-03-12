@@ -20,13 +20,13 @@ class DeckCard extends StatelessWidget {
   // Cor de destaque baseada no formato do deck
   Color _formatAccentColor(String format) {
     switch (format.toLowerCase()) {
-      case 'commander': return AppTheme.mythicGold;
-      case 'standard': return AppTheme.loomCyan;
-      case 'modern': return AppTheme.manaViolet;
-      case 'pioneer': return const Color(0xFF34D399); // verde esmeralda
-      case 'legacy': return const Color(0xFFEC4899);  // rosa
-      case 'vintage': return const Color(0xFFF97316); // laranja
-      case 'pauper': return AppTheme.textSecondary;
+      case 'commander': return AppTheme.formatCommander;
+      case 'standard': return AppTheme.formatStandard;
+      case 'modern': return AppTheme.formatModern;
+      case 'pioneer': return AppTheme.formatPioneer;
+      case 'legacy': return AppTheme.formatLegacy;
+      case 'vintage': return AppTheme.formatVintage;
+      case 'pauper': return AppTheme.formatPauper;
       default: return AppTheme.manaViolet;
     }
   }

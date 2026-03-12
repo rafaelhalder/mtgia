@@ -4,8 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 /// ManaLoom Theme: "Arcane Weaver" Color Palette
 /// Inspired by weaving mana threads with technology
 ///
-/// COLOR BUDGET (22 tokens — regra dos ~20):
-///   10 brand/layout + 5 semantic + 6 WUBRG + 1 hint = 22
+/// COLOR BUDGET (24 tokens):
+///   10 brand/layout + 5 semantic + 6 WUBRG + 1 hint + 2 format extras = 24
+///   (formatPioneer + formatLegacy are the 2 new additions beyond the original 22)
 ///   Qualquer cor fora deste arquivo é violação.
 ///
 /// RADIUS SCALE: radiusXs(4) / radiusSm(8) / radiusMd(12) / radiusLg(16) / radiusXl(20)
@@ -94,6 +95,15 @@ class AppTheme {
     'G': manaG,
     'C': manaC,
   };
+
+  // ── Format accent colors (deck card frames) ───────────────
+  static const Color formatCommander = mythicGold;
+  static const Color formatStandard = loomCyan;
+  static const Color formatModern = manaViolet;
+  static const Color formatPioneer = Color(0xFF34D399);  // Emerald green
+  static const Color formatLegacy = Color(0xFFEC4899);   // Rose pink
+  static const Color formatVintage = warning;            // reuses warning orange
+  static const Color formatPauper = textSecondary;
 
   // ── Helpers derivados (sem cores novas) ────────────────────
 

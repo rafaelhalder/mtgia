@@ -163,7 +163,7 @@ class HomeScreen extends StatelessWidget {
                     ...recentDecks.map((deck) => _RecentDeckTile(deck: deck)),
                   ] else ...[
                     // Empty state
-                    _EmptyDecksState(),
+                    const _EmptyDecksState(),
                   ],
 
                   const SizedBox(height: 32),
@@ -524,6 +524,8 @@ class _RecentDeckTile extends StatelessWidget {
 // ── Empty State ───────────────────────────────────────────────────────────────
 
 class _EmptyDecksState extends StatelessWidget {
+  const _EmptyDecksState();
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

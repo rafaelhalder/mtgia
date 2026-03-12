@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: theme.textTheme.headlineLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
-                          letterSpacing: 1,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ),
