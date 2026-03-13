@@ -63,7 +63,11 @@ class FormatStaplesService {
         parameters: params,
       );
       
-      return result.map((row) => row[0] as String).toList();
+      final names = <String>[];
+      for (final row in result) {
+        names.add(row[0] as String);
+      }
+      return names;
     } catch (e) {
       // Log do erro mas retorna lista vazia para não quebrar o fluxo
       print('FormatStaplesService error: $e');
