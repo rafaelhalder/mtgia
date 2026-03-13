@@ -658,12 +658,13 @@ class DeckProvider extends ChangeNotifier {
   }
 
   /// Faz polling no job de otimização até completar ou falhar.
+  /// Polling interval de 5s para evitar rate limiting (429).
   Future<Map<String, dynamic>> _pollOptimizeJob(
     String jobId, {
-    int pollInterval = 2000,
+    int pollInterval = 5000,
     void Function(String stage, int stageNumber, int totalStages)? onProgress,
   }) async {
-    const maxPolls = 150; // 150 × 2s = 5 min timeout
+    const maxPolls = 60; // 60 × 5s = 5 min timeout
     for (var i = 0; i < maxPolls; i++) {
       await Future.delayed(Duration(milliseconds: pollInterval));
       final response = await _apiClient.get('/ai/optimize/jobs/$jobId');
