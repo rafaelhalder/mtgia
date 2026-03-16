@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T17:04:15.865469",
-  "run_started_at": "2026-03-16T16:58:46.573803",
+  "generated_at": "2026-03-16T17:22:56.249001",
+  "run_started_at": "2026-03-16T17:17:40.686596",
   "api_base_url": "http://127.0.0.1:8080",
   "artifact_dir": "test/artifacts/optimization_validation_three_decks",
   "total": 3,
@@ -14,7 +14,7 @@
       "commander_name": "Auntie Ool, Cursewretch",
       "source_deck_id": "8c22deb9-80bd-489f-8e87-1344eabac698",
       "source_deck_name": "goblins",
-      "clone_deck_id": "422cc187-e830-4710-9292-5ae1a2ca4e80",
+      "clone_deck_id": "202d0076-4a03-4aa0-917f-4a5d8982aff7",
       "archetype": "aggro",
       "bracket": 4,
       "optimize_status": 422,
@@ -38,10 +38,8 @@
       ],
       "failed_checks": [],
       "warnings": [
-        "Rejeicao protegida pelo gate de qualidade: As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
-        "A validação final não fechou como \"aprovado\" (score 58/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (58/100; mínimo 70).",
-        "A otimizacao sugerida nao passou no gate final de qualidade."
+        "Rejeicao protegida pelo gate de qualidade: As trocas sugeridas pioravam funcao, curva ou consistencia do deck.",
+        "Nenhuma troca segura restou apos o gate de qualidade da otimizacao."
       ],
       "passed": true
     },
@@ -50,7 +48,7 @@
       "commander_name": "Talrand, Sky Summoner",
       "source_deck_id": "df780797-bcc4-47cb-82d6-08d01ae3b03b",
       "source_deck_name": "Deck incremental",
-      "clone_deck_id": "36f3657c-42b5-45da-b59a-5f2131af09c3",
+      "clone_deck_id": "1256028a-a2bd-47af-98dc-d866c5130b2e",
       "archetype": "midrange",
       "bracket": 2,
       "optimize_status": 422,
@@ -75,8 +73,8 @@
       "failed_checks": [],
       "warnings": [
         "Rejeicao protegida pelo gate de qualidade: As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
-        "A validação final não fechou como \"aprovado\" (score 56/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (56/100; mínimo 70).",
+        "A validação final não fechou como \"aprovado\" (score 64/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (64/100; mínimo 70).",
         "A base de mana continua com problema crítico após a otimização.",
         "A otimizacao sugerida nao passou no gate final de qualidade."
       ],
@@ -87,7 +85,7 @@
       "commander_name": "Jin-Gitaxias // The Great Synthesis",
       "source_deck_id": "f2a2a34a-4561-4a77-886d-7067b672ac85",
       "source_deck_name": "jin",
-      "clone_deck_id": "0cb0a8d7-68f2-4332-a693-03d4d9807166",
+      "clone_deck_id": "93c4cf9f-f1c3-404e-b5fa-51345f733f49",
       "archetype": "midrange",
       "bracket": 2,
       "optimize_status": 422,
@@ -112,8 +110,11 @@
       "failed_checks": [],
       "warnings": [
         "Rejeicao protegida pelo gate de qualidade: As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
-        "A validação final não fechou como \"aprovado\" (score 53/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (53/100; mínimo 70).",
+        "Validação automática reprovou as trocas (score 44/100).",
+        "A validação final não fechou como \"aprovado\" (score 44/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (44/100; mínimo 70).",
+        "A segunda revisão crítica da IA rejeitou a proposta (approval_score 45/100).",
+        "As trocas não demonstraram ganho mensurável suficiente em consistência, mana ou execução do plano.",
         "A otimizacao sugerida nao passou no gate final de qualidade."
       ],
       "passed": true

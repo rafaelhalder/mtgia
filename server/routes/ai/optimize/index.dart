@@ -1180,6 +1180,10 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Usar arquétipo passado pelo usuário
     final targetArchetype = archetype;
+    final effectiveOptimizeArchetype = resolveOptimizeArchetype(
+      requestedArchetype: targetArchetype,
+      detectedArchetype: deckAnalysis['detected_archetype']?.toString(),
+    );
 
     final commanderNameForLogs =
         commanders.isNotEmpty ? commanders.first.trim() : 'unknown';
@@ -1354,7 +1358,7 @@ Future<Response> onRequest(RequestContext context) async {
           allCardData: allCardData,
           commanders: commanders,
           commanderColorIdentity: commanderColorIdentity,
-          targetArchetype: targetArchetype,
+          targetArchetype: effectiveOptimizeArchetype,
           bracket: bracket,
           keepTheme: keepTheme,
           detectedTheme: themeProfile.theme,
@@ -1455,7 +1459,7 @@ Future<Response> onRequest(RequestContext context) async {
         final aiResponse = await optimizer.optimizeDeck(
           deckData: deckData,
           commanders: commanders,
-          targetArchetype: targetArchetype,
+          targetArchetype: effectiveOptimizeArchetype,
           priorityPool: optimizeCommanderPriorityNames,
           deterministicSwapCandidates: deterministicSwapCandidates,
           bracket: bracket,
@@ -1478,7 +1482,7 @@ Future<Response> onRequest(RequestContext context) async {
     if (deterministicFirstEnabled) {
       jsonResponse = buildDeterministicOptimizeResponse(
         deterministicSwapCandidates: deterministicSwapCandidates,
-        targetArchetype: targetArchetype,
+        targetArchetype: effectiveOptimizeArchetype,
       );
       Log.i(
         'Optimize deterministic-first ativado com ${deterministicSwapCandidates.length} swap(s) candidatos.',
@@ -2385,7 +2389,7 @@ Future<Response> onRequest(RequestContext context) async {
               additions: validAdditions,
               originalDeck: allCardData,
               additionsData: additionsData,
-              archetype: targetArchetype,
+              archetype: effectiveOptimizeArchetype,
             );
 
             if (gateResult.changed) {
@@ -2484,7 +2488,7 @@ Future<Response> onRequest(RequestContext context) async {
           final preCurve = double.tryParse(preAvgCmc) ?? 0.0;
           final postCurve = double.tryParse(postAvgCmc) ?? 0.0;
 
-          if (targetArchetype.toLowerCase() == 'aggro' &&
+          if (effectiveOptimizeArchetype.toLowerCase() == 'aggro' &&
               postCurve > preCurve) {
             validationWarnings.add(
                 '⚠️ ATENÇÃO: O deck está ficando mais lento (CMC aumentou), o que é ruim para Aggro.');
@@ -2505,7 +2509,7 @@ Future<Response> onRequest(RequestContext context) async {
           }
 
           // Verificar se a curva melhorou para o arquétipo
-          if (targetArchetype.toLowerCase() == 'control' &&
+          if (effectiveOptimizeArchetype.toLowerCase() == 'control' &&
               postCurve < preCurve - 0.5) {
             validationWarnings.add(
                 '💡 O CMC médio diminuiu significativamente ($preAvgCmc → $postAvgCmc). Para Control, isso pode remover respostas de custo alto que são importantes.');
@@ -2514,7 +2518,7 @@ Future<Response> onRequest(RequestContext context) async {
           // Gerar resumo de melhoria
           final improvements = <String>[];
           if (postCurve < preCurve &&
-              targetArchetype.toLowerCase() != 'control') {
+              effectiveOptimizeArchetype.toLowerCase() != 'control') {
             improvements.add('CMC médio otimizado: $preAvgCmc → $postAvgCmc');
           }
           if (preManaIssues && !postManaIssues) {
@@ -2540,7 +2544,7 @@ Future<Response> onRequest(RequestContext context) async {
               removals: validRemovals,
               additions: validAdditions,
               commanders: commanders,
-              archetype: targetArchetype,
+              archetype: effectiveOptimizeArchetype,
             );
 
             postAnalysis['validation'] = validationReport.toJson();
@@ -2625,7 +2629,7 @@ Future<Response> onRequest(RequestContext context) async {
         final postAnalysisMap = postAnalysis ?? const <String, dynamic>{};
         final rejectionReasons = buildOptimizationRejectionReasons(
           validationReport: optimizationValidationReport,
-          archetype: targetArchetype,
+          archetype: effectiveOptimizeArchetype,
           preCurve:
               double.tryParse('${deckAnalysis['average_cmc'] ?? '0'}') ?? 0.0,
           postCurve:
@@ -4749,6 +4753,28 @@ Map<String, dynamic> buildDeterministicOptimizeResponse({
   };
 }
 
+String resolveOptimizeArchetype({
+  required String requestedArchetype,
+  required String? detectedArchetype,
+}) {
+  final requested = requestedArchetype.trim().toLowerCase();
+  final detected = detectedArchetype?.trim().toLowerCase() ?? '';
+
+  if (requested.isEmpty) return detected.isNotEmpty ? detected : 'midrange';
+  if (detected.isEmpty || detected == 'unknown') return requested;
+  if (requested == detected) return requested;
+
+  const genericRequested = {'midrange', 'value', 'goodstuff'};
+  const specificDetected = {'aggro', 'control', 'combo', 'stax', 'tribal'};
+
+  if (genericRequested.contains(requested) &&
+      specificDetected.contains(detected)) {
+    return detected;
+  }
+
+  return requested;
+}
+
 bool shouldRetryOptimizeWithAiFallback({
   required bool deterministicFirstEnabled,
   required bool fallbackAlreadyAttempted,
@@ -5545,6 +5571,107 @@ String _inferFunctionalRole({
   }
 
   if (t.contains('creature')) return 'engine';
+  return 'utility';
+}
+
+bool _looksLikeBoardWipe(String oracleText) {
+  final oracle = oracleText.toLowerCase();
+  return oracle.contains('destroy all') ||
+      oracle.contains('exile all') ||
+      oracle.contains('each creature') ||
+      oracle.contains('each player sacrifices') ||
+      oracle.contains('all creatures get');
+}
+
+bool _looksLikeProtectionEffect({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedName = name.toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+
+  return normalizedName.contains('greaves') ||
+      normalizedName.contains('boots') ||
+      oracle.contains('hexproof') ||
+      oracle.contains('indestructible') ||
+      oracle.contains('ward') ||
+      oracle.contains('phase out') ||
+      oracle.contains('phases out') ||
+      oracle.contains('gains shroud') ||
+      (normalizedType.contains('equipment') &&
+          (oracle.contains('equipped creature has') ||
+              oracle.contains('equip')));
+}
+
+bool _looksLikeTemporaryManaBurst({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedName = name.toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+  final generatesMana =
+      oracle.contains('add {') || oracle.contains('add one mana');
+
+  if (!generatesMana) return false;
+  if (!(normalizedType.contains('instant') ||
+      normalizedType.contains('sorcery'))) {
+    return false;
+  }
+
+  return normalizedName.contains('ritual') ||
+      oracle.contains('until end of turn') ||
+      oracle.contains('for each');
+}
+
+String _inferOptimizeFunctionalNeed({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+
+  if (_looksLikeProtectionEffect(
+    name: name,
+    typeLine: typeLine,
+    oracleText: oracleText,
+  )) {
+    return 'protection';
+  }
+
+  if (_looksLikeBoardWipe(oracleText) ||
+      oracle.contains('destroy target') ||
+      oracle.contains('exile target') ||
+      oracle.contains('counter target')) {
+    return 'removal';
+  }
+
+  if (oracle.contains('draw') || oracle.contains('cards')) {
+    return 'draw';
+  }
+
+  if (oracle.contains('search your library') &&
+      !normalizedType.contains('land')) {
+    return oracle.contains('land') ? 'ramp' : 'tutor';
+  }
+
+  if ((_looksLikeTemporaryManaBurst(
+            name: name,
+            typeLine: typeLine,
+            oracleText: oracleText,
+          ) ||
+          oracle.contains('add {') ||
+          oracle.contains('add one mana')) &&
+      !normalizedType.contains('land')) {
+    return 'ramp';
+  }
+
+  if (normalizedType.contains('artifact')) return 'artifact';
+  if (normalizedType.contains('creature')) return 'creature';
   return 'utility';
 }
 
@@ -6729,26 +6856,31 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
       parameters: {'names': removedCards},
     );
 
+    final removedByName = <String, Map<String, dynamic>>{};
     for (final row in removedTypesResult) {
-      final oracle = ((row[2] as String?) ?? '').toLowerCase();
-      final typeLine = ((row[1] as String?) ?? '').toLowerCase();
+      final name = ((row[0] as String?) ?? '').trim().toLowerCase();
+      if (name.isEmpty) continue;
+      removedByName[name] = {
+        'name': (row[0] as String?) ?? '',
+        'type_line': (row[1] as String?) ?? '',
+        'oracle_text': (row[2] as String?) ?? '',
+      };
+    }
 
-      if (oracle.contains('draw') || oracle.contains('cards')) {
-        functionalNeeds.add('draw');
-      } else if (oracle.contains('destroy') ||
-          oracle.contains('exile') ||
-          oracle.contains('counter')) {
-        functionalNeeds.add('removal');
-      } else if ((oracle.contains('add') && oracle.contains('mana')) ||
-          typeLine.contains('land')) {
-        functionalNeeds.add('ramp');
-      } else if (typeLine.contains('creature')) {
-        functionalNeeds.add('creature');
-      } else if (typeLine.contains('artifact')) {
-        functionalNeeds.add('artifact');
-      } else {
+    for (final removedName in removedCards) {
+      final removed = removedByName[removedName.trim().toLowerCase()];
+      if (removed == null) {
         functionalNeeds.add('utility');
+        continue;
       }
+
+      functionalNeeds.add(
+        _inferOptimizeFunctionalNeed(
+          name: removed['name'] as String? ?? '',
+          typeLine: removed['type_line'] as String? ?? '',
+          oracleText: removed['oracle_text'] as String? ?? '',
+        ),
+      );
     }
   }
 
@@ -6779,8 +6911,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
         LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
         WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
           AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
-          AND c.type_line NOT LIKE 'Basic Land%'
-          AND c.type_line NOT LIKE 'Basic Snow Land%'
+          AND c.type_line NOT ILIKE '%land%'
           AND c.name NOT LIKE 'A-%'
           AND c.name NOT LIKE '\_%' ESCAPE '\\'
           AND c.name NOT LIKE '%World Champion%'
@@ -6954,6 +7085,8 @@ int scoreOptimizeReplacementCandidate({
   required Map<String, int> rejectedAdditionCounts,
 }) {
   final normalizedName = cardName.trim().toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final normalizedOracle = oracleText.toLowerCase();
   final matchesNeed = matchesFunctionalNeed(
     functionalNeed,
     oracleText: oracleText,
@@ -6964,16 +7097,28 @@ int scoreOptimizeReplacementCandidate({
   final popularityScore = (popScore ~/ 10).clamp(0, 90);
   final rejectionPenalty =
       ((rejectedAdditionCounts[normalizedName] ?? 0) * 35).clamp(0, 175);
-  final protectionBonus = functionalNeed == 'protection' &&
-          oracleText.toLowerCase().contains('free')
-      ? 15
+  final protectionBonus =
+      functionalNeed == 'protection' && normalizedOracle.contains('free')
+          ? 15
+          : 0;
+  final offNeedPenalty = !matchesNeed && functionalNeed != 'utility' ? 90 : 0;
+  final landPenalty = normalizedType.contains('land') ? 220 : 0;
+  final temporaryManaPenalty = _looksLikeTemporaryManaBurst(
+    name: cardName,
+    typeLine: typeLine,
+    oracleText: oracleText,
+  )
+      ? (functionalNeed == 'ramp' ? 70 : 160)
       : 0;
 
   return needScore +
       preferredScore +
       popularityScore +
       protectionBonus -
-      rejectionPenalty;
+      rejectionPenalty -
+      offNeedPenalty -
+      landPenalty -
+      temporaryManaPenalty;
 }
 
 Future<Map<String, int>> _loadRejectedOptimizeAdditionCounts({

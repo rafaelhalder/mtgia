@@ -270,6 +270,58 @@ void main() {
       expect(result.additions, equals(const ['Arcane Signet']));
       expect(result.droppedReasons, isEmpty);
     });
+
+    test('drops temporary ritual swaps and non-structural land swaps in aggro',
+        () {
+      final originalDeck = [
+        _card(
+          name: 'Goblin Ringleader',
+          typeLine: 'Creature — Goblin',
+          manaCost: '{3}{R}',
+          cmc: 4,
+          oracleText:
+              'When Goblin Ringleader enters, reveal the top four cards of your library.',
+        ),
+        _card(
+          name: 'Abrade',
+          typeLine: 'Instant',
+          manaCost: '{1}{R}',
+          cmc: 2,
+          oracleText:
+              'Choose one — Abrade deals 3 damage to target creature; or destroy target artifact.',
+        ),
+      ];
+
+      final additions = [
+        _card(
+          name: 'Dark Ritual',
+          typeLine: 'Instant',
+          manaCost: '{B}',
+          cmc: 1,
+          oracleText: 'Add {B}{B}{B}.',
+        ),
+        _card(
+          name: 'Command Tower',
+          typeLine: 'Land',
+          manaCost: '',
+          cmc: 0,
+          oracleText:
+              '{T}: Add one mana of any color in your commander\'s color identity.',
+        ),
+      ];
+
+      final result = filterUnsafeOptimizeSwapsByCardData(
+        removals: const ['Goblin Ringleader', 'Abrade'],
+        additions: const ['Dark Ritual', 'Command Tower'],
+        originalDeck: originalDeck,
+        additionsData: additions,
+        archetype: 'aggro',
+      );
+
+      expect(result.removals, isEmpty);
+      expect(result.additions, isEmpty);
+      expect(result.droppedReasons, hasLength(2));
+    });
   });
 }
 

@@ -166,6 +166,46 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+        'penalizes temporary rituals and lands in optimize replacement ranking',
+        () {
+      final stableRampScore = optimize_route.scoreOptimizeReplacementCandidate(
+        functionalNeed: 'ramp',
+        cardName: 'Arcane Signet',
+        typeLine: 'Artifact',
+        oracleText:
+            '{T}: Add one mana of any color in your commander\'s color identity.',
+        popScore: 420,
+        preferredNames: const {},
+        rejectedAdditionCounts: const {},
+      );
+
+      final ritualScore = optimize_route.scoreOptimizeReplacementCandidate(
+        functionalNeed: 'ramp',
+        cardName: 'Dark Ritual',
+        typeLine: 'Instant',
+        oracleText: 'Add {B}{B}{B}.',
+        popScore: 420,
+        preferredNames: const {},
+        rejectedAdditionCounts: const {},
+      );
+
+      final landScore = optimize_route.scoreOptimizeReplacementCandidate(
+        functionalNeed: 'utility',
+        cardName: 'Command Tower',
+        typeLine: 'Land',
+        oracleText:
+            '{T}: Add one mana of any color in your commander\'s color identity.',
+        popScore: 420,
+        preferredNames: const {},
+        rejectedAdditionCounts: const {},
+      );
+
+      expect(stableRampScore, greaterThan(ritualScore));
+      expect(stableRampScore, greaterThan(landScore));
+      expect(landScore, lessThan(50));
+    });
   });
 
   group('buildDeterministicOptimizeResponse', () {
@@ -190,6 +230,28 @@ void main() {
       expect(payload['swaps'], hasLength(2));
       expect(parsed['removals'], equals(['Cancel', 'Divination']));
       expect(parsed['additions'], equals(['Force of Will', 'Mystic Remora']));
+    });
+  });
+
+  group('resolveOptimizeArchetype', () {
+    test('prefers detected control when request is generic midrange', () {
+      expect(
+        optimize_route.resolveOptimizeArchetype(
+          requestedArchetype: 'midrange',
+          detectedArchetype: 'control',
+        ),
+        equals('control'),
+      );
+    });
+
+    test('keeps explicit requested archetype when detected is generic', () {
+      expect(
+        optimize_route.resolveOptimizeArchetype(
+          requestedArchetype: 'combo',
+          detectedArchetype: 'midrange',
+        ),
+        equals('combo'),
+      );
     });
   });
 

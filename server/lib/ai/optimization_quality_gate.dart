@@ -64,10 +64,20 @@ OptimizationSwapGateResult filterUnsafeOptimizeSwapsByCardData({
           archetype: archetype,
           cmcDelta: cmcDelta,
         );
+    final addedIsLand = ((addedCard['type_line'] as String?) ?? '')
+        .toLowerCase()
+        .contains('land');
+    final nonStructuralLandSwap = addedIsLand && removedRole != 'land';
+    final temporaryManaBurst = _isTemporaryManaBurstCard(addedCard);
+    final riskyTemporaryRampSwap = temporaryManaBurst &&
+        archetype.trim().toLowerCase() != 'combo' &&
+        removedRole != 'ramp';
 
     final shouldDrop = losingCriticalRole ||
         (!rolePreserved && cmcDelta > 1) ||
         (archetype.toLowerCase() == 'aggro' && cmcDelta > 0) ||
+        nonStructuralLandSwap ||
+        riskyTemporaryRampSwap ||
         _looksLikeOffThemeRoleSwap(
           removedRole: removedRole,
           addedRole: addedRole,
@@ -121,6 +131,23 @@ bool _isStructuralRecoveryScenario(List<Map<String, dynamic>> originalDeck) {
       landCount >= 50 ||
       nonLandCount <= 20 ||
       (landCount >= 40 && colorProducingLandCount <= 8);
+}
+
+bool _isTemporaryManaBurstCard(Map<String, dynamic> card) {
+  final name = ((card['name'] as String?) ?? '').toLowerCase();
+  final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+  final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+  final generatesMana =
+      oracle.contains('add {') || oracle.contains('add one mana');
+
+  if (!generatesMana) return false;
+  if (!(typeLine.contains('instant') || typeLine.contains('sorcery'))) {
+    return false;
+  }
+
+  return name.contains('ritual') ||
+      oracle.contains('until end of turn') ||
+      oracle.contains('for each');
 }
 
 bool _isStructuralRecoveryUpgrade({
@@ -248,7 +275,7 @@ List<String> buildOptimizationRejectionReasons({
 
 Set<String> _criticalRolesForArchetype(String archetype) {
   return switch (archetype.trim().toLowerCase()) {
-    'aggro' => {'ramp', 'removal', 'protection'},
+    'aggro' => {'creature', 'ramp', 'removal', 'protection'},
     'control' => {'removal', 'draw', 'wipe', 'ramp', 'protection'},
     'midrange' => {'removal', 'ramp', 'draw'},
     _ => {'removal', 'ramp'},
@@ -263,8 +290,8 @@ bool _looksLikeOffThemeRoleSwap({
   final normalized = archetype.trim().toLowerCase();
 
   if (normalized == 'aggro' &&
-      removedRole == 'removal' &&
-      !{'removal', 'protection', 'creature'}.contains(addedRole)) {
+      {'creature', 'removal', 'protection', 'engine'}.contains(removedRole) &&
+      !{'creature', 'removal', 'protection', 'engine'}.contains(addedRole)) {
     return true;
   }
 
