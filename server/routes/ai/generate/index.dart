@@ -3,7 +3,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
 import 'package:dotenv/dotenv.dart';
-import '../../../lib/card_validation_service.dart';
+import '../../../lib/generated_deck_validation_service.dart';
 import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/openai_runtime_config.dart';
@@ -28,16 +28,16 @@ Future<Response> onRequest(RequestContext context) async {
     final apiKey = env['OPENAI_API_KEY'];
 
     if (apiKey == null || apiKey.isEmpty) {
-      final mockCards = _mockDeckCards(format);
+      final mockDeck = _mockGeneratedDeck(format);
       return Response.json(body: {
         'prompt': prompt,
         'format': format,
-        'generated_deck': {'cards': mockCards},
+        'generated_deck': mockDeck,
         'meta_context_used': false,
         'is_mock': true,
         'stats': {
-          'total_suggested': mockCards.length,
-          'valid_cards': mockCards.length,
+          'total_suggested': (mockDeck['cards'] as List).length,
+          'valid_cards': (mockDeck['cards'] as List).length,
           'invalid_cards': 0,
         },
         'warnings': {
@@ -175,7 +175,8 @@ $metaContext
     );
 
     if (response.statusCode != 200) {
-      return apiError(response.statusCode, 'OpenAI API Error: ${response.body}');
+      return apiError(
+          response.statusCode, 'OpenAI API Error: ${response.body}');
     }
 
     final aiData = jsonDecode(utf8.decode(response.bodyBytes));
@@ -189,77 +190,54 @@ $metaContext
     final cards =
         (deckList['cards'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-    // Validar cartas geradas pela IA
-    final validationService = CardValidationService(pool);
-
-    // Extrair nomes das cartas e sanitizar
-    final cardNames = cards.map((card) {
-      final name = card['name'] as String;
-      return CardValidationService.sanitizeCardName(name);
-    }).toList();
-
     String? commanderName;
     if (commanderRaw is Map && commanderRaw['name'] != null) {
-      commanderName = CardValidationService.sanitizeCardName(
-          commanderRaw['name'] as String);
+      commanderName = commanderRaw['name'] as String;
     } else if (commanderRaw is String && commanderRaw.trim().isNotEmpty) {
-      commanderName = CardValidationService.sanitizeCardName(commanderRaw);
+      commanderName = commanderRaw;
     }
 
-    // Validar todas as cartas
-    final validation = await validationService.validateCardNames(cardNames);
-    final commanderValidation = (commanderName == null || commanderName.isEmpty)
-        ? null
-        : await validationService.validateCardNames([commanderName]);
-
-    // Filtrar apenas cartas válidas e reconstruir a lista
-    final validCards = <Map<String, dynamic>>[];
-    final invalidCards = validation['invalid'] as List<String>;
-
-    for (final card in cards) {
-      final name =
-          CardValidationService.sanitizeCardName(card['name'] as String);
-
-      // Verificar se a carta é válida
-      final isValid = (validation['valid'] as List).any((validCard) =>
-          (validCard['name'] as String).toLowerCase() == name.toLowerCase());
-
-      if (isValid) {
-        validCards.add({
-          'name': name,
-          'quantity': card['quantity'] ?? 1,
-        });
-      }
-    }
+    final validationService = GeneratedDeckValidationService(
+      PostgresGeneratedDeckRepository(pool),
+    );
+    final validation = await validationService.validate(
+      format: format,
+      cards: cards,
+      commanderName: commanderName,
+    );
 
     // Preparar resposta
     final responseBody = {
       'prompt': prompt,
       'format': format,
-      'generated_deck': {
-        if (commanderName != null) 'commander': {'name': commanderName},
-        'cards': validCards,
-      },
+      'generated_deck': validation.generatedDeck,
       'meta_context_used': metaContext.isNotEmpty,
       'stats': {
-        'total_suggested': cards.length,
-        'valid_cards': validCards.length,
-        'invalid_cards': invalidCards.length,
+        'total_suggested': validation.totalSuggestedEntries,
+        'total_suggested_cards': validation.totalSuggestedCards,
+        'valid_cards': validation.totalResolvedEntries,
+        'valid_total_cards': validation.totalResolvedCards,
+        'invalid_cards': validation.invalidCards.length,
       },
+      'validation': validation.validationSummary(),
     };
 
-    // Adicionar avisos se houver cartas inválidas
-    if (invalidCards.isNotEmpty) {
+    if (validation.invalidCards.isNotEmpty || validation.warnings.isNotEmpty) {
       responseBody['warnings'] = {
-        'invalid_cards': invalidCards,
-        'message':
-            'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
-        'suggestions': validation['suggestions'],
+        'invalid_cards': validation.invalidCards,
+        'messages': validation.warnings,
+        'suggestions': validation.suggestions,
       };
     }
 
-    if (commanderValidation != null) {
-      responseBody['commander_validation'] = commanderValidation;
+    if (!validation.isValid) {
+      return Response.json(
+        statusCode: 422,
+        body: {
+          'error': 'Generated deck failed validation',
+          ...responseBody,
+        },
+      );
     }
 
     return Response.json(body: responseBody);
@@ -269,13 +247,29 @@ $metaContext
   }
 }
 
-List<Map<String, dynamic>> _mockDeckCards(String format) {
+Map<String, dynamic> _mockGeneratedDeck(String format) {
   final normalized = format.trim().toLowerCase();
-  final isCommander =
-      normalized == 'commander' || normalized == 'edh' || normalized == 'brawl';
-  final total = isCommander ? 100 : 60;
+  if (normalized == 'commander' || normalized == 'edh') {
+    return {
+      'commander': {'name': 'Isamaru, Hound of Konda'},
+      'cards': [
+        {'name': 'Plains', 'quantity': 99},
+      ],
+    };
+  }
+
+  if (normalized == 'brawl') {
+    return {
+      'commander': {'name': 'Kellan, Inquisitive Prodigy // Tail the Suspect'},
+      'cards': [
+        {'name': 'Plains', 'quantity': 30},
+        {'name': 'Island', 'quantity': 29},
+      ],
+    };
+  }
 
   final basics = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
+  const total = 60;
   final per = (total / basics.length).floor();
   final cards = <Map<String, dynamic>>[];
 
@@ -292,5 +286,5 @@ List<Map<String, dynamic>> _mockDeckCards(String format) {
     i++;
   }
 
-  return cards;
+  return {'cards': cards};
 }

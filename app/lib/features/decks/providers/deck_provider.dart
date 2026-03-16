@@ -996,7 +996,14 @@ class DeckProvider extends ChangeNotifier {
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
       } else {
-        throw Exception('Falha ao gerar deck: ${response.statusCode}');
+        final data = response.data;
+        final message =
+            data is Map<String, dynamic>
+                ? (data['error'] as String? ??
+                    data['message'] as String? ??
+                    'Falha ao gerar deck')
+                : 'Falha ao gerar deck';
+        throw Exception('$message (${response.statusCode})');
       }
     } catch (e) {
       rethrow;

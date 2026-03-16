@@ -13,6 +13,9 @@ Foram corrigidos e validados os seguintes pontos:
 - `server/rate-limit`: validacao distribuida passou a ser atomica por `bucket + identifier`.
 - `server/cards/resolve`: nomes ambiguos nao sao mais resolvidos silenciosamente para a carta errada.
 - `app/decks`: criacao de deck agora falha explicitamente quando o backend sinaliza ambiguidade no resolve em lote.
+- `server/ai/generate`: geracao agora passa por resolucao deterministica de nomes e validacao forte de regras do formato antes de retornar `200`.
+- `server/ai/generate`: decks ilegais da IA agora retornam `422` com diagnostico estruturado em vez de sucesso silencioso com lista truncada.
+- `app/decks`: tela de geracao agora exibe a mensagem detalhada do backend quando `/ai/generate` falha.
 
 ## Evidencias
 
@@ -52,6 +55,11 @@ Foram corrigidos e validados os seguintes pontos:
 - `app/test/features/decks/providers/deck_provider_test.dart` agora tambem valida:
   - falha explicita quando o backend retorna `ambiguous`.
 
+- `server/test/generated_deck_validation_service_test.dart` agora valida:
+  - deck de 60 cartas continua valido mesmo quando uma carta invalida e removida;
+  - geracao Commander falha sem `commander`;
+  - geracao Commander falha quando cartas nao resolvidas quebram o tamanho exato do deck.
+
 ## Comandos executados
 
 - `app/flutter analyze`
@@ -64,10 +72,12 @@ Foram corrigidos e validados os seguintes pontos:
 - `server/dart test test/decks_incremental_add_test.dart` com `RUN_INTEGRATION_TESTS=1`
 - `server/dart test test/decks_crud_test.dart` com `RUN_INTEGRATION_TESTS=1`
 - `server/dart test`
+- `server/dart test test/generated_deck_validation_service_test.dart`
 - `server/dart run bin/migrate.dart`
 - validacao manual de `POST /cards/resolve`
 - validacao manual de `POST /cards/resolve/batch`
 - validacao manual de polling de `/ai/optimize/jobs/:id` apos restart do backend
+- validacao manual de `POST /ai/generate`
 
 ## Resultado
 
@@ -79,6 +89,7 @@ Foram corrigidos e validados os seguintes pontos:
 - `POST /cards/resolve` com nome ambiguo: retorna erro explicito com candidatos.
 - `POST /cards/resolve/batch` com nome ambiguo: retorna `ambiguous` sem resolver incorretamente.
 - `/ai/optimize/jobs/:id`: permaneceu acessivel com `200` apos reinicio do `dart_frog dev`.
+- `POST /ai/generate`: quando a IA devolveu deck ilegal de Commander, a rota respondeu `422` com `validation.errors`, `invalid_cards` e deck resolvido parcial para diagnostico.
 
 ## Ajuste adicional apos o relatorio inicial
 
@@ -104,3 +115,11 @@ Foram corrigidos e validados os seguintes pontos:
   - `POST /ai/optimize` retornou `202`;
   - o polling inicial respondeu `processing`;
   - apos restart do backend, o mesmo `job_id` continuou retornando `200`.
+
+## Ajuste adicional em generate
+
+- A rota `POST /ai/generate` deixou de confiar apenas no prompt:
+  - nomes passam por resolucao em lote reaproveitando a mesma base do import;
+  - o deck final passa por `DeckRulesService` em modo estrito;
+  - `200` so acontece quando o deck final e legal para o formato;
+  - `422` agora explica o motivo exato da rejeicao.
