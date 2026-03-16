@@ -1243,7 +1243,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     try {
       deterministicSwapCandidates.addAll(
-        await _buildDeterministicOptimizeSwapCandidates(
+        await buildDeterministicOptimizeSwapCandidates(
           pool: pool,
           allCardData: allCardData,
           commanders: commanders,
@@ -1338,23 +1338,49 @@ Future<Response> onRequest(RequestContext context) async {
     // ================================================================
     //  SYNC MODE: optimize simples (troca de cartas) — roda inline
     // ================================================================
-    try {
-      jsonResponse = await optimizer.optimizeDeck(
-        deckData: deckData,
-        commanders: commanders,
-        targetArchetype: targetArchetype,
-        priorityPool: optimizeCommanderPriorityNames,
+    final deterministicFirstEnabled =
+        effectiveMode == 'optimize' && deterministicSwapCandidates.length >= 3;
+
+    if (deterministicFirstEnabled) {
+      jsonResponse = buildDeterministicOptimizeResponse(
         deterministicSwapCandidates: deterministicSwapCandidates,
-        bracket: bracket,
-        keepTheme: keepTheme,
-        detectedTheme: themeProfile.theme,
-        coreCards: themeProfile.coreCards,
+        targetArchetype: targetArchetype,
       );
-      jsonResponse['mode'] ??= 'optimize';
-    } catch (e, stackTrace) {
-      Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
-      final message = e.toString();
-      if (message.contains('Bad state: No element')) {
+      Log.i(
+        'Optimize deterministic-first ativado com ${deterministicSwapCandidates.length} swap(s) candidatos.',
+      );
+    } else {
+      try {
+        jsonResponse = await optimizer.optimizeDeck(
+          deckData: deckData,
+          commanders: commanders,
+          targetArchetype: targetArchetype,
+          priorityPool: optimizeCommanderPriorityNames,
+          deterministicSwapCandidates: deterministicSwapCandidates,
+          bracket: bracket,
+          keepTheme: keepTheme,
+          detectedTheme: themeProfile.theme,
+          coreCards: themeProfile.coreCards,
+        );
+        jsonResponse['mode'] ??= 'optimize';
+      } catch (e, stackTrace) {
+        Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
+        final message = e.toString();
+        if (message.contains('Bad state: No element')) {
+          return respondWithOptimizeTelemetry(
+            statusCode: HttpStatus.internalServerError,
+            body: {
+              'error': 'Optimization failed',
+              'quality_error': {
+                'code': 'OPTIMIZE_EXECUTION_FAILED',
+                'message':
+                    'A execucao da otimizacao falhou antes da validacao final.',
+                'details': message,
+              },
+              'mode': 'optimize',
+            },
+          );
+        }
         return respondWithOptimizeTelemetry(
           statusCode: HttpStatus.internalServerError,
           body: {
@@ -1363,25 +1389,12 @@ Future<Response> onRequest(RequestContext context) async {
               'code': 'OPTIMIZE_EXECUTION_FAILED',
               'message':
                   'A execucao da otimizacao falhou antes da validacao final.',
-              'details': message,
+              'details': '$e',
             },
             'mode': 'optimize',
           },
         );
       }
-      return respondWithOptimizeTelemetry(
-        statusCode: HttpStatus.internalServerError,
-        body: {
-          'error': 'Optimization failed',
-          'quality_error': {
-            'code': 'OPTIMIZE_EXECUTION_FAILED',
-            'message':
-                'A execucao da otimizacao falhou antes da validacao final.',
-            'details': '$e',
-          },
-          'mode': 'optimize',
-        },
-      );
     }
 
     jsonResponse = _normalizeOptimizePayload(
@@ -4562,6 +4575,31 @@ String _normalizeReasoning(dynamic value) {
   return value.toString();
 }
 
+Map<String, dynamic> buildDeterministicOptimizeResponse({
+  required List<Map<String, dynamic>> deterministicSwapCandidates,
+  required String targetArchetype,
+}) {
+  final swaps = deterministicSwapCandidates
+      .where((candidate) =>
+          (candidate['remove']?.toString().trim().isNotEmpty ?? false) &&
+          (candidate['add']?.toString().trim().isNotEmpty ?? false))
+      .map((candidate) => {
+            'out': candidate['remove'],
+            'in': candidate['add'],
+            if (candidate['reason'] != null) 'reason': candidate['reason'],
+            'priority': 'High',
+          })
+      .toList();
+
+  return {
+    'mode': 'optimize',
+    'strategy_source': 'deterministic_first',
+    'reasoning':
+        'O backend priorizou swaps determinísticos para $targetArchetype antes da IA, usando função das cartas, prioridade competitiva do comandante e histórico de rejeição.',
+    'swaps': swaps,
+  };
+}
+
 String _buildDeckSignature(List<ResultRow> cardsResult) {
   final entries = <String>[];
   for (final row in cardsResult) {
@@ -5344,6 +5382,208 @@ String _inferFunctionalRole({
   return 'utility';
 }
 
+int _recommendedLandCountForOptimizeArchetype(String targetArchetype) {
+  final archetype = targetArchetype.toLowerCase();
+  if (archetype.contains('aggro')) return 34;
+  if (archetype.contains('combo')) return 33;
+  if (archetype.contains('control')) return 37;
+  return 35;
+}
+
+bool _landProducesCommanderColors({
+  required Map<String, dynamic> card,
+  required Set<String> commanderColorIdentity,
+}) {
+  if (commanderColorIdentity.isEmpty) return false;
+
+  final oracleText = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+  final colors = (card['colors'] as List?)?.cast<String>() ?? const <String>[];
+  final colorIdentity =
+      (card['color_identity'] as List?)?.cast<String>() ?? const <String>[];
+  final detectedColors = <String>{
+    ...colors.map((c) => c.toUpperCase()),
+    ...colorIdentity.map((c) => c.toUpperCase()),
+  };
+
+  for (final color in commanderColorIdentity) {
+    if (detectedColors.contains(color.toUpperCase())) return true;
+    if (oracleText.contains('{${color.toLowerCase()}}')) return true;
+  }
+
+  if (oracleText.contains('mana of any color') ||
+      oracleText.contains('mana of any type')) {
+    return true;
+  }
+
+  return false;
+}
+
+List<Map<String, dynamic>> buildDeterministicOptimizeRemovalCandidates({
+  required List<Map<String, dynamic>> allCardData,
+  required List<String> commanders,
+  required Set<String> commanderColorIdentity,
+  required String targetArchetype,
+  required bool keepTheme,
+  required List<String>? coreCards,
+  required List<String> commanderPriorityNames,
+}) {
+  List<Map<String, dynamic>> buildCandidates({
+    required bool allowCoreTradeoffs,
+  }) {
+    if (allCardData.isEmpty) return const [];
+
+    final commanderLower =
+        commanders.map((name) => name.trim().toLowerCase()).toSet();
+    final coreLower = (coreCards ?? const <String>[])
+        .map((name) => name.trim().toLowerCase())
+        .toSet();
+    final preferredNames =
+        commanderPriorityNames.map((name) => name.toLowerCase()).toSet();
+    final currentRoleCounts = <String, int>{};
+    final roleTargets = _buildRoleTargetProfile(targetArchetype);
+    var landCount = 0;
+
+    for (final card in allCardData) {
+      final qty = (card['quantity'] as int?) ?? 1;
+      final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      if (typeLine.contains('land')) {
+        landCount += qty;
+        continue;
+      }
+
+      final role = _inferFunctionalRole(
+        name: (card['name'] as String?) ?? '',
+        typeLine: (card['type_line'] as String?) ?? '',
+        oracleText: (card['oracle_text'] as String?) ?? '',
+      );
+      currentRoleCounts[role] = (currentRoleCounts[role] ?? 0) + qty;
+    }
+
+    final removalCandidates = <Map<String, dynamic>>[];
+    for (final card in allCardData) {
+      final name = ((card['name'] as String?) ?? '').trim();
+      if (name.isEmpty) continue;
+      final lower = name.toLowerCase();
+      if (commanderLower.contains(lower)) continue;
+
+      final isCore = keepTheme && coreLower.contains(lower);
+      if (isCore && !allowCoreTradeoffs) continue;
+
+      final typeLine = (card['type_line'] as String?) ?? '';
+      final isLand = typeLine.toLowerCase().contains('land');
+      if (isLand) continue;
+
+      final role = _inferFunctionalRole(
+        name: name,
+        typeLine: typeLine,
+        oracleText: (card['oracle_text'] as String?) ?? '',
+      );
+      final currentRole = currentRoleCounts[role] ?? 0;
+      final targetRole = roleTargets[role] ?? 0;
+      final surplus = (currentRole - targetRole).clamp(0, 99);
+      if (surplus <= 0) continue;
+      final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
+      final preferredPenalty = preferredNames.contains(lower) ? 220 : 0;
+      final corePenalty = isCore ? 240 : 0;
+      final score =
+          surplus * 100 + (cmc * 12).round() - preferredPenalty - corePenalty;
+      if (score <= 0) continue;
+
+      removalCandidates.add({
+        'name': name,
+        'role': role,
+        'cmc': cmc,
+        'score': score,
+        'type_line': typeLine,
+        'oracle_text': (card['oracle_text'] as String?) ?? '',
+      });
+    }
+
+    final recommendedLandCount =
+        _recommendedLandCountForOptimizeArchetype(targetArchetype);
+    final excessLands = landCount - recommendedLandCount;
+    if (excessLands > 0) {
+      for (final card in allCardData) {
+        final name = ((card['name'] as String?) ?? '').trim();
+        if (name.isEmpty) continue;
+
+        final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+        if (!typeLine.contains('land')) continue;
+
+        final lower = name.toLowerCase();
+        final isBasic = _isBasicLandName(lower);
+        final supportsColors = _landProducesCommanderColors(
+          card: card,
+          commanderColorIdentity: commanderColorIdentity,
+        );
+        final tappedPenalty = (((card['oracle_text'] as String?) ?? '')
+                .toLowerCase()
+                .contains('enters the battlefield tapped'))
+            ? 20
+            : 0;
+        final colorlessPenalty =
+            supportsColors ? 0 : (commanderColorIdentity.isEmpty ? 0 : 70);
+        final basicPenalty = isBasic ? 30 : 0;
+        final score =
+            excessLands * 100 + colorlessPenalty + basicPenalty + tappedPenalty;
+        final copies =
+            ((card['quantity'] as int?) ?? 1).clamp(1, excessLands.clamp(1, 6));
+
+        for (var i = 0; i < copies; i++) {
+          removalCandidates.add({
+            'name': name,
+            'role': 'land',
+            'cmc': 0.0,
+            'score': score - i,
+            'type_line': card['type_line'],
+            'oracle_text': (card['oracle_text'] as String?) ?? '',
+          });
+        }
+      }
+    }
+
+    removalCandidates.sort((a, b) {
+      final byScore = (b['score'] as int).compareTo(a['score'] as int);
+      if (byScore != 0) return byScore;
+      return ((a['name'] as String)).compareTo(b['name'] as String);
+    });
+
+    return removalCandidates
+        .where((candidate) => (candidate['score'] as int) > 0)
+        .take(6)
+        .toList();
+  }
+
+  if (allCardData.isEmpty) return const [];
+  final strictCandidates = buildCandidates(allowCoreTradeoffs: false);
+  if (!keepTheme || strictCandidates.length >= 3) {
+    return strictCandidates;
+  }
+
+  final merged = <Map<String, dynamic>>[...strictCandidates];
+  final relaxedCandidates = buildCandidates(allowCoreTradeoffs: true);
+  final seenNonLandNames = strictCandidates
+      .where((candidate) => candidate['role'] != 'land')
+      .map((candidate) => ((candidate['name'] as String?) ?? '').toLowerCase())
+      .where((name) => name.isNotEmpty)
+      .toSet();
+
+  for (final candidate in relaxedCandidates) {
+    final role = (candidate['role'] as String?) ?? 'utility';
+    final lowerName = ((candidate['name'] as String?) ?? '').toLowerCase();
+    final isLand = role == 'land';
+    if (!isLand && seenNonLandNames.contains(lowerName)) continue;
+
+    merged.add(candidate);
+    if (!isLand && lowerName.isNotEmpty) {
+      seenNonLandNames.add(lowerName);
+    }
+    if (merged.length >= 6) break;
+  }
+
+  return merged.take(6).toList();
+}
+
 Map<String, int> _buildRoleTargetProfile(String targetArchetype) {
   final archetype = targetArchetype.toLowerCase();
   final baseTargets = <String, int>{
@@ -5496,7 +5736,7 @@ Future<List<Map<String, dynamic>>> _loadDeterministicSlotFillers({
   }).toList();
 }
 
-Future<List<Map<String, dynamic>>> _buildDeterministicOptimizeSwapCandidates({
+Future<List<Map<String, dynamic>>> buildDeterministicOptimizeSwapCandidates({
   required Pool pool,
   required List<Map<String, dynamic>> allCardData,
   required List<String> commanders,
@@ -5510,68 +5750,18 @@ Future<List<Map<String, dynamic>>> _buildDeterministicOptimizeSwapCandidates({
 }) async {
   if (allCardData.isEmpty) return const [];
 
-  final commanderLower =
-      commanders.map((name) => name.trim().toLowerCase()).toSet();
-  final coreLower = (coreCards ?? const <String>[])
-      .map((name) => name.trim().toLowerCase())
-      .toSet();
   final preferredNames =
       commanderPriorityNames.map((name) => name.toLowerCase()).toSet();
-  final currentRoleCounts = <String, int>{};
-  final roleTargets = _buildRoleTargetProfile(targetArchetype);
-
-  for (final card in allCardData) {
-    final qty = (card['quantity'] as int?) ?? 1;
-    final role = _inferFunctionalRole(
-      name: (card['name'] as String?) ?? '',
-      typeLine: (card['type_line'] as String?) ?? '',
-      oracleText: (card['oracle_text'] as String?) ?? '',
-    );
-    currentRoleCounts[role] = (currentRoleCounts[role] ?? 0) + qty;
-  }
-
-  final removalCandidates = <Map<String, dynamic>>[];
-  for (final card in allCardData) {
-    final name = ((card['name'] as String?) ?? '').trim();
-    if (name.isEmpty) continue;
-    final lower = name.toLowerCase();
-    if (commanderLower.contains(lower)) continue;
-    if (keepTheme && coreLower.contains(lower)) continue;
-
-    final typeLine = (card['type_line'] as String?) ?? '';
-    if (typeLine.toLowerCase().contains('land')) continue;
-
-    final role = _inferFunctionalRole(
-      name: name,
-      typeLine: typeLine,
-      oracleText: (card['oracle_text'] as String?) ?? '',
-    );
-    final currentRole = currentRoleCounts[role] ?? 0;
-    final targetRole = roleTargets[role] ?? 0;
-    final surplus = (currentRole - targetRole).clamp(0, 99);
-    final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
-    final preferredPenalty = preferredNames.contains(lower) ? 220 : 0;
-    final score = surplus * 100 + (cmc * 12).round() - preferredPenalty;
-
-    removalCandidates.add({
-      'name': name,
-      'role': role,
-      'cmc': cmc,
-      'score': score,
-      'type_line': typeLine,
-      'oracle_text': (card['oracle_text'] as String?) ?? '',
-    });
-  }
-
-  removalCandidates.sort((a, b) {
-    final byScore = (b['score'] as int).compareTo(a['score'] as int);
-    if (byScore != 0) return byScore;
-    return ((a['name'] as String)).compareTo(b['name'] as String);
-  });
-
+  final removalCandidates = buildDeterministicOptimizeRemovalCandidates(
+    allCardData: allCardData,
+    commanders: commanders,
+    commanderColorIdentity: commanderColorIdentity,
+    targetArchetype: targetArchetype,
+    keepTheme: keepTheme,
+    coreCards: coreCards,
+    commanderPriorityNames: commanderPriorityNames,
+  );
   final removalList = removalCandidates
-      .where((candidate) => (candidate['score'] as int) > 0)
-      .take(6)
       .map((candidate) => candidate['name'] as String)
       .toList();
   if (removalList.isEmpty) return const [];
@@ -5595,6 +5785,36 @@ Future<List<Map<String, dynamic>>> _buildDeterministicOptimizeSwapCandidates({
     allCardData: allCardData,
     preferredNames: preferredNames,
   );
+  if (replacements.length < removalList.length) {
+    final usedReplacementNames = replacements
+        .map((replacement) =>
+            ((replacement['name'] as String?) ?? '').trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    final fillerPool = await _loadDeterministicSlotFillers(
+      pool: pool,
+      currentDeckCards: allCardData,
+      targetArchetype: targetArchetype,
+      commanderColorIdentity: commanderColorIdentity,
+      bracket: bracket,
+      excludeNames: deckNamesLower.union(usedReplacementNames),
+      preferredNames: preferredNames,
+      limit: removalList.length - replacements.length,
+    );
+    for (final filler in fillerPool) {
+      if (replacements.length >= removalList.length) break;
+      final lowerName =
+          ((filler['name'] as String?) ?? '').trim().toLowerCase();
+      if (lowerName.isEmpty || usedReplacementNames.contains(lowerName)) {
+        continue;
+      }
+      replacements.add({
+        'id': filler['id'],
+        'name': filler['name'],
+      });
+      usedReplacementNames.add(lowerName);
+    }
+  }
 
   final pairCount = removalList.length < replacements.length
       ? removalList.length

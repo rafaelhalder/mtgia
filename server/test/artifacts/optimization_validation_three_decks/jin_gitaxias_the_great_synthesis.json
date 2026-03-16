@@ -1,9 +1,9 @@
 {
   "source_deck_id": "f2a2a34a-4561-4a77-886d-7067b672ac85",
   "source_deck_name": "jin",
-  "clone_deck_id": "dd163fe5-eccd-442d-a2fd-a854bf57c212",
+  "clone_deck_id": "aa39fc96-d653-499b-af51-9b28d7aaece9",
   "optimize_request": {
-    "deck_id": "dd163fe5-eccd-442d-a2fd-a854bf57c212",
+    "deck_id": "aa39fc96-d653-499b-af51-9b28d7aaece9",
     "archetype": "midrange",
     "bracket": 2,
     "keep_theme": true
@@ -15,28 +15,28 @@
       "code": "OPTIMIZE_QUALITY_REJECTED",
       "message": "As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
       "reasons": [
-        "A validação final não fechou como \"aprovado\" (score 55/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (55/100; mínimo 70)."
+        "A validação final não fechou como \"aprovado\" (score 64/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (64/100; mínimo 70)."
       ],
       "validation": {
-        "validation_score": 55,
+        "validation_score": 64,
         "verdict": "aprovado_com_ressalvas",
         "monte_carlo": {
           "before": {
             "simulations": 1000,
-            "consistency_score": 91,
+            "consistency_score": 90,
             "mana_analysis": {
               "land_count": 40,
-              "screw_rate": 0.136,
-              "flood_rate": 0.016,
-              "keepable_rate": 0.848
+              "screw_rate": 0.154,
+              "flood_rate": 0.012,
+              "keepable_rate": 0.834
             },
             "curve_analysis": {
               "avg_cmc": 3.07,
-              "turn_1_play": 0.717,
-              "turn_2_play": 0.933,
-              "turn_3_play": 0.986,
-              "turn_4_play": 0.996,
+              "turn_1_play": 0.733,
+              "turn_2_play": 0.941,
+              "turn_3_play": 0.99,
+              "turn_4_play": 0.994,
               "cmc_distribution": {
                 "1": 15,
                 "3": 13,
@@ -50,156 +50,134 @@
               }
             },
             "recommendations": [
-              "Deck bem balanceado! Métricas dentro do ideal para Commander."
+              "Alta taxa de mana screw (15.4%). Considere adicionar 2-4 terrenos."
             ]
           },
           "after": {
             "simulations": 1000,
-            "consistency_score": 89,
+            "consistency_score": 91,
             "mana_analysis": {
-              "land_count": 40,
-              "screw_rate": 0.152,
-              "flood_rate": 0.018,
-              "keepable_rate": 0.83
+              "land_count": 41,
+              "screw_rate": 0.13,
+              "flood_rate": 0.019,
+              "keepable_rate": 0.851
             },
             "curve_analysis": {
-              "avg_cmc": 3.08,
-              "turn_1_play": 0.735,
-              "turn_2_play": 0.917,
-              "turn_3_play": 0.985,
-              "turn_4_play": 0.993,
+              "avg_cmc": 2.95,
+              "turn_1_play": 0.736,
+              "turn_2_play": 0.943,
+              "turn_3_play": 0.984,
+              "turn_4_play": 0.997,
               "cmc_distribution": {
-                "3": 14,
-                "7": 2,
-                "1": 14,
-                "2": 11,
+                "1": 16,
+                "3": 13,
+                "2": 12,
                 "10": 4,
                 "5": 3,
-                "4": 7,
+                "7": 2,
+                "4": 4,
                 "0": 4,
                 "9": 1
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (15.2%). Considere adicionar 2-4 terrenos."
+              "41 terrenos é acima do ideal. Considere trocar alguns por mana rocks."
             ]
           },
           "mulligan_before": {
             "runs": 500,
-            "avg_mulligans": 0.11,
-            "keep_at_7": 0.894,
-            "keep_at_6": 0.1,
-            "keep_at_5": 0.006,
+            "avg_mulligans": 0.13,
+            "keep_at_7": 0.88,
+            "keep_at_6": 0.108,
+            "keep_at_5": 0.012,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.936
+            "keepable_after_mull": 0.93
           },
           "mulligan_after": {
             "runs": 500,
             "avg_mulligans": 0.11,
-            "keep_at_7": 0.904,
-            "keep_at_6": 0.084,
-            "keep_at_5": 0.012,
+            "keep_at_7": 0.906,
+            "keep_at_6": 0.08,
+            "keep_at_5": 0.014,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.936
+            "keepable_after_mull": 0.918
           },
           "deltas": {
-            "consistency_score": -2,
-            "screw_rate_delta": 0.016,
-            "flood_rate_delta": 0.002,
-            "keepable_rate_delta": -0.018,
-            "turn2_play_delta": -0.016,
-            "mulligan_keep7_delta": 0.01
+            "consistency_score": 1,
+            "screw_rate_delta": -0.024,
+            "flood_rate_delta": 0.007,
+            "keepable_rate_delta": 0.017,
+            "turn2_play_delta": 0.002,
+            "mulligan_keep7_delta": 0.026
           }
         },
         "functional_analysis": {
           "swaps": [
             {
-              "removed": "Lightning Greaves",
-              "added": "Experimental Augury",
-              "removed_role": "protection",
-              "added_role": "draw",
-              "role_preserved": false,
-              "cmc_delta": 0,
-              "verdict": "tradeoff"
-            },
-            {
-              "removed": "Ponder",
-              "added": "Tezzeret's Gambit",
+              "removed": "Sea Gate Restoration // Sea Gate, Reborn",
+              "added": "Brainstorm",
               "removed_role": "draw",
               "added_role": "draw",
               "role_preserved": true,
-              "cmc_delta": 3,
-              "verdict": "sidegrade"
+              "cmc_delta": -6,
+              "verdict": "upgrade"
             },
             {
-              "removed": "Isochron Scepter",
-              "added": "Mindsplice Apparatus",
-              "removed_role": "artifact",
-              "added_role": "artifact",
-              "role_preserved": true,
-              "cmc_delta": 2,
-              "verdict": "sidegrade"
-            },
-            {
-              "removed": "All Is Dust",
-              "added": "Laboratory Maniac",
+              "removed": "Engulf the Shore",
+              "added": "Command Tower",
               "removed_role": "utility",
-              "added_role": "draw",
+              "added_role": "land",
               "role_preserved": false,
               "cmc_delta": -4,
               "verdict": "tradeoff"
             }
           ],
           "summary": {
-            "upgrades": 0,
-            "sidegrades": 2,
-            "tradeoffs": 2,
+            "upgrades": 1,
+            "sidegrades": 0,
+            "tradeoffs": 1,
             "questionable": 0
           },
           "role_delta": {
-            "draw": 2,
+            "draw": 0,
             "removal": 0,
             "ramp": 0,
             "creature": 0,
             "artifact": 0,
             "enchantment": 0,
-            "land": 0,
+            "land": 1,
             "utility": -1,
             "wipe": 0,
             "tutor": 0,
-            "protection": -1
+            "protection": 0
           }
         },
         "critic_ai": {
-          "approval_score": 65,
+          "approval_score": 85,
           "verdict": "aprovado_com_ressalvas",
           "concerns": [
-            "A troca de Lightning Greaves por Experimental Augury pode comprometer a proteção do comandante, especialmente em um deck midrange que pode ser vulnerável a remoções.",
-            "A troca de All Is Dust por Laboratory Maniac pode reduzir a capacidade de lidar com múltiplas ameaças no campo, já que All Is Dust é uma remoção em massa.",
-            "O aumento na taxa de mana screw sugere que as trocas podem ter afetado a consistência do deck."
+            "A troca de Engulf the Shore por Command Tower reduz a versatilidade do deck em situações de controle de mesa.",
+            "A adição de Brainstorm, embora melhore a consistência, pode não ser tão impactante em um deck que já possui boas opções de compra."
           ],
-          "strong_swaps": [],
+          "strong_swaps": [
+            "OUT: Sea Gate Restoration // Sea Gate, Reborn → IN: Brainstorm"
+          ],
           "weak_swaps": [
-            "OUT: Lightning Greaves → IN: Experimental Augury: A proteção é crucial para um comandante como Jin-Gitaxias, e a troca por um card de compra pode não justificar a perda de segurança.",
-            "OUT: All Is Dust → IN: Laboratory Maniac: A remoção em massa é uma ferramenta importante em um formato como Commander, e perder isso pode ser arriscado."
+            "OUT: Engulf the Shore → IN: Command Tower: A perda de uma carta de controle pode ser significativa em um ambiente de Commander."
           ],
-          "overall_assessment": "As trocas propostas têm méritos, mas comprometem a proteção e a remoção, resultando em uma diminuição na consistência geral do deck."
+          "overall_assessment": "As trocas melhoraram a consistência do deck, mas a perda de uma carta de controle pode ser uma preocupação em jogos mais competitivos."
         },
         "warnings": []
       }
     },
     "mode": "optimize",
     "removals": [
-      "Lightning Greaves",
-      "Ponder",
-      "Isochron Scepter",
-      "All Is Dust"
+      "Sea Gate Restoration // Sea Gate, Reborn",
+      "Engulf the Shore"
     ],
     "additions": [
-      "Experimental Augury",
-      "Tezzeret's Gambit",
-      "Mindsplice Apparatus",
-      "Laboratory Maniac"
+      "Brainstorm",
+      "Command Tower"
     ],
     "deck_analysis": {
       "detected_archetype": "control",
@@ -220,44 +198,44 @@
       "archetype_confidence": "média"
     },
     "post_analysis": {
-      "detected_archetype": "control",
-      "average_cmc": "3.08",
+      "detected_archetype": "combo",
+      "average_cmc": "2.95",
       "type_distribution": {
-        "creatures": 11,
-        "instants": 18,
+        "creatures": 10,
+        "instants": 17,
         "sorceries": 7,
         "enchantments": 5,
-        "artifacts": 23,
+        "artifacts": 24,
         "planeswalkers": 0,
-        "lands": 40,
+        "lands": 41,
         "battles": 0
       },
       "total_cards": 100,
-      "mana_curve_assessment": "BOA: Curva adequada para Control",
+      "mana_curve_assessment": "OK: Curva dentro de parâmetros aceitáveis",
       "mana_base_assessment": "Base de mana equilibrada",
       "archetype_confidence": "média",
       "improvements": [
-        "Mais interação instant-speed adicionada"
+        "CMC médio otimizado: 3.07 → 2.95"
       ],
       "validation": {
-        "validation_score": 55,
+        "validation_score": 64,
         "verdict": "aprovado_com_ressalvas",
         "monte_carlo": {
           "before": {
             "simulations": 1000,
-            "consistency_score": 91,
+            "consistency_score": 90,
             "mana_analysis": {
               "land_count": 40,
-              "screw_rate": 0.136,
-              "flood_rate": 0.016,
-              "keepable_rate": 0.848
+              "screw_rate": 0.154,
+              "flood_rate": 0.012,
+              "keepable_rate": 0.834
             },
             "curve_analysis": {
               "avg_cmc": 3.07,
-              "turn_1_play": 0.717,
-              "turn_2_play": 0.933,
-              "turn_3_play": 0.986,
-              "turn_4_play": 0.996,
+              "turn_1_play": 0.733,
+              "turn_2_play": 0.941,
+              "turn_3_play": 0.99,
+              "turn_4_play": 0.994,
               "cmc_distribution": {
                 "1": 15,
                 "3": 13,
@@ -271,147 +249,129 @@
               }
             },
             "recommendations": [
-              "Deck bem balanceado! Métricas dentro do ideal para Commander."
+              "Alta taxa de mana screw (15.4%). Considere adicionar 2-4 terrenos."
             ]
           },
           "after": {
             "simulations": 1000,
-            "consistency_score": 89,
+            "consistency_score": 91,
             "mana_analysis": {
-              "land_count": 40,
-              "screw_rate": 0.152,
-              "flood_rate": 0.018,
-              "keepable_rate": 0.83
+              "land_count": 41,
+              "screw_rate": 0.13,
+              "flood_rate": 0.019,
+              "keepable_rate": 0.851
             },
             "curve_analysis": {
-              "avg_cmc": 3.08,
-              "turn_1_play": 0.735,
-              "turn_2_play": 0.917,
-              "turn_3_play": 0.985,
-              "turn_4_play": 0.993,
+              "avg_cmc": 2.95,
+              "turn_1_play": 0.736,
+              "turn_2_play": 0.943,
+              "turn_3_play": 0.984,
+              "turn_4_play": 0.997,
               "cmc_distribution": {
-                "3": 14,
-                "7": 2,
-                "1": 14,
-                "2": 11,
+                "1": 16,
+                "3": 13,
+                "2": 12,
                 "10": 4,
                 "5": 3,
-                "4": 7,
+                "7": 2,
+                "4": 4,
                 "0": 4,
                 "9": 1
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (15.2%). Considere adicionar 2-4 terrenos."
+              "41 terrenos é acima do ideal. Considere trocar alguns por mana rocks."
             ]
           },
           "mulligan_before": {
             "runs": 500,
-            "avg_mulligans": 0.11,
-            "keep_at_7": 0.894,
-            "keep_at_6": 0.1,
-            "keep_at_5": 0.006,
+            "avg_mulligans": 0.13,
+            "keep_at_7": 0.88,
+            "keep_at_6": 0.108,
+            "keep_at_5": 0.012,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.936
+            "keepable_after_mull": 0.93
           },
           "mulligan_after": {
             "runs": 500,
             "avg_mulligans": 0.11,
-            "keep_at_7": 0.904,
-            "keep_at_6": 0.084,
-            "keep_at_5": 0.012,
+            "keep_at_7": 0.906,
+            "keep_at_6": 0.08,
+            "keep_at_5": 0.014,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.936
+            "keepable_after_mull": 0.918
           },
           "deltas": {
-            "consistency_score": -2,
-            "screw_rate_delta": 0.016,
-            "flood_rate_delta": 0.002,
-            "keepable_rate_delta": -0.018,
-            "turn2_play_delta": -0.016,
-            "mulligan_keep7_delta": 0.01
+            "consistency_score": 1,
+            "screw_rate_delta": -0.024,
+            "flood_rate_delta": 0.007,
+            "keepable_rate_delta": 0.017,
+            "turn2_play_delta": 0.002,
+            "mulligan_keep7_delta": 0.026
           }
         },
         "functional_analysis": {
           "swaps": [
             {
-              "removed": "Lightning Greaves",
-              "added": "Experimental Augury",
-              "removed_role": "protection",
-              "added_role": "draw",
-              "role_preserved": false,
-              "cmc_delta": 0,
-              "verdict": "tradeoff"
-            },
-            {
-              "removed": "Ponder",
-              "added": "Tezzeret's Gambit",
+              "removed": "Sea Gate Restoration // Sea Gate, Reborn",
+              "added": "Brainstorm",
               "removed_role": "draw",
               "added_role": "draw",
               "role_preserved": true,
-              "cmc_delta": 3,
-              "verdict": "sidegrade"
+              "cmc_delta": -6,
+              "verdict": "upgrade"
             },
             {
-              "removed": "Isochron Scepter",
-              "added": "Mindsplice Apparatus",
-              "removed_role": "artifact",
-              "added_role": "artifact",
-              "role_preserved": true,
-              "cmc_delta": 2,
-              "verdict": "sidegrade"
-            },
-            {
-              "removed": "All Is Dust",
-              "added": "Laboratory Maniac",
+              "removed": "Engulf the Shore",
+              "added": "Command Tower",
               "removed_role": "utility",
-              "added_role": "draw",
+              "added_role": "land",
               "role_preserved": false,
               "cmc_delta": -4,
               "verdict": "tradeoff"
             }
           ],
           "summary": {
-            "upgrades": 0,
-            "sidegrades": 2,
-            "tradeoffs": 2,
+            "upgrades": 1,
+            "sidegrades": 0,
+            "tradeoffs": 1,
             "questionable": 0
           },
           "role_delta": {
-            "draw": 2,
+            "draw": 0,
             "removal": 0,
             "ramp": 0,
             "creature": 0,
             "artifact": 0,
             "enchantment": 0,
-            "land": 0,
+            "land": 1,
             "utility": -1,
             "wipe": 0,
             "tutor": 0,
-            "protection": -1
+            "protection": 0
           }
         },
         "critic_ai": {
-          "approval_score": 65,
+          "approval_score": 85,
           "verdict": "aprovado_com_ressalvas",
           "concerns": [
-            "A troca de Lightning Greaves por Experimental Augury pode comprometer a proteção do comandante, especialmente em um deck midrange que pode ser vulnerável a remoções.",
-            "A troca de All Is Dust por Laboratory Maniac pode reduzir a capacidade de lidar com múltiplas ameaças no campo, já que All Is Dust é uma remoção em massa.",
-            "O aumento na taxa de mana screw sugere que as trocas podem ter afetado a consistência do deck."
+            "A troca de Engulf the Shore por Command Tower reduz a versatilidade do deck em situações de controle de mesa.",
+            "A adição de Brainstorm, embora melhore a consistência, pode não ser tão impactante em um deck que já possui boas opções de compra."
           ],
-          "strong_swaps": [],
+          "strong_swaps": [
+            "OUT: Sea Gate Restoration // Sea Gate, Reborn → IN: Brainstorm"
+          ],
           "weak_swaps": [
-            "OUT: Lightning Greaves → IN: Experimental Augury: A proteção é crucial para um comandante como Jin-Gitaxias, e a troca por um card de compra pode não justificar a perda de segurança.",
-            "OUT: All Is Dust → IN: Laboratory Maniac: A remoção em massa é uma ferramenta importante em um formato como Commander, e perder isso pode ser arriscado."
+            "OUT: Engulf the Shore → IN: Command Tower: A perda de uma carta de controle pode ser significativa em um ambiente de Commander."
           ],
-          "overall_assessment": "As trocas propostas têm méritos, mas comprometem a proteção e a remoção, resultando em uma diminuição na consistência geral do deck."
+          "overall_assessment": "As trocas melhoraram a consistência do deck, mas a perda de uma carta de controle pode ser uma preocupação em jogos mais competitivos."
         },
         "warnings": []
       }
     },
     "validation_warnings": [
       "🔒 Gate de qualidade removeu 1 troca(s) insegura(s) antes da resposta final.",
-      "🔒 Basalt Monolith -> Swiftfoot Boots removida pelo gate: papel ramp -> protection, delta CMC -1."
+      "🔒 Mystic Forge -> Counterspell removida pelo gate: papel draw -> removal, delta CMC -2."
     ]
   }
 }

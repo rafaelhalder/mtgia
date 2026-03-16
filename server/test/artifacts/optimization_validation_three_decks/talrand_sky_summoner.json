@@ -1,9 +1,9 @@
 {
   "source_deck_id": "df780797-bcc4-47cb-82d6-08d01ae3b03b",
   "source_deck_name": "Deck incremental",
-  "clone_deck_id": "a4d9dbc7-cbd9-454e-ad33-af0aef35f6f2",
+  "clone_deck_id": "d08a7c35-a329-404f-8494-9d74d7faab4d",
   "optimize_request": {
-    "deck_id": "a4d9dbc7-cbd9-454e-ad33-af0aef35f6f2",
+    "deck_id": "d08a7c35-a329-404f-8494-9d74d7faab4d",
     "archetype": "midrange",
     "bracket": 2,
     "keep_theme": true
@@ -16,7 +16,7 @@
       "message": "As trocas sugeridas pioravam funcao, curva ou consistencia do deck.",
       "dropped_swaps": [
         "🔒 Gate de qualidade removeu 1 troca(s) insegura(s) antes da resposta final.",
-        "🔒 Wastes -> Arcane Signet removida pelo gate: papel land -> ramp, delta CMC +2."
+        "🔒 Wastes -> Cyclonic Rift removida pelo gate: papel land -> removal, delta CMC +2."
       ]
     },
     "mode": "optimize",
