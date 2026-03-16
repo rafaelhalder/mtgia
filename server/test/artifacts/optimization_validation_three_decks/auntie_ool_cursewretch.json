@@ -1,9 +1,9 @@
 {
   "source_deck_id": "8c22deb9-80bd-489f-8e87-1344eabac698",
   "source_deck_name": "goblins",
-  "clone_deck_id": "06c45551-4aa6-4eff-8d23-e0ca4871a521",
+  "clone_deck_id": "0795b065-8648-4630-85ff-e72ab528c537",
   "optimize_request": {
-    "deck_id": "06c45551-4aa6-4eff-8d23-e0ca4871a521",
+    "deck_id": "0795b065-8648-4630-85ff-e72ab528c537",
     "archetype": "aggro",
     "bracket": 4,
     "keep_theme": true
@@ -15,28 +15,28 @@
       "code": "OPTIMIZE_QUALITY_REJECTED",
       "message": "As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
       "reasons": [
-        "A validação final não fechou como \"aprovado\" (score 65/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (65/100; mínimo 70)."
+        "A validação final não fechou como \"aprovado\" (score 62/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (62/100; mínimo 70)."
       ],
       "validation": {
-        "validation_score": 65,
+        "validation_score": 62,
         "verdict": "aprovado_com_ressalvas",
         "monte_carlo": {
           "before": {
             "simulations": 1000,
-            "consistency_score": 67,
+            "consistency_score": 66,
             "mana_analysis": {
               "land_count": 24,
-              "screw_rate": 0.467,
-              "flood_rate": 0.001,
-              "keepable_rate": 0.532
+              "screw_rate": 0.462,
+              "flood_rate": 0.0,
+              "keepable_rate": 0.538
             },
             "curve_analysis": {
               "avg_cmc": 2.43,
-              "turn_1_play": 0.47,
-              "turn_2_play": 0.746,
-              "turn_3_play": 0.827,
-              "turn_4_play": 0.879,
+              "turn_1_play": 0.458,
+              "turn_2_play": 0.727,
+              "turn_3_play": 0.797,
+              "turn_4_play": 0.852,
               "cmc_distribution": {
                 "3": 23,
                 "2": 29,
@@ -46,7 +46,7 @@
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (46.7%). Considere adicionar 2-4 terrenos.",
+              "Alta taxa de mana screw (46.2%). Considere adicionar 2-4 terrenos.",
               "Apenas 24 terrenos. Commander geralmente precisa de 35-38."
             ]
           },
@@ -55,90 +55,81 @@
             "consistency_score": 68,
             "mana_analysis": {
               "land_count": 24,
-              "screw_rate": 0.445,
+              "screw_rate": 0.446,
               "flood_rate": 0.001,
-              "keepable_rate": 0.554
+              "keepable_rate": 0.553
             },
             "curve_analysis": {
-              "avg_cmc": 2.43,
-              "turn_1_play": 0.46,
-              "turn_2_play": 0.754,
-              "turn_3_play": 0.838,
-              "turn_4_play": 0.878,
+              "avg_cmc": 2.41,
+              "turn_1_play": 0.463,
+              "turn_2_play": 0.756,
+              "turn_3_play": 0.823,
+              "turn_4_play": 0.871,
               "cmc_distribution": {
-                "3": 23,
+                "3": 22,
                 "2": 29,
-                "1": 13,
+                "1": 14,
                 "4": 10,
                 "5": 1
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (44.5%). Considere adicionar 2-4 terrenos.",
+              "Alta taxa de mana screw (44.6%). Considere adicionar 2-4 terrenos.",
               "Apenas 24 terrenos. Commander geralmente precisa de 35-38."
             ]
           },
           "mulligan_before": {
             "runs": 500,
-            "avg_mulligans": 0.43,
-            "keep_at_7": 0.676,
+            "avg_mulligans": 0.45,
+            "keep_at_7": 0.666,
             "keep_at_6": 0.214,
-            "keep_at_5": 0.11,
+            "keep_at_5": 0.12,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.77
+            "keepable_after_mull": 0.81
           },
           "mulligan_after": {
             "runs": 500,
-            "avg_mulligans": 0.44,
-            "keep_at_7": 0.67,
-            "keep_at_6": 0.216,
-            "keep_at_5": 0.114,
+            "avg_mulligans": 0.42,
+            "keep_at_7": 0.678,
+            "keep_at_6": 0.228,
+            "keep_at_5": 0.094,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.842
+            "keepable_after_mull": 0.76
           },
           "deltas": {
-            "consistency_score": 1,
-            "screw_rate_delta": -0.022,
-            "flood_rate_delta": 0.0,
-            "keepable_rate_delta": 0.022,
-            "turn2_play_delta": 0.008,
-            "mulligan_keep7_delta": -0.006
+            "consistency_score": 2,
+            "screw_rate_delta": -0.016,
+            "flood_rate_delta": 0.001,
+            "keepable_rate_delta": 0.015,
+            "turn2_play_delta": 0.029,
+            "mulligan_keep7_delta": 0.012
           }
         },
         "functional_analysis": {
           "swaps": [
             {
               "removed": "Boggart Shenanigans",
-              "added": "Blowfly Infestation",
+              "added": "Dark Ritual",
               "removed_role": "enchantment",
-              "added_role": "enchantment",
-              "role_preserved": true,
-              "cmc_delta": 0,
-              "verdict": "upgrade"
-            },
-            {
-              "removed": "Rakdos Signet",
-              "added": "Devoted Druid",
-              "removed_role": "ramp",
               "added_role": "ramp",
-              "role_preserved": true,
-              "cmc_delta": 0,
-              "verdict": "upgrade"
+              "role_preserved": false,
+              "cmc_delta": -2,
+              "verdict": "tradeoff"
             }
           ],
           "summary": {
-            "upgrades": 2,
+            "upgrades": 0,
             "sidegrades": 0,
-            "tradeoffs": 0,
+            "tradeoffs": 1,
             "questionable": 0
           },
           "role_delta": {
             "draw": 0,
             "removal": 0,
-            "ramp": 0,
+            "ramp": 1,
             "creature": 0,
             "artifact": 0,
-            "enchantment": 0,
+            "enchantment": -1,
             "land": 0,
             "utility": 0,
             "wipe": 0,
@@ -150,28 +141,22 @@
           "approval_score": 85,
           "verdict": "aprovado",
           "concerns": [
-            "A taxa de mulligan free keep diminuiu ligeiramente, o que pode impactar a jogabilidade em algumas mãos.",
-            "Devoted Druid, embora seja uma boa fonte de mana, pode ser vulnerável a remoções e não gera mana imediatamente."
+            "A troca de um encantamento por uma mágica instantânea pode afetar a sinergia do deck com outras cartas que interagem com encantamentos.",
+            "Dark Ritual é uma carta poderosa, mas sua eficácia pode ser limitada em um deck que não a utiliza para explosões de mana em turnos iniciais."
           ],
-          "strong_swaps": [
-            "Boggart Shenanigans → Blowfly Infestation"
-          ],
-          "weak_swaps": [
-            "Rakdos Signet → Devoted Druid: A troca melhora a consistência, mas a vulnerabilidade do Druid pode ser uma preocupação."
-          ],
-          "overall_assessment": "As trocas são em grande parte benéficas, mas a diminuição na taxa de mulligan free keep e a vulnerabilidade do Devoted Druid merecem atenção."
+          "strong_swaps": [],
+          "weak_swaps": [],
+          "overall_assessment": "A troca melhora a consistência do deck e a capacidade de jogar no T2, mas pode comprometer a sinergia com encantamentos, o que deve ser considerado."
         },
         "warnings": []
       }
     },
     "mode": "optimize",
     "removals": [
-      "Boggart Shenanigans",
-      "Rakdos Signet"
+      "Boggart Shenanigans"
     ],
     "additions": [
-      "Blowfly Infestation",
-      "Devoted Druid"
+      "Dark Ritual"
     ],
     "deck_analysis": {
       "detected_archetype": "aggro",
@@ -193,13 +178,13 @@
     },
     "post_analysis": {
       "detected_archetype": "aggro",
-      "average_cmc": "2.43",
+      "average_cmc": "2.41",
       "type_distribution": {
-        "creatures": 34,
-        "instants": 11,
+        "creatures": 33,
+        "instants": 12,
         "sorceries": 11,
-        "enchantments": 9,
-        "artifacts": 11,
+        "enchantments": 8,
+        "artifacts": 12,
         "planeswalkers": 1,
         "lands": 24,
         "battles": 0
@@ -208,25 +193,29 @@
       "mana_curve_assessment": "OK: Curva aceitável para Aggro",
       "mana_base_assessment": "Base de mana equilibrada",
       "archetype_confidence": "média",
+      "improvements": [
+        "CMC médio otimizado: 2.43 → 2.41",
+        "Mais interação instant-speed adicionada"
+      ],
       "validation": {
-        "validation_score": 65,
+        "validation_score": 62,
         "verdict": "aprovado_com_ressalvas",
         "monte_carlo": {
           "before": {
             "simulations": 1000,
-            "consistency_score": 67,
+            "consistency_score": 66,
             "mana_analysis": {
               "land_count": 24,
-              "screw_rate": 0.467,
-              "flood_rate": 0.001,
-              "keepable_rate": 0.532
+              "screw_rate": 0.462,
+              "flood_rate": 0.0,
+              "keepable_rate": 0.538
             },
             "curve_analysis": {
               "avg_cmc": 2.43,
-              "turn_1_play": 0.47,
-              "turn_2_play": 0.746,
-              "turn_3_play": 0.827,
-              "turn_4_play": 0.879,
+              "turn_1_play": 0.458,
+              "turn_2_play": 0.727,
+              "turn_3_play": 0.797,
+              "turn_4_play": 0.852,
               "cmc_distribution": {
                 "3": 23,
                 "2": 29,
@@ -236,7 +225,7 @@
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (46.7%). Considere adicionar 2-4 terrenos.",
+              "Alta taxa de mana screw (46.2%). Considere adicionar 2-4 terrenos.",
               "Apenas 24 terrenos. Commander geralmente precisa de 35-38."
             ]
           },
@@ -245,90 +234,81 @@
             "consistency_score": 68,
             "mana_analysis": {
               "land_count": 24,
-              "screw_rate": 0.445,
+              "screw_rate": 0.446,
               "flood_rate": 0.001,
-              "keepable_rate": 0.554
+              "keepable_rate": 0.553
             },
             "curve_analysis": {
-              "avg_cmc": 2.43,
-              "turn_1_play": 0.46,
-              "turn_2_play": 0.754,
-              "turn_3_play": 0.838,
-              "turn_4_play": 0.878,
+              "avg_cmc": 2.41,
+              "turn_1_play": 0.463,
+              "turn_2_play": 0.756,
+              "turn_3_play": 0.823,
+              "turn_4_play": 0.871,
               "cmc_distribution": {
-                "3": 23,
+                "3": 22,
                 "2": 29,
-                "1": 13,
+                "1": 14,
                 "4": 10,
                 "5": 1
               }
             },
             "recommendations": [
-              "Alta taxa de mana screw (44.5%). Considere adicionar 2-4 terrenos.",
+              "Alta taxa de mana screw (44.6%). Considere adicionar 2-4 terrenos.",
               "Apenas 24 terrenos. Commander geralmente precisa de 35-38."
             ]
           },
           "mulligan_before": {
             "runs": 500,
-            "avg_mulligans": 0.43,
-            "keep_at_7": 0.676,
+            "avg_mulligans": 0.45,
+            "keep_at_7": 0.666,
             "keep_at_6": 0.214,
-            "keep_at_5": 0.11,
+            "keep_at_5": 0.12,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.77
+            "keepable_after_mull": 0.81
           },
           "mulligan_after": {
             "runs": 500,
-            "avg_mulligans": 0.44,
-            "keep_at_7": 0.67,
-            "keep_at_6": 0.216,
-            "keep_at_5": 0.114,
+            "avg_mulligans": 0.42,
+            "keep_at_7": 0.678,
+            "keep_at_6": 0.228,
+            "keep_at_5": 0.094,
             "keep_at_4_or_less": 0.0,
-            "keepable_after_mull": 0.842
+            "keepable_after_mull": 0.76
           },
           "deltas": {
-            "consistency_score": 1,
-            "screw_rate_delta": -0.022,
-            "flood_rate_delta": 0.0,
-            "keepable_rate_delta": 0.022,
-            "turn2_play_delta": 0.008,
-            "mulligan_keep7_delta": -0.006
+            "consistency_score": 2,
+            "screw_rate_delta": -0.016,
+            "flood_rate_delta": 0.001,
+            "keepable_rate_delta": 0.015,
+            "turn2_play_delta": 0.029,
+            "mulligan_keep7_delta": 0.012
           }
         },
         "functional_analysis": {
           "swaps": [
             {
               "removed": "Boggart Shenanigans",
-              "added": "Blowfly Infestation",
+              "added": "Dark Ritual",
               "removed_role": "enchantment",
-              "added_role": "enchantment",
-              "role_preserved": true,
-              "cmc_delta": 0,
-              "verdict": "upgrade"
-            },
-            {
-              "removed": "Rakdos Signet",
-              "added": "Devoted Druid",
-              "removed_role": "ramp",
               "added_role": "ramp",
-              "role_preserved": true,
-              "cmc_delta": 0,
-              "verdict": "upgrade"
+              "role_preserved": false,
+              "cmc_delta": -2,
+              "verdict": "tradeoff"
             }
           ],
           "summary": {
-            "upgrades": 2,
+            "upgrades": 0,
             "sidegrades": 0,
-            "tradeoffs": 0,
+            "tradeoffs": 1,
             "questionable": 0
           },
           "role_delta": {
             "draw": 0,
             "removal": 0,
-            "ramp": 0,
+            "ramp": 1,
             "creature": 0,
             "artifact": 0,
-            "enchantment": 0,
+            "enchantment": -1,
             "land": 0,
             "utility": 0,
             "wipe": 0,
@@ -340,26 +320,21 @@
           "approval_score": 85,
           "verdict": "aprovado",
           "concerns": [
-            "A taxa de mulligan free keep diminuiu ligeiramente, o que pode impactar a jogabilidade em algumas mãos.",
-            "Devoted Druid, embora seja uma boa fonte de mana, pode ser vulnerável a remoções e não gera mana imediatamente."
+            "A troca de um encantamento por uma mágica instantânea pode afetar a sinergia do deck com outras cartas que interagem com encantamentos.",
+            "Dark Ritual é uma carta poderosa, mas sua eficácia pode ser limitada em um deck que não a utiliza para explosões de mana em turnos iniciais."
           ],
-          "strong_swaps": [
-            "Boggart Shenanigans → Blowfly Infestation"
-          ],
-          "weak_swaps": [
-            "Rakdos Signet → Devoted Druid: A troca melhora a consistência, mas a vulnerabilidade do Druid pode ser uma preocupação."
-          ],
-          "overall_assessment": "As trocas são em grande parte benéficas, mas a diminuição na taxa de mulligan free keep e a vulnerabilidade do Devoted Druid merecem atenção."
+          "strong_swaps": [],
+          "weak_swaps": [],
+          "overall_assessment": "A troca melhora a consistência do deck e a capacidade de jogar no T2, mas pode comprometer a sinergia com encantamentos, o que deve ser considerado."
         },
         "warnings": []
       }
     },
     "validation_warnings": [
-      "🔒 Gate de qualidade removeu 4 troca(s) insegura(s) antes da resposta final.",
-      "🔒 Chandra's Ignition -> Black Sun's Zenith removida pelo gate: papel removal -> utility, delta CMC -3.",
-      "🔒 Brightstone Ritual -> Massacre Girl, Known Killer removida pelo gate: papel ramp -> draw, delta CMC +3.",
-      "🔒 Vandalblast -> Ifnir Deadlands removida pelo gate: papel removal -> land, delta CMC -1.",
-      "🔒 Chaos Warp -> Soul Snuffers removida pelo gate: papel utility -> creature, delta CMC +1."
+      "🔒 Gate de qualidade removeu 3 troca(s) insegura(s) antes da resposta final.",
+      "🔒 Chandra's Ignition -> Culling Ritual removida pelo gate: papel removal -> ramp, delta CMC -1.",
+      "🔒 Rakdos Signet -> Demonic Tutor removida pelo gate: papel ramp -> tutor, delta CMC +0.",
+      "🔒 Brightstone Ritual -> Mana Confluence removida pelo gate: papel ramp -> land, delta CMC -1."
     ]
   }
 }

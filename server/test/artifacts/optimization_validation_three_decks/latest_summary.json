@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-03-16T12:45:28.353227",
-  "run_started_at": "2026-03-16T12:40:24.166059",
+  "generated_at": "2026-03-16T14:44:34.412584",
+  "run_started_at": "2026-03-16T14:39:48.290645",
   "api_base_url": "http://127.0.0.1:8080",
   "artifact_dir": "test/artifacts/optimization_validation_three_decks",
   "total": 3,
@@ -14,7 +14,7 @@
       "commander_name": "Auntie Ool, Cursewretch",
       "source_deck_id": "8c22deb9-80bd-489f-8e87-1344eabac698",
       "source_deck_name": "goblins",
-      "clone_deck_id": "06c45551-4aa6-4eff-8d23-e0ca4871a521",
+      "clone_deck_id": "0795b065-8648-4630-85ff-e72ab528c537",
       "archetype": "aggro",
       "bracket": 4,
       "optimize_status": 422,
@@ -39,8 +39,8 @@
       "failed_checks": [],
       "warnings": [
         "Rejeicao protegida pelo gate de qualidade: As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
-        "A validação final não fechou como \"aprovado\" (score 65/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (65/100; mínimo 70).",
+        "A validação final não fechou como \"aprovado\" (score 62/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (62/100; mínimo 70).",
         "A otimizacao sugerida nao passou no gate final de qualidade."
       ],
       "passed": true
@@ -50,7 +50,7 @@
       "commander_name": "Talrand, Sky Summoner",
       "source_deck_id": "df780797-bcc4-47cb-82d6-08d01ae3b03b",
       "source_deck_name": "Deck incremental",
-      "clone_deck_id": "86f8df73-549d-441b-a19b-d1bdee8cf981",
+      "clone_deck_id": "d60bd592-d79d-4993-810b-6b78a004908e",
       "archetype": "midrange",
       "bracket": 2,
       "optimize_status": 422,
@@ -87,7 +87,7 @@
       "commander_name": "Jin-Gitaxias // The Great Synthesis",
       "source_deck_id": "f2a2a34a-4561-4a77-886d-7067b672ac85",
       "source_deck_name": "jin",
-      "clone_deck_id": "f6217fe5-d143-4421-97e4-b982ea13544b",
+      "clone_deck_id": "a6682383-311e-4938-a7c0-c44027b90765",
       "archetype": "midrange",
       "bracket": 2,
       "optimize_status": 422,
@@ -112,8 +112,9 @@
       "failed_checks": [],
       "warnings": [
         "Rejeicao protegida pelo gate de qualidade: As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.",
-        "A validação final não fechou como \"aprovado\" (score 55/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
-        "Score final abaixo do mínimo para aceitar a otimização com sucesso (55/100; mínimo 70).",
+        "A validação final não fechou como \"aprovado\" (score 47/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.",
+        "Score final abaixo do mínimo para aceitar a otimização com sucesso (47/100; mínimo 70).",
+        "Foram detectadas 2 trocas questionáveis.",
         "A otimizacao sugerida nao passou no gate final de qualidade."
       ],
       "passed": true

@@ -1,9 +1,9 @@
 {
   "source_deck_id": "df780797-bcc4-47cb-82d6-08d01ae3b03b",
   "source_deck_name": "Deck incremental",
-  "clone_deck_id": "86f8df73-549d-441b-a19b-d1bdee8cf981",
+  "clone_deck_id": "d60bd592-d79d-4993-810b-6b78a004908e",
   "optimize_request": {
-    "deck_id": "86f8df73-549d-441b-a19b-d1bdee8cf981",
+    "deck_id": "d60bd592-d79d-4993-810b-6b78a004908e",
     "archetype": "midrange",
     "bracket": 2,
     "keep_theme": true
@@ -142,17 +142,17 @@
           "approval_score": 70,
           "verdict": "aprovado_com_ressalvas",
           "concerns": [
-            "A troca de Wastes por Evolving Wilds não melhora a consistência de mana, já que ambos os terrenos não oferecem mana colorida diretamente.",
-            "A dependência de Evolving Wilds para buscar terrenos pode atrasar a curva de mana, especialmente em um deck midrange que pode precisar de acesso rápido a mana colorida."
+            "Evolving Wilds não gera mana de forma imediata e requer uma jogada adicional para buscar uma terra, o que pode atrasar o desenvolvimento do mana.",
+            "A troca não melhora a consistência em termos de mana screw ou flood, mantendo os mesmos índices."
           ],
           "strong_swaps": [],
           "weak_swaps": [
             {
               "swap": "Wastes → Evolving Wilds",
-              "justificativa": "Embora Evolving Wilds possa ajudar a buscar terrenos coloridos, a troca não melhora a consistência geral do deck, já que a taxa de mana flood permanece inalterada e a dependência de um terreno adicional pode ser prejudicial."
+              "justification": "Embora Evolving Wilds ofereça flexibilidade, a necessidade de sacrificar para buscar uma terra pode ser um atraso em um deck que depende de mana rápida."
             }
           ],
-          "overall_assessment": "A troca proposta não apresenta melhorias significativas na consistência do deck e pode introduzir riscos adicionais na curva de mana."
+          "overall_assessment": "A troca é questionável, pois não melhora a consistência do deck e pode atrasar o desenvolvimento de mana."
         },
         "warnings": []
       }
@@ -322,17 +322,17 @@
           "approval_score": 70,
           "verdict": "aprovado_com_ressalvas",
           "concerns": [
-            "A troca de Wastes por Evolving Wilds não melhora a consistência de mana, já que ambos os terrenos não oferecem mana colorida diretamente.",
-            "A dependência de Evolving Wilds para buscar terrenos pode atrasar a curva de mana, especialmente em um deck midrange que pode precisar de acesso rápido a mana colorida."
+            "Evolving Wilds não gera mana de forma imediata e requer uma jogada adicional para buscar uma terra, o que pode atrasar o desenvolvimento do mana.",
+            "A troca não melhora a consistência em termos de mana screw ou flood, mantendo os mesmos índices."
           ],
           "strong_swaps": [],
           "weak_swaps": [
             {
               "swap": "Wastes → Evolving Wilds",
-              "justificativa": "Embora Evolving Wilds possa ajudar a buscar terrenos coloridos, a troca não melhora a consistência geral do deck, já que a taxa de mana flood permanece inalterada e a dependência de um terreno adicional pode ser prejudicial."
+              "justification": "Embora Evolving Wilds ofereça flexibilidade, a necessidade de sacrificar para buscar uma terra pode ser um atraso em um deck que depende de mana rápida."
             }
           ],
-          "overall_assessment": "A troca proposta não apresenta melhorias significativas na consistência do deck e pode introduzir riscos adicionais na curva de mana."
+          "overall_assessment": "A troca é questionável, pois não melhora a consistência do deck e pode atrasar o desenvolvimento de mana."
         },
         "warnings": []
       }
