@@ -1,0 +1,855 @@
+{
+  "source_deck_id": "8c22deb9-80bd-489f-8e87-1344eabac698",
+  "source_deck_name": "goblins",
+  "clone_deck_id": "fb3a7353-ad05-406a-9248-e0c2d136a519",
+  "optimize_request": {
+    "deck_id": "fb3a7353-ad05-406a-9248-e0c2d136a519",
+    "archetype": "aggro",
+    "bracket": 4,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "optimize",
+    "constraints": {
+      "keep_theme": true
+    },
+    "cache": {
+      "hit": false,
+      "cache_key": "v4:cb208416"
+    },
+    "preferences": {
+      "memory_applied": false,
+      "keep_theme": true,
+      "preferred_bracket": null
+    },
+    "theme": {
+      "theme": "tribal-goblin",
+      "confidence": "alta",
+      "match_score": 0.42105263157894735,
+      "core_cards": [
+        "Auntie Ool, Cursewretch",
+        "Goblin Chieftain",
+        "Goblin Rabblemaster",
+        "Goblin Trashmaster",
+        "Goblin Sledder",
+        "Goblin Piledriver",
+        "Goblin King",
+        "Krenko, Mob Boss",
+        "Krenko, Tin Street Kingpin",
+        "Purphoros, God of the Forge"
+      ]
+    },
+    "removals": [
+      "Chandra's Ignition",
+      "Boggart Shenanigans",
+      "Rakdos Signet",
+      "Brightstone Ritual",
+      "Vandalblast",
+      "Chaos Warp"
+    ],
+    "additions": [
+      "Blowfly Infestation",
+      "Massacre Girl, Known Killer",
+      "Devoted Druid",
+      "Glissa Sunslayer",
+      "Nesting Grounds",
+      "Skinrender"
+    ],
+    "reasoning": "",
+    "deck_analysis": {
+      "detected_archetype": "aggro",
+      "average_cmc": "2.43",
+      "type_distribution": {
+        "creatures": 33,
+        "instants": 11,
+        "sorceries": 11,
+        "enchantments": 9,
+        "artifacts": 12,
+        "planeswalkers": 1,
+        "lands": 24,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "OK: Curva aceitável para Aggro",
+      "mana_base_assessment": "Base de mana equilibrada",
+      "archetype_confidence": "média"
+    },
+    "post_analysis": {
+      "detected_archetype": "aggro",
+      "average_cmc": "2.48",
+      "type_distribution": {
+        "creatures": 37,
+        "instants": 9,
+        "sorceries": 9,
+        "enchantments": 9,
+        "artifacts": 11,
+        "planeswalkers": 1,
+        "lands": 25,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "OK: Curva aceitável para Aggro",
+      "mana_base_assessment": "Base de mana equilibrada",
+      "archetype_confidence": "média",
+      "validation": {
+        "validation_score": 39,
+        "verdict": "reprovado",
+        "monte_carlo": {
+          "before": {
+            "simulations": 1000,
+            "consistency_score": 67,
+            "mana_analysis": {
+              "land_count": 24,
+              "screw_rate": 0.448,
+              "flood_rate": 0.0,
+              "keepable_rate": 0.552
+            },
+            "curve_analysis": {
+              "avg_cmc": 2.43,
+              "turn_1_play": 0.447,
+              "turn_2_play": 0.734,
+              "turn_3_play": 0.823,
+              "turn_4_play": 0.857,
+              "cmc_distribution": {
+                "3": 23,
+                "2": 29,
+                "1": 13,
+                "4": 10,
+                "5": 1
+              }
+            },
+            "recommendations": [
+              "Alta taxa de mana screw (44.8%). Considere adicionar 2-4 terrenos.",
+              "Apenas 24 terrenos. Commander geralmente precisa de 35-38."
+            ]
+          },
+          "after": {
+            "simulations": 1000,
+            "consistency_score": 69,
+            "mana_analysis": {
+              "land_count": 25,
+              "screw_rate": 0.432,
+              "flood_rate": 0.0,
+              "keepable_rate": 0.568
+            },
+            "curve_analysis": {
+              "avg_cmc": 2.48,
+              "turn_1_play": 0.44,
+              "turn_2_play": 0.759,
+              "turn_3_play": 0.844,
+              "turn_4_play": 0.888,
+              "cmc_distribution": {
+                "3": 23,
+                "2": 29,
+                "1": 11,
+                "4": 12
+              }
+            },
+            "recommendations": [
+              "Alta taxa de mana screw (43.2%). Considere adicionar 2-4 terrenos.",
+              "Apenas 25 terrenos. Commander geralmente precisa de 35-38."
+            ]
+          },
+          "mulligan_before": {
+            "runs": 500,
+            "avg_mulligans": 0.47,
+            "keep_at_7": 0.644,
+            "keep_at_6": 0.242,
+            "keep_at_5": 0.114,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.756
+          },
+          "mulligan_after": {
+            "runs": 500,
+            "avg_mulligans": 0.41,
+            "keep_at_7": 0.694,
+            "keep_at_6": 0.206,
+            "keep_at_5": 0.1,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.802
+          },
+          "deltas": {
+            "consistency_score": 2,
+            "screw_rate_delta": -0.016,
+            "flood_rate_delta": 0.0,
+            "keepable_rate_delta": 0.016,
+            "turn2_play_delta": 0.025,
+            "mulligan_keep7_delta": 0.05
+          }
+        },
+        "functional_analysis": {
+          "swaps": [
+            {
+              "removed": "Chandra's Ignition",
+              "added": "Blowfly Infestation",
+              "removed_role": "removal",
+              "added_role": "enchantment",
+              "role_preserved": false,
+              "cmc_delta": -2,
+              "verdict": "tradeoff"
+            },
+            {
+              "removed": "Boggart Shenanigans",
+              "added": "Massacre Girl, Known Killer",
+              "removed_role": "enchantment",
+              "added_role": "draw",
+              "role_preserved": false,
+              "cmc_delta": 1,
+              "verdict": "questionável"
+            },
+            {
+              "removed": "Rakdos Signet",
+              "added": "Devoted Druid",
+              "removed_role": "ramp",
+              "added_role": "ramp",
+              "role_preserved": true,
+              "cmc_delta": 0,
+              "verdict": "upgrade"
+            },
+            {
+              "removed": "Brightstone Ritual",
+              "added": "Glissa Sunslayer",
+              "removed_role": "ramp",
+              "added_role": "draw",
+              "role_preserved": false,
+              "cmc_delta": 2,
+              "verdict": "questionável"
+            },
+            {
+              "removed": "Vandalblast",
+              "added": "Nesting Grounds",
+              "removed_role": "removal",
+              "added_role": "land",
+              "role_preserved": false,
+              "cmc_delta": -1,
+              "verdict": "tradeoff"
+            },
+            {
+              "removed": "Chaos Warp",
+              "added": "Skinrender",
+              "removed_role": "utility",
+              "added_role": "creature",
+              "role_preserved": false,
+              "cmc_delta": 1,
+              "verdict": "questionável"
+            }
+          ],
+          "summary": {
+            "upgrades": 1,
+            "sidegrades": 0,
+            "tradeoffs": 2,
+            "questionable": 3
+          },
+          "role_delta": {
+            "draw": 2,
+            "removal": -2,
+            "ramp": -1,
+            "creature": 1,
+            "artifact": 0,
+            "enchantment": 0,
+            "land": 1,
+            "utility": -1,
+            "wipe": 0,
+            "tutor": 0,
+            "protection": 0
+          }
+        },
+        "critic_ai": {
+          "approval_score": 65,
+          "verdict": "aprovado_com_ressalvas",
+          "concerns": [
+            "A troca de Boggart Shenanigans por Massacre Girl, Known Killer pode não ser ideal, pois a primeira oferece uma fonte constante de dano, enquanto a segunda é mais situacional.",
+            "A substituição de Vandalblast por Nesting Grounds pode comprometer a capacidade de lidar com artefatos adversários, o que é crucial em muitos jogos.",
+            "Trocar Chaos Warp por Skinrender reduz a versatilidade do deck, já que Chaos Warp é uma remoção de alvo que pode lidar com qualquer permanente."
+          ],
+          "strong_swaps": [
+            "Troca de Rakdos Signet por Devoted Druid é um upgrade claro, pois melhora a capacidade de ramp e potencialmente gera mais mana em turnos subsequentes."
+          ],
+          "weak_swaps": [
+            {
+              "swap": "Boggart Shenanigans → Massacre Girl, Known Killer",
+              "justification": "Boggart Shenanigans fornece dano constante e sinergiza bem com o tema de maldições, enquanto Massacre Girl é mais situacional e depende do estado do campo."
+            },
+            {
+              "swap": "Brightstone Ritual → Glissa Sunslayer",
+              "justification": "Brightstone Ritual oferece um impulso de mana imediato, enquanto Glissa Sunslayer é uma criatura que pode não ter o mesmo impacto imediato no jogo."
+            },
+            {
+              "swap": "Chaos Warp → Skinrender",
+              "justification": "Chaos Warp é uma remoção versátil que pode lidar com ameaças variadas, enquanto Skinrender é limitado a criaturas e pode não ser suficiente em situações críticas."
+            }
+          ],
+          "overall_assessment": "As trocas apresentam melhorias na consistência do deck, mas algumas escolhas questionáveis podem comprometer a eficácia geral, especialmente em termos de remoção e dano."
+        },
+        "warnings": [
+          "O deck perdeu cartas de remoção. Pode ficar vulnerável.",
+          "O deck perdeu cartas de ramp. Pode ficar lento no early game.",
+          "3 troca(s) questionável(is) — mudou função E ficou mais cara."
+        ]
+      }
+    },
+    "validation_warnings": [
+      "🚫 VALIDAÇÃO: As trocas sugeridas NÃO passaram na validação automática (score: 39/100).",
+      "⚠️ ATENÇÃO: O deck está ficando mais lento (CMC aumentou), o que é ruim para Aggro.",
+      "O deck perdeu cartas de remoção. Pode ficar vulnerável.",
+      "O deck perdeu cartas de ramp. Pode ficar lento no early game.",
+      "3 troca(s) questionável(is) — mudou função E ficou mais cara."
+    ],
+    "bracket": 4,
+    "target_additions": null,
+    "optimize_diagnostics": {
+      "empty_suggestions_fallback": {
+        "triggered": false,
+        "applied": false,
+        "candidate_count": 0,
+        "replacement_count": 0,
+        "pair_count": 0
+      },
+      "empty_suggestions_fallback_aggregate": {
+        "request_count": 2,
+        "triggered_count": 0,
+        "applied_count": 0,
+        "no_candidate_count": 0,
+        "no_replacement_count": 0,
+        "trigger_rate": 0.0,
+        "apply_rate": 0.0
+      },
+      "empty_suggestions_fallback_aggregate_persisted": {
+        "all_time": {
+          "request_count": 38,
+          "triggered_count": 23,
+          "applied_count": 0,
+          "no_candidate_count": 23,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.6052631578947368,
+          "apply_rate": 0.0
+        },
+        "last_24h": {
+          "request_count": 4,
+          "triggered_count": 0,
+          "applied_count": 0,
+          "no_candidate_count": 0,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.0,
+          "apply_rate": 0.0
+        }
+      }
+    },
+    "edhrec_validation": {
+      "commander": "Auntie Ool, Cursewretch",
+      "deck_count": 11563,
+      "themes": [
+        "-1/-1 Counters",
+        "Combo",
+        "Control",
+        "Aristocrats",
+        "Proliferate",
+        "Midrange",
+        "Tokens",
+        "Burn",
+        "Goblins",
+        "+1/+1 Counters",
+        "Card Draw",
+        "Group Slug",
+        "Reanimator",
+        "Infect",
+        "Lifedrain",
+        "Counters Matter",
+        "Ramp",
+        "Aggro",
+        "Tempo",
+        "Theft",
+        "Graveyard",
+        "Hatebears",
+        "Enchantress",
+        "Sacrifice",
+        "Toolbox",
+        "Commander Matters",
+        "Good Stuff",
+        "Activated Abilities",
+        "Chaos",
+        "Pingers",
+        "Triggered Abilities",
+        "Birthing Pod",
+        "Discard",
+        "Elves",
+        "Lifegain",
+        "Stax",
+        "Ad Nauseam",
+        "Cycling",
+        "Land Destruction",
+        "Lands Matter",
+        "Artifacts",
+        "Mill",
+        "Monarch",
+        "Rock",
+        "Self-Damage",
+        "Self-Discard",
+        "Self-Mill",
+        "Spellslinger",
+        "Unnatural",
+        "Cascade",
+        "Defenders",
+        "Deserts",
+        "Devotion",
+        "Dungeon",
+        "Elementals",
+        "ETB",
+        "Extra Combats",
+        "Flashback",
+        "Flying",
+        "Forced Combat",
+        "Goats",
+        "Insects",
+        "Legends",
+        "LTB Effects",
+        "Outlaws",
+        "Snakes",
+        "Spell Copy",
+        "Treasure",
+        "Zombies"
+      ],
+      "additions_validated": 6,
+      "additions_not_in_edhrec": []
+    },
+    "additions_detailed": [
+      {
+        "type": "add",
+        "name": "Blowfly Infestation",
+        "card_id": "e7d76767-2f77-4cf8-85b9-c533867cf476",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Massacre Girl, Known Killer",
+        "card_id": "cfdf8daa-3fb9-4b3a-ac42-3c66410eecd3",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Devoted Druid",
+        "card_id": "33df759b-4fa4-4347-ae7c-1224c457685d",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Glissa Sunslayer",
+        "card_id": "3a46e65a-b118-4fab-91fa-dd09cac71cde",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Nesting Grounds",
+        "card_id": "08e0ea43-af24-4e54-9546-6b4758669028",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Skinrender",
+        "card_id": "5850b775-c222-4c46-aa7e-c14e081142cc",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "removals_detailed": [
+      {
+        "type": "remove",
+        "name": "Chandra's Ignition",
+        "card_id": "604cdba8-41e6-40e6-9e2f-a29bbe8a965d",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Boggart Shenanigans",
+        "card_id": "b0d7d153-4d60-4ecc-846c-b9f0abf45faa",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Rakdos Signet",
+        "card_id": "60bd2900-53d0-43e9-ad1e-e2a3305950a4",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Brightstone Ritual",
+        "card_id": "798d1921-1010-4d38-8fcd-a618fff33966",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Vandalblast",
+        "card_id": "93a52a4c-a8d5-4cbf-9f5d-fa73c3233548",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Chaos Warp",
+        "card_id": "13aeaa4a-1027-455f-869b-1722685354b6",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "recommendations": [
+      {
+        "type": "remove",
+        "name": "Chandra's Ignition",
+        "card_id": "604cdba8-41e6-40e6-9e2f-a29bbe8a965d",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Boggart Shenanigans",
+        "card_id": "b0d7d153-4d60-4ecc-846c-b9f0abf45faa",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Rakdos Signet",
+        "card_id": "60bd2900-53d0-43e9-ad1e-e2a3305950a4",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Brightstone Ritual",
+        "card_id": "798d1921-1010-4d38-8fcd-a618fff33966",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Vandalblast",
+        "card_id": "93a52a4c-a8d5-4cbf-9f5d-fa73c3233548",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Chaos Warp",
+        "card_id": "13aeaa4a-1027-455f-869b-1722685354b6",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Blowfly Infestation",
+        "card_id": "e7d76767-2f77-4cf8-85b9-c533867cf476",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Massacre Girl, Known Killer",
+        "card_id": "cfdf8daa-3fb9-4b3a-ac42-3c66410eecd3",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Devoted Druid",
+        "card_id": "33df759b-4fa4-4347-ae7c-1224c457685d",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Glissa Sunslayer",
+        "card_id": "3a46e65a-b118-4fab-91fa-dd09cac71cde",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Nesting Grounds",
+        "card_id": "08e0ea43-af24-4e54-9546-6b4758669028",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Skinrender",
+        "card_id": "5850b775-c222-4c46-aa7e-c14e081142cc",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano aggro e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.05",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ]
+  }
+}

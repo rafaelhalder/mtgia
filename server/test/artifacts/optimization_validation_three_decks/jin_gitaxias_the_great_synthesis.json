@@ -1,0 +1,786 @@
+{
+  "source_deck_id": "f2a2a34a-4561-4a77-886d-7067b672ac85",
+  "source_deck_name": "jin",
+  "clone_deck_id": "6d3adc16-8c69-437b-a800-abf9c591f2b4",
+  "optimize_request": {
+    "deck_id": "6d3adc16-8c69-437b-a800-abf9c591f2b4",
+    "archetype": "midrange",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "optimize",
+    "constraints": {
+      "keep_theme": true
+    },
+    "cache": {
+      "hit": false,
+      "cache_key": "v4:d1c09424"
+    },
+    "preferences": {
+      "memory_applied": false,
+      "keep_theme": true,
+      "preferred_bracket": 2
+    },
+    "theme": {
+      "theme": "spellslinger",
+      "confidence": "alta",
+      "match_score": 0.4166666666666667,
+      "core_cards": [
+        "Jin-Gitaxias // The Great Synthesis",
+        "Flusterstorm",
+        "Force of Will",
+        "Kozilek, the Great Distortion",
+        "Pact of Negation",
+        "Chain of Vapor",
+        "Arcane Signet",
+        "Mind Stone",
+        "Fierce Guardianship",
+        "Kozilek, Butcher of Truth"
+      ]
+    },
+    "removals": [
+      "All Is Dust",
+      "Basalt Monolith",
+      "Lightning Greaves",
+      "Isochron Scepter",
+      "Pongify"
+    ],
+    "additions": [
+      "Swiftfoot Boots",
+      "Tezzeret's Gambit",
+      "Jace, Wielder of Mysteries",
+      "Jin-Gitaxias, Progress Tyrant",
+      "Mindsplice Apparatus"
+    ],
+    "reasoning": "",
+    "deck_analysis": {
+      "detected_archetype": "control",
+      "average_cmc": "3.07",
+      "type_distribution": {
+        "creatures": 10,
+        "instants": 17,
+        "sorceries": 8,
+        "enchantments": 5,
+        "artifacts": 24,
+        "planeswalkers": 0,
+        "lands": 40,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "BOA: Curva adequada para Control",
+      "mana_base_assessment": "Base de mana equilibrada",
+      "archetype_confidence": "média"
+    },
+    "post_analysis": {
+      "detected_archetype": "control",
+      "average_cmc": "3.17",
+      "type_distribution": {
+        "creatures": 11,
+        "instants": 16,
+        "sorceries": 8,
+        "enchantments": 5,
+        "artifacts": 23,
+        "planeswalkers": 1,
+        "lands": 40,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "BOA: Curva adequada para Control",
+      "mana_base_assessment": "Base de mana equilibrada",
+      "archetype_confidence": "média",
+      "validation": {
+        "validation_score": 25,
+        "verdict": "reprovado",
+        "monte_carlo": {
+          "before": {
+            "simulations": 1000,
+            "consistency_score": 90,
+            "mana_analysis": {
+              "land_count": 40,
+              "screw_rate": 0.147,
+              "flood_rate": 0.016,
+              "keepable_rate": 0.837
+            },
+            "curve_analysis": {
+              "avg_cmc": 3.07,
+              "turn_1_play": 0.734,
+              "turn_2_play": 0.933,
+              "turn_3_play": 0.99,
+              "turn_4_play": 0.997,
+              "cmc_distribution": {
+                "1": 15,
+                "3": 13,
+                "2": 12,
+                "7": 3,
+                "10": 4,
+                "5": 3,
+                "4": 5,
+                "0": 4,
+                "9": 1
+              }
+            },
+            "recommendations": [
+              "Deck bem balanceado! Métricas dentro do ideal para Commander."
+            ]
+          },
+          "after": {
+            "simulations": 1000,
+            "consistency_score": 90,
+            "mana_analysis": {
+              "land_count": 40,
+              "screw_rate": 0.146,
+              "flood_rate": 0.013,
+              "keepable_rate": 0.841
+            },
+            "curve_analysis": {
+              "avg_cmc": 3.17,
+              "turn_1_play": 0.717,
+              "turn_2_play": 0.929,
+              "turn_3_play": 0.984,
+              "turn_4_play": 0.992,
+              "cmc_distribution": {
+                "1": 14,
+                "7": 3,
+                "3": 12,
+                "2": 11,
+                "10": 4,
+                "5": 3,
+                "4": 8,
+                "0": 4,
+                "9": 1
+              }
+            },
+            "recommendations": [
+              "Deck bem balanceado! Métricas dentro do ideal para Commander."
+            ]
+          },
+          "mulligan_before": {
+            "runs": 500,
+            "avg_mulligans": 0.08,
+            "keep_at_7": 0.92,
+            "keep_at_6": 0.076,
+            "keep_at_5": 0.004,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.924
+          },
+          "mulligan_after": {
+            "runs": 500,
+            "avg_mulligans": 0.14,
+            "keep_at_7": 0.874,
+            "keep_at_6": 0.108,
+            "keep_at_5": 0.018,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.914
+          },
+          "deltas": {
+            "consistency_score": 0,
+            "screw_rate_delta": -0.001,
+            "flood_rate_delta": -0.003,
+            "keepable_rate_delta": 0.004,
+            "turn2_play_delta": -0.004,
+            "mulligan_keep7_delta": -0.046
+          }
+        },
+        "functional_analysis": {
+          "swaps": [
+            {
+              "removed": "All Is Dust",
+              "added": "Swiftfoot Boots",
+              "removed_role": "utility",
+              "added_role": "protection",
+              "role_preserved": false,
+              "cmc_delta": -5,
+              "verdict": "tradeoff"
+            },
+            {
+              "removed": "Basalt Monolith",
+              "added": "Tezzeret's Gambit",
+              "removed_role": "ramp",
+              "added_role": "draw",
+              "role_preserved": false,
+              "cmc_delta": 1,
+              "verdict": "questionável"
+            },
+            {
+              "removed": "Lightning Greaves",
+              "added": "Jace, Wielder of Mysteries",
+              "removed_role": "protection",
+              "added_role": "draw",
+              "role_preserved": false,
+              "cmc_delta": 2,
+              "verdict": "questionável"
+            },
+            {
+              "removed": "Isochron Scepter",
+              "added": "Jin-Gitaxias, Progress Tyrant",
+              "removed_role": "artifact",
+              "added_role": "creature",
+              "role_preserved": false,
+              "cmc_delta": 5,
+              "verdict": "questionável"
+            },
+            {
+              "removed": "Pongify",
+              "added": "Mindsplice Apparatus",
+              "removed_role": "removal",
+              "added_role": "artifact",
+              "role_preserved": false,
+              "cmc_delta": 3,
+              "verdict": "questionável"
+            }
+          ],
+          "summary": {
+            "upgrades": 0,
+            "sidegrades": 0,
+            "tradeoffs": 1,
+            "questionable": 4
+          },
+          "role_delta": {
+            "draw": 2,
+            "removal": -1,
+            "ramp": -1,
+            "creature": 1,
+            "artifact": 0,
+            "enchantment": 0,
+            "land": 0,
+            "utility": -1,
+            "wipe": 0,
+            "tutor": 0,
+            "protection": 0
+          }
+        },
+        "critic_ai": {
+          "approval_score": 45,
+          "verdict": "reprovado",
+          "concerns": [
+            "A troca de All Is Dust por Swiftfoot Boots reduz a capacidade de lidar com múltiplas ameaças, comprometendo a utilidade do deck.",
+            "A substituição de Basalt Monolith por Tezzeret's Gambit diminui a rampagem, o que é crucial para um deck midrange.",
+            "Trocar Lightning Greaves por Jace, Wielder of Mysteries pode ser arriscado, pois a proteção é essencial para manter suas criaturas em campo.",
+            "A troca de Isochron Scepter por Jin-Gitaxias, Progress Tyrant pode ser problemática, pois o Scepter oferece versatilidade e controle, enquanto a criatura é mais suscetível a remoções.",
+            "Mindsplice Apparatus não oferece a mesma eficácia de remoção que Pongify, o que pode deixar o deck vulnerável."
+          ],
+          "strong_swaps": [],
+          "weak_swaps": [
+            {
+              "swap": "Basalt Monolith → Tezzeret's Gambit",
+              "justification": "A perda de ramp é crítica para um deck midrange, e a troca por um card de draw não compensa essa perda."
+            },
+            {
+              "swap": "Lightning Greaves → Jace, Wielder of Mysteries",
+              "justification": "A proteção é fundamental para manter suas ameaças no campo, e Jace não oferece essa proteção."
+            },
+            {
+              "swap": "Isochron Scepter → Jin-Gitaxias, Progress Tyrant",
+              "justification": "O Scepter é uma ferramenta poderosa de controle e versatilidade, enquanto a criatura é mais vulnerável."
+            },
+            {
+              "swap": "Pongify → Mindsplice Apparatus",
+              "justification": "A remoção é uma necessidade em um deck midrange, e Mindsplice Apparatus não oferece a mesma funcionalidade."
+            }
+          ],
+          "overall_assessment": "As trocas propostas comprometem a funcionalidade e a consistência do deck, tornando-o menos eficaz em um ambiente competitivo."
+        },
+        "warnings": [
+          "O deck perdeu cartas de remoção. Pode ficar vulnerável.",
+          "O deck perdeu cartas de ramp. Pode ficar lento no early game.",
+          "4 troca(s) questionável(is) — mudou função E ficou mais cara."
+        ]
+      }
+    },
+    "validation_warnings": [
+      "🚫 VALIDAÇÃO: As trocas sugeridas NÃO passaram na validação automática (score: 25/100).",
+      "O deck perdeu cartas de remoção. Pode ficar vulnerável.",
+      "O deck perdeu cartas de ramp. Pode ficar lento no early game.",
+      "4 troca(s) questionável(is) — mudou função E ficou mais cara."
+    ],
+    "bracket": 2,
+    "target_additions": null,
+    "optimize_diagnostics": {
+      "empty_suggestions_fallback": {
+        "triggered": false,
+        "applied": false,
+        "candidate_count": 0,
+        "replacement_count": 0,
+        "pair_count": 0
+      },
+      "empty_suggestions_fallback_aggregate": {
+        "request_count": 4,
+        "triggered_count": 0,
+        "applied_count": 0,
+        "no_candidate_count": 0,
+        "no_replacement_count": 0,
+        "trigger_rate": 0.0,
+        "apply_rate": 0.0
+      },
+      "empty_suggestions_fallback_aggregate_persisted": {
+        "all_time": {
+          "request_count": 40,
+          "triggered_count": 23,
+          "applied_count": 0,
+          "no_candidate_count": 23,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.575,
+          "apply_rate": 0.0
+        },
+        "last_24h": {
+          "request_count": 6,
+          "triggered_count": 0,
+          "applied_count": 0,
+          "no_candidate_count": 0,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.0,
+          "apply_rate": 0.0
+        }
+      }
+    },
+    "edhrec_validation": {
+      "commander": "Jin-Gitaxias // The Great Synthesis",
+      "deck_count": 3385,
+      "themes": [
+        "Cantrips",
+        "Control",
+        "Combo",
+        "Wheels",
+        "Card Draw",
+        "Extra Turns",
+        "Infect",
+        "Spellslinger",
+        "Phyrexians",
+        "Artifacts",
+        "Proliferate",
+        "Mill",
+        "Counterspells",
+        "Midrange",
+        "Planeswalkers",
+        "Ramp",
+        "Storm",
+        "Big Mana",
+        "Hand Size",
+        "+1/+1 Counters",
+        "Commander Matters",
+        "Stax",
+        "Clones",
+        "Self-Mill",
+        "Blue Moon",
+        "Devotion",
+        "Burn",
+        "Equipment",
+        "Good Stuff",
+        "Historic",
+        "Persistent Petitioners",
+        "Praetors",
+        "Sagas",
+        "Tokens",
+        "Enchantress",
+        "Oil Counters",
+        "Pillow Fort",
+        "Self-Damage",
+        "Theft",
+        "Ad Nauseam",
+        "Counters Matter",
+        "Cycling",
+        "Discard",
+        "Flash",
+        "Group Slug",
+        "Lifegain",
+        "Prison",
+        "Tempo",
+        "Toolbox",
+        "Unnatural",
+        "Activated Abilities",
+        "Aggro",
+        "Blink",
+        "Bounce",
+        "Chaos",
+        "Eldrazi",
+        "Extra Upkeeps",
+        "Flying",
+        "Glass Cannon",
+        "Hatebears",
+        "Horrors",
+        "Power",
+        "Rock",
+        "Sea Creatures",
+        "Slivers",
+        "Snow",
+        "Spell Copy",
+        "Tap / Untap",
+        "Toughness Matters",
+        "Triggered Abilities",
+        "Vehicles",
+        "Voltron",
+        "Wizards"
+      ],
+      "additions_validated": 5,
+      "additions_not_in_edhrec": []
+    },
+    "additions_detailed": [
+      {
+        "type": "add",
+        "name": "Swiftfoot Boots",
+        "card_id": "f6fa0d2d-65fa-4b42-976e-c4fdc8cf9e27",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Tezzeret's Gambit",
+        "card_id": "39ee4043-eedf-4e96-9a38-8a7208fe897c",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Jace, Wielder of Mysteries",
+        "card_id": "8d6da7e9-d75d-4029-9135-800db66542cb",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Jin-Gitaxias, Progress Tyrant",
+        "card_id": "28aff59a-4a53-4ca9-bc1d-971e0f781b3e",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Mindsplice Apparatus",
+        "card_id": "0eaea04d-d409-41d1-b3a5-57f6104bd5ae",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "removals_detailed": [
+      {
+        "type": "remove",
+        "name": "All Is Dust",
+        "card_id": "ae8e22bb-dacc-43f6-81ac-e3cc935941f7",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Basalt Monolith",
+        "card_id": "040b7976-58c1-4c54-b594-1c6e950a7592",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Lightning Greaves",
+        "card_id": "06f2fd25-4eb3-4f53-bc19-bd7b91c77dc0",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Isochron Scepter",
+        "card_id": "40ca51ca-90c6-442f-acd4-a3911f9c14e9",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Pongify",
+        "card_id": "e2290699-6527-4611-8957-1a1f0f88b7ff",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "recommendations": [
+      {
+        "type": "remove",
+        "name": "All Is Dust",
+        "card_id": "ae8e22bb-dacc-43f6-81ac-e3cc935941f7",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Basalt Monolith",
+        "card_id": "040b7976-58c1-4c54-b594-1c6e950a7592",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Lightning Greaves",
+        "card_id": "06f2fd25-4eb3-4f53-bc19-bd7b91c77dc0",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Isochron Scepter",
+        "card_id": "40ca51ca-90c6-442f-acd4-a3911f9c14e9",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "remove",
+        "name": "Pongify",
+        "card_id": "e2290699-6527-4611-8957-1a1f0f88b7ff",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Swiftfoot Boots",
+        "card_id": "f6fa0d2d-65fa-4b42-976e-c4fdc8cf9e27",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Tezzeret's Gambit",
+        "card_id": "39ee4043-eedf-4e96-9a38-8a7208fe897c",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Jace, Wielder of Mysteries",
+        "card_id": "8d6da7e9-d75d-4029-9135-800db66542cb",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Jin-Gitaxias, Progress Tyrant",
+        "card_id": "28aff59a-4a53-4ca9-bc1d-971e0f781b3e",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Mindsplice Apparatus",
+        "card_id": "0eaea04d-d409-41d1-b3a5-57f6104bd5ae",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.10",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ]
+  }
+}

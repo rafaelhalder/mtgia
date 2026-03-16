@@ -1,0 +1,410 @@
+{
+  "source_deck_id": "df780797-bcc4-47cb-82d6-08d01ae3b03b",
+  "source_deck_name": "Deck incremental",
+  "clone_deck_id": "be408e73-2801-4b1f-9c69-17c9c0877cad",
+  "optimize_request": {
+    "deck_id": "be408e73-2801-4b1f-9c69-17c9c0877cad",
+    "archetype": "midrange",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "optimize",
+    "constraints": {
+      "keep_theme": true
+    },
+    "cache": {
+      "hit": false,
+      "cache_key": "v4:9a155306"
+    },
+    "preferences": {
+      "memory_applied": false,
+      "keep_theme": true,
+      "preferred_bracket": 4
+    },
+    "theme": {
+      "theme": "tokens",
+      "confidence": "alta",
+      "match_score": 2.0,
+      "core_cards": [
+        "Talrand, Sky Summoner"
+      ]
+    },
+    "removals": [
+      "Wastes"
+    ],
+    "additions": [
+      "Evolving Wilds"
+    ],
+    "reasoning": "",
+    "deck_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 99,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana U (Tem 0 fontes, ideal > 15)",
+      "archetype_confidence": "baixa"
+    },
+    "post_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 99,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana U (Tem 0 fontes, ideal > 15)",
+      "archetype_confidence": "baixa",
+      "validation": {
+        "validation_score": 58,
+        "verdict": "aprovado_com_ressalvas",
+        "monte_carlo": {
+          "before": {
+            "simulations": 1000,
+            "consistency_score": 10,
+            "mana_analysis": {
+              "land_count": 99,
+              "screw_rate": 0.0,
+              "flood_rate": 1.0,
+              "keepable_rate": 0.0
+            },
+            "curve_analysis": {
+              "avg_cmc": 4.0,
+              "turn_1_play": 0.0,
+              "turn_2_play": 0.0,
+              "turn_3_play": 0.0,
+              "turn_4_play": 0.0,
+              "cmc_distribution": {
+                "4": 1
+              }
+            },
+            "recommendations": [
+              "Alta taxa de mana flood (100.0%). Considere remover 2-3 terrenos ou adicionar card draw.",
+              "99 terrenos é acima do ideal. Considere trocar alguns por mana rocks.",
+              "Poucas jogadas de 1 mana (0%). Adicione mana rocks ou cantrips de 1 CMC.",
+              "Curva de 2 mana fraca (0%). Adicione mais cartas de 2 CMC.",
+              "CMC médio alto (4.00). Deck pode ser lento; adicione mais cartas baratas.",
+              "Apenas 0 cartas com CMC 0-2. Considere mais early game."
+            ]
+          },
+          "after": {
+            "simulations": 1000,
+            "consistency_score": 10,
+            "mana_analysis": {
+              "land_count": 99,
+              "screw_rate": 0.0,
+              "flood_rate": 1.0,
+              "keepable_rate": 0.0
+            },
+            "curve_analysis": {
+              "avg_cmc": 4.0,
+              "turn_1_play": 0.0,
+              "turn_2_play": 0.0,
+              "turn_3_play": 0.0,
+              "turn_4_play": 0.0,
+              "cmc_distribution": {
+                "4": 1
+              }
+            },
+            "recommendations": [
+              "Alta taxa de mana flood (100.0%). Considere remover 2-3 terrenos ou adicionar card draw.",
+              "99 terrenos é acima do ideal. Considere trocar alguns por mana rocks.",
+              "Poucas jogadas de 1 mana (0%). Adicione mana rocks ou cantrips de 1 CMC.",
+              "Curva de 2 mana fraca (0%). Adicione mais cartas de 2 CMC.",
+              "CMC médio alto (4.00). Deck pode ser lento; adicione mais cartas baratas.",
+              "Apenas 0 cartas com CMC 0-2. Considere mais early game."
+            ]
+          },
+          "mulligan_before": {
+            "runs": 500,
+            "avg_mulligans": 2.0,
+            "keep_at_7": 0.0,
+            "keep_at_6": 0.0,
+            "keep_at_5": 1.0,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.0
+          },
+          "mulligan_after": {
+            "runs": 500,
+            "avg_mulligans": 2.0,
+            "keep_at_7": 0.0,
+            "keep_at_6": 0.0,
+            "keep_at_5": 1.0,
+            "keep_at_4_or_less": 0.0,
+            "keepable_after_mull": 0.0
+          },
+          "deltas": {
+            "consistency_score": 0,
+            "screw_rate_delta": 0.0,
+            "flood_rate_delta": 0.0,
+            "keepable_rate_delta": 0.0,
+            "turn2_play_delta": 0.0,
+            "mulligan_keep7_delta": 0.0
+          }
+        },
+        "functional_analysis": {
+          "swaps": [
+            {
+              "removed": "Wastes",
+              "added": "Evolving Wilds",
+              "removed_role": "land",
+              "added_role": "land",
+              "role_preserved": true,
+              "cmc_delta": 0,
+              "verdict": "upgrade"
+            }
+          ],
+          "summary": {
+            "upgrades": 1,
+            "sidegrades": 0,
+            "tradeoffs": 0,
+            "questionable": 0
+          },
+          "role_delta": {
+            "draw": 0,
+            "removal": 0,
+            "ramp": 0,
+            "creature": 0,
+            "artifact": 0,
+            "enchantment": 0,
+            "land": 0,
+            "utility": 0,
+            "wipe": 0,
+            "tutor": 0,
+            "protection": 0
+          }
+        },
+        "critic_ai": {
+          "approval_score": 70,
+          "verdict": "aprovado_com_ressalvas",
+          "concerns": [
+            "A troca de Wastes por Evolving Wilds não melhora a consistência de mana, já que ambos os terrenos não oferecem mana colorida.",
+            "A taxa de mulligan e a incidência de mana screw e flood permanecem inalteradas, indicando que a troca pode não ter um impacto significativo no desempenho do deck."
+          ],
+          "strong_swaps": [],
+          "weak_swaps": [
+            "Wastes para Evolving Wilds: Embora Evolving Wilds ofereça a capacidade de buscar um terreno básico, a troca não melhora a consistência geral do deck, pois o deck pode já ter uma quantidade suficiente de terrenos básicos."
+          ],
+          "overall_assessment": "A troca é questionável, pois não traz melhorias significativas na consistência do deck, apesar de ser uma adição potencialmente útil em outros contextos."
+        },
+        "warnings": []
+      }
+    },
+    "validation_warnings": [
+      "⚠️ 1 (100%) das cartas sugeridas NÃO aparecem nos dados EDHREC de Talrand, Sky Summoner. Isso pode indicar baixa sinergia: Evolving Wilds"
+    ],
+    "bracket": 2,
+    "target_additions": null,
+    "optimize_diagnostics": {
+      "empty_suggestions_fallback": {
+        "triggered": false,
+        "applied": false,
+        "candidate_count": 0,
+        "replacement_count": 0,
+        "pair_count": 0
+      },
+      "empty_suggestions_fallback_aggregate": {
+        "request_count": 3,
+        "triggered_count": 0,
+        "applied_count": 0,
+        "no_candidate_count": 0,
+        "no_replacement_count": 0,
+        "trigger_rate": 0.0,
+        "apply_rate": 0.0
+      },
+      "empty_suggestions_fallback_aggregate_persisted": {
+        "all_time": {
+          "request_count": 39,
+          "triggered_count": 23,
+          "applied_count": 0,
+          "no_candidate_count": 23,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.5897435897435898,
+          "apply_rate": 0.0
+        },
+        "last_24h": {
+          "request_count": 5,
+          "triggered_count": 0,
+          "applied_count": 0,
+          "no_candidate_count": 0,
+          "no_replacement_count": 0,
+          "trigger_rate": 0.0,
+          "apply_rate": 0.0
+        }
+      }
+    },
+    "edhrec_validation": {
+      "commander": "Talrand, Sky Summoner",
+      "deck_count": 6414,
+      "themes": [
+        "Spellslinger",
+        "Cantrips",
+        "Tokens",
+        "Counterspells",
+        "Control",
+        "Flying",
+        "Combo",
+        "Card Draw",
+        "Tempo",
+        "Drakes",
+        "Wizards",
+        "Wheels",
+        "Midrange",
+        "Extra Turns",
+        "Polymorph",
+        "Aggro",
+        "Storm",
+        "Bounce",
+        "Flash",
+        "Merfolk",
+        "+1/+1 Counters",
+        "Stax",
+        "Good Stuff",
+        "Clones",
+        "Commander Matters",
+        "Ad Nauseam",
+        "Mill",
+        "Artifacts",
+        "Blue Moon",
+        "X Spells",
+        "Aristocrats",
+        "Blink",
+        "Creatureless",
+        "Cycling",
+        "Exile",
+        "Hatebears",
+        "Theft",
+        "Toolbox",
+        "Topdeck",
+        "Anthems",
+        "Chaos",
+        "Devotion",
+        "Discard",
+        "Enchantress",
+        "Morph",
+        "Ramp",
+        "Snow",
+        "Triggered Abilities",
+        "Big Mana",
+        "Birthing Pod",
+        "Burn",
+        "Counters Matter",
+        "Delver",
+        "Extra Combats",
+        "Foretell",
+        "Group Slug",
+        "Hand Size",
+        "Lands Matter",
+        "Lifegain",
+        "Old School",
+        "Pillow Fort",
+        "Planeswalkers",
+        "Populate",
+        "Spell Copy",
+        "Stompy",
+        "Unnatural",
+        "Zoo"
+      ],
+      "additions_validated": 0,
+      "additions_not_in_edhrec": [
+        "Evolving Wilds"
+      ]
+    },
+    "additions_detailed": [
+      {
+        "type": "add",
+        "name": "Evolving Wilds",
+        "card_id": "ac904ad7-8fd3-49da-9388-60b86e077905",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.00",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "removals_detailed": [
+      {
+        "type": "remove",
+        "name": "Wastes",
+        "card_id": "72356f04-71b4-42f3-a008-699f64ba03eb",
+        "quantity": 1,
+        "is_basic_land": true,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.00",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      }
+    ],
+    "recommendations": [
+      {
+        "type": "remove",
+        "name": "Wastes",
+        "card_id": "72356f04-71b4-42f3-a008-699f64ba03eb",
+        "quantity": 1,
+        "is_basic_land": true,
+        "reason": "Sugestão de saída para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.00",
+          "consistency": "alta",
+          "synergy": "ajuste",
+          "legality": "mantida"
+        }
+      },
+      {
+        "type": "add",
+        "name": "Evolving Wilds",
+        "card_id": "ac904ad7-8fd3-49da-9388-60b86e077905",
+        "quantity": 1,
+        "is_basic_land": false,
+        "reason": "Sugestão de entrada para alinhar o deck ao plano midrange e melhorar consistência geral.",
+        "confidence": {
+          "level": "alta",
+          "score": 0.9
+        },
+        "impact_estimate": {
+          "curve": "ΔCMC 0.00",
+          "consistency": "alta",
+          "synergy": "melhora",
+          "legality": "mantida"
+        }
+      }
+    ]
+  }
+}
