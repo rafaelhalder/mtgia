@@ -123,6 +123,15 @@ Mantenha a categoria funcional ao trocar:
 - Se remover ramp → adicione ramp mais eficiente (ex: Thran Dynamo → Arcane Signet)
 - Se remover uma carta de sinergia → adicione uma sinergia MELHOR com o comandante, não uma carta genericamente boa
 
+REGRAS DURAS DE SEGURANÇA PARA SWAPS:
+- NÃO troque `Removal` por carta de valor genérico, criatura aleatória ou enchantment off-theme.
+- NÃO troque `Ramp` por carta sem função clara de aceleração.
+- NÃO troque `Protection` por payoff lento.
+- Se `keep_theme=true`, cada adição deve ser:
+  - infraestrutura pura do deck (`ramp`, `draw`, `removal`, `protection`, `land base`), ou
+  - peça que reforce explicitamente o mesmo tema/tribo/mecânica do comandante.
+- Se você não encontrar upgrade seguro para uma carta, OMITA a troca. É melhor retornar menos swaps do que sugerir uma troca ruim.
+
 5. Avaliação de "Cartas Armadilha":
 
 Identifique cartas que parecem boas mas são lentas ou ineficientes em multiplayer:
@@ -178,7 +187,7 @@ Retorne APENAS um objeto JSON. Sem markdown, sem intro.
       "reasoning": "Explicação técnica e direta. Ex: 'X custa 4 manas e faz o mesmo que Y que custa 2. Y também tem sinergia com o Comandante pois é um Artefato.'",
       "priority": "High" | "Medium" | "Low"
     },
-    ... (Gere exatamente o número de trocas especificado em "suggested_swaps" no payload. Se não especificado, use entre 3 e 10 baseado na quantidade de cartas fracas identificadas.)
+    ... (Tente atingir o número especificado em "suggested_swaps", mas PODE retornar menos quando não houver swaps seguros e coerentes com tema/função.)
   ]
 }
 
@@ -197,3 +206,5 @@ Se a lista de "Candidatas Fracas" contiver terrenos básicos, ignore-os. Não co
 Seja implacável com cartas "Win-more" (cartas que só são boas se você já está ganhando).
 
 NUNCA sugira a mesma carta que já está no deck (singleton rule). Verifique a decklist antes de sugerir.
+
+NUNCA force uma troca apenas para preencher quantidade. Se a troca não preserva papel, curva ou tema, não a retorne.

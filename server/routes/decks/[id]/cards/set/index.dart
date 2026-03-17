@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../../../lib/deck_rules_service.dart';
 
 /// POST /decks/:id/cards/set
 ///
@@ -95,38 +96,94 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
         };
       }
 
-      if (replaceSameName) {
-        await session.execute(
-          Sql.named('''
-            DELETE FROM deck_cards dc
-            USING cards c
-            WHERE dc.card_id = c.id
-              AND dc.deck_id = @deckId
-              AND LOWER(c.name) = LOWER(@name)
-              AND dc.is_commander = FALSE
-          '''),
-          parameters: {'deckId': deckId, 'name': cardName},
-        );
-      } else {
-        await session.execute(
-          Sql.named(
-            'DELETE FROM deck_cards WHERE deck_id = @deckId AND card_id = @cardId AND is_commander = FALSE',
-          ),
-          parameters: {'deckId': deckId, 'cardId': cardId},
-        );
+      final existingCardsResult = await session.execute(
+        Sql.named('''
+          SELECT dc.card_id::text, dc.quantity::int, dc.is_commander, dc.condition, c.name
+          FROM deck_cards dc
+          JOIN cards c ON c.id = dc.card_id
+          WHERE dc.deck_id = @deckId
+        '''),
+        parameters: {'deckId': deckId},
+      );
+
+      final nextCards = <String, Map<String, dynamic>>{};
+      for (final row in existingCardsResult) {
+        final existingCardId = row[0] as String;
+        nextCards[existingCardId] = {
+          'card_id': existingCardId,
+          'quantity': row[1] as int,
+          'is_commander': row[2] as bool? ?? false,
+          'condition': row[3] as String? ?? 'NM',
+          'name': row[4] as String,
+        };
       }
 
-      await session.execute(
-        Sql.named('''
-          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition)
-          VALUES (@deckId, @cardId, @qty, FALSE, @condition)
-          ON CONFLICT (deck_id, card_id) DO UPDATE SET
-            quantity = EXCLUDED.quantity,
-            is_commander = (deck_cards.is_commander OR EXCLUDED.is_commander),
-            condition = EXCLUDED.condition
-        '''),
-        parameters: {'deckId': deckId, 'cardId': cardId, 'qty': quantity, 'condition': condition},
+      if (replaceSameName) {
+        nextCards.removeWhere((_, card) {
+          final sameName = (card['name'] as String).toLowerCase() ==
+              cardName.toLowerCase();
+          final isCommander = card['is_commander'] as bool? ?? false;
+          return sameName && !isCommander;
+        });
+      } else {
+        final existing = nextCards[cardId];
+        if (existing != null && !(existing['is_commander'] as bool? ?? false)) {
+          nextCards.remove(cardId);
+        }
+      }
+
+      nextCards[cardId] = {
+        'card_id': cardId,
+        'quantity': quantity,
+        'is_commander': false,
+        'condition': condition,
+        'name': cardName,
+      };
+
+      final validatedCards = nextCards.values
+          .map((card) => {
+                'card_id': card['card_id'],
+                'quantity': card['quantity'],
+                'is_commander': card['is_commander'],
+              })
+          .toList();
+
+      await DeckRulesService(session).validateAndThrow(
+        format: format,
+        cards: validatedCards,
+        strict: false,
       );
+
+      await session.execute(
+        Sql.named('DELETE FROM deck_cards WHERE deck_id = @deckId'),
+        parameters: {'deckId': deckId},
+      );
+
+      if (nextCards.isNotEmpty) {
+        final values = <String>[];
+        final params = <String, dynamic>{'deckId': deckId};
+
+        final cardsList = nextCards.values.toList();
+        for (var i = 0; i < cardsList.length; i++) {
+          final card = cardsList[i];
+          final pId = 'c$i';
+          final pQty = 'q$i';
+          final pCmd = 'cmd$i';
+          final pCond = 'cond$i';
+
+          values.add('(@deckId, @$pId, @$pQty, @$pCmd, @$pCond)');
+          params[pId] = card['card_id'];
+          params[pQty] = card['quantity'];
+          params[pCmd] = card['is_commander'] ?? false;
+          params[pCond] = card['condition'] ?? 'NM';
+        }
+
+        final sql = '''
+          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition)
+          VALUES ${values.join(', ')}
+        ''';
+        await session.execute(Sql.named(sql), parameters: params);
+      }
 
       return {
         'ok': true,
@@ -147,6 +204,11 @@ Future<Response> onRequest(RequestContext context, String deckId) async {
     }
 
     return Response.json(body: result.cast<String, dynamic>());
+  } on DeckRulesException catch (e) {
+    return Response.json(
+      statusCode: HttpStatus.badRequest,
+      body: {'error': e.message},
+    );
   } catch (e) {
     print('[ERROR] handler: $e');
     return Response.json(

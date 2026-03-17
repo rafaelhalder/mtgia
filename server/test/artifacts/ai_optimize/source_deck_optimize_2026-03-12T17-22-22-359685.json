@@ -1,0 +1,848 @@
+{
+  "source_deck_id": "0b163477-2e8a-488a-8883-774fcd05281f",
+  "source_available": false,
+  "source_snapshot": {
+    "_source_route": "unavailable",
+    "_source_private_status": 404,
+    "_source_private_body": {
+      "error": "Deck not found or you do not have permission to view it."
+    },
+    "_source_public_status": 404,
+    "_source_public_body": {
+      "error": "Deck not found or is not public."
+    }
+  },
+  "cloned_deck_id": "6b2b21bc-56f4-4cee-a0b4-eec5f48021d0",
+  "optimize_request": {
+    "deck_id": "6b2b21bc-56f4-4cee-a0b4-eec5f48021d0",
+    "archetype": "Control",
+    "bracket": 2,
+    "keep_theme": true
+  },
+  "optimize_status": 200,
+  "optimize_response": {
+    "mode": "complete",
+    "constraints": {
+      "keep_theme": true
+    },
+    "theme": {
+      "theme": "tribal-phyrexian",
+      "confidence": "alta",
+      "match_score": 1.0,
+      "core_cards": [
+        "Atraxa, Praetors' Voice"
+      ]
+    },
+    "bracket": 2,
+    "target_additions": 99,
+    "iterations": 4,
+    "additions": [
+      "Tezzeret's Gambit",
+      "Evolution Sage",
+      "Misty Rainforest",
+      "Polluted Delta",
+      "Ixhel, Scion of Atraxa",
+      "Deepglow Skate",
+      "Plains",
+      "Island",
+      "Swamp",
+      "Forest",
+      "Ajani, Sleeper Agent",
+      "Doubling Season",
+      "Blightbelly Rat",
+      "Drown in Ichor",
+      "Everflowing Chalice",
+      "Experimental Augury",
+      "Flooded Strand",
+      "Skithiryx, the Blight Dragon",
+      "Phyresis Outbreak",
+      "Sunken Hollow",
+      "Tamiyo, Field Researcher",
+      "Vorinclex, Monstrous Raider",
+      "Skrelv, Defector Mite",
+      "Unnatural Restoration",
+      "Cankerbloom",
+      "Bloated Contaminator",
+      "Venerated Rotpriest",
+      "Vraska's Fall",
+      "Karn's Bastion",
+      "Brokers Ascendancy",
+      "Underground River",
+      "Contagion Engine",
+      "Voidwing Hybrid",
+      "Creeping Tar Pit",
+      "Glistening Sphere",
+      "Contaminant Grafter",
+      "Boseiju, Who Endures",
+      "Sea of Clouds",
+      "Astral Cornucopia",
+      "Path of Ancestry",
+      "Norn's Decree",
+      "Metastatic Evangel",
+      "Flux Channeler",
+      "Drowned Catacomb",
+      "Prologue to Phyresis",
+      "Reliquary Tower",
+      "Blighted Agent",
+      "Chromatic Lantern",
+      "Ichor Rats",
+      "Inexorable Tide",
+      "Infectious Bite",
+      "Exotic Orchard",
+      "Infectious Inquiry",
+      "War Room",
+      "Thrummingbird",
+      "Command Tower",
+      "Counterspell",
+      "Cyclonic Rift",
+      "Rhystic Study",
+      "Baleful Strix",
+      "Fated Infatuation",
+      "Sorin, Vengeful Bloodlord",
+      "Teferi, Time Raveler",
+      "Glen Elendra Archmage",
+      "Leyline Binding",
+      "Windfall",
+      "Creeping Renaissance",
+      "Narset, Parter of Veils",
+      "Kaya's Guile",
+      "Preordain",
+      "Karn Liberated",
+      "Ponder",
+      "Crux of Fate",
+      "Noxious Gearhulk",
+      "Toxic Deluge",
+      "Aetherize",
+      "Disallow",
+      "Swords to Plowshares",
+      "Culling Sun",
+      "Reclamation Sage",
+      "Sorin Markov",
+      "Bane of Progress",
+      "Mystic Remora",
+      "Exsanguinate",
+      "Sorin the Mirthless",
+      "Hardened Scales",
+      "Phyrexian Arena",
+      "Arcane Signet",
+      "Pernicious Deed",
+      "Skyclave Shade",
+      "Fellwar Stone",
+      "Torment of Hailfire",
+      "Sanguine Bond",
+      "Cystbearer",
+      "Glistener Elf",
+      "Ichorclaw Myr",
+      "Infectious Horror",
+      "Phyrexian Crusader",
+      "Tainted Strike"
+    ],
+    "additions_detailed": [
+      {
+        "card_id": "39ee4043-eedf-4e96-9a38-8a7208fe897c",
+        "quantity": 1,
+        "name": "Tezzeret's Gambit",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "76fb88b7-f115-4b28-b00c-333dcc030e1c",
+        "quantity": 1,
+        "name": "Evolution Sage",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "9e65e875-19cc-4f3f-b17c-96ec1fd2c0e3",
+        "quantity": 1,
+        "name": "Misty Rainforest",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "1db42a2f-9db1-452b-bb79-96b13d50456a",
+        "quantity": 1,
+        "name": "Polluted Delta",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "99c75488-c483-471b-b460-dac7b1165f32",
+        "quantity": 1,
+        "name": "Ixhel, Scion of Atraxa",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e5d0d61c-7aaa-4763-b77c-4a915691c00a",
+        "quantity": 1,
+        "name": "Deepglow Skate",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a08016ec-4371-41b8-9e0f-5b3a086b9169",
+        "quantity": 1,
+        "name": "Plains",
+        "is_basic_land": true
+      },
+      {
+        "card_id": "b07b9a40-a94a-4827-97a0-03b30c8acd59",
+        "quantity": 1,
+        "name": "Island",
+        "is_basic_land": true
+      },
+      {
+        "card_id": "258cb391-43bd-49ac-8abb-06ff150bdb05",
+        "quantity": 1,
+        "name": "Swamp",
+        "is_basic_land": true
+      },
+      {
+        "card_id": "115a89fa-3dac-4cf4-8b6b-c6de50a3d62e",
+        "quantity": 1,
+        "name": "Forest",
+        "is_basic_land": true
+      },
+      {
+        "card_id": "5f71759e-ef2b-4412-9594-b831cc09b655",
+        "quantity": 1,
+        "name": "Ajani, Sleeper Agent",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a7a73990-39b9-4d0c-aba0-941d6bd6d6bd",
+        "quantity": 1,
+        "name": "Doubling Season",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6ff3335b-6cef-490b-a133-92fb0de03b7e",
+        "quantity": 1,
+        "name": "Blightbelly Rat",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "4f282636-3461-45ed-9f84-23e1ab2b77f0",
+        "quantity": 1,
+        "name": "Drown in Ichor",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "bede9e2b-04b8-4a4a-82dc-76e45859d02a",
+        "quantity": 1,
+        "name": "Everflowing Chalice",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6055258c-8b2d-4b93-82c0-e7ed7ddadacd",
+        "quantity": 1,
+        "name": "Experimental Augury",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "7fe642fa-a4b1-4ec5-b137-c75805ee5ce9",
+        "quantity": 1,
+        "name": "Flooded Strand",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "42170ff5-05b1-4205-bc51-add98a11fcc8",
+        "quantity": 1,
+        "name": "Skithiryx, the Blight Dragon",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "db7e96e1-13eb-4314-88d0-4837a9868bf2",
+        "quantity": 1,
+        "name": "Phyresis Outbreak",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c8f12f08-822a-44b1-9e02-a3107b97252a",
+        "quantity": 1,
+        "name": "Sunken Hollow",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "19ff21f3-f22a-42c2-b995-f24470d29021",
+        "quantity": 1,
+        "name": "Tamiyo, Field Researcher",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "72157043-c99b-42f5-bc6c-9a16ee55132e",
+        "quantity": 1,
+        "name": "Vorinclex, Monstrous Raider",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "271e23da-aec1-458f-b363-0ef37cbb0e61",
+        "quantity": 1,
+        "name": "Skrelv, Defector Mite",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c0649805-6547-44dd-882f-ccaa0b551ba2",
+        "quantity": 1,
+        "name": "Unnatural Restoration",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f9108573-f7b1-4b5b-b7e6-7948eec3d084",
+        "quantity": 1,
+        "name": "Cankerbloom",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f93ed0a7-2799-4f32-b61b-11cc685d7874",
+        "quantity": 1,
+        "name": "Bloated Contaminator",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "213bda7c-f40d-4197-891d-ab3ae4da475d",
+        "quantity": 1,
+        "name": "Venerated Rotpriest",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "2d677104-2cf7-4e62-a8b6-ecbc9b00f97d",
+        "quantity": 1,
+        "name": "Vraska's Fall",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "fc638814-e184-4e58-ad04-221fe81ee8f5",
+        "quantity": 1,
+        "name": "Karn's Bastion",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a90b8ca8-21b9-421e-8695-f69d77cd7352",
+        "quantity": 1,
+        "name": "Brokers Ascendancy",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c129e5f5-cd09-4e16-b68b-9e8a186c3554",
+        "quantity": 1,
+        "name": "Underground River",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b0060bb7-c1f3-4d1b-9742-14a011a86733",
+        "quantity": 1,
+        "name": "Contagion Engine",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "4860359b-d350-4118-8c82-af5af73bb77f",
+        "quantity": 1,
+        "name": "Voidwing Hybrid",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "66b48be0-8615-4ef3-a40b-5e73027ac781",
+        "quantity": 1,
+        "name": "Creeping Tar Pit",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "213f55c7-3191-400a-a1e5-77f6f6d1d621",
+        "quantity": 1,
+        "name": "Glistening Sphere",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "fa954ae8-e4ff-412d-a36d-13b573bb9a9b",
+        "quantity": 1,
+        "name": "Contaminant Grafter",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "606886e9-4e3d-4f54-bed5-42eb6447a737",
+        "quantity": 1,
+        "name": "Boseiju, Who Endures",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "9342f6c8-0fd8-4953-9baa-b1477dede9af",
+        "quantity": 1,
+        "name": "Sea of Clouds",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f8f29a09-fbf8-4015-b4a3-b1168219a422",
+        "quantity": 1,
+        "name": "Astral Cornucopia",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "8410f44b-d1cb-4612-a15b-57c2efeccbb5",
+        "quantity": 1,
+        "name": "Path of Ancestry",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "73a51fd0-94f3-482e-ab86-d88bb0caca35",
+        "quantity": 1,
+        "name": "Norn's Decree",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "5525ec36-9f79-4434-8ea9-7765bb56cf0e",
+        "quantity": 1,
+        "name": "Metastatic Evangel",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c577d7f7-b415-4bbd-ac1e-32207085b9d0",
+        "quantity": 1,
+        "name": "Flux Channeler",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "28130230-a3c8-4871-bb92-2283372fb7fc",
+        "quantity": 1,
+        "name": "Drowned Catacomb",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "936c9e62-d9ae-4abd-8490-5b8c45697c4b",
+        "quantity": 1,
+        "name": "Prologue to Phyresis",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a239b583-5f72-40a2-80af-e250e2858449",
+        "quantity": 1,
+        "name": "Reliquary Tower",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3f7666e5-f540-4d76-8e02-d1a3f9dbd08e",
+        "quantity": 1,
+        "name": "Blighted Agent",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b908bb55-1c1e-4d3f-8309-d08167bfd8e3",
+        "quantity": 1,
+        "name": "Chromatic Lantern",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "2f398fd7-4e14-4da7-966f-464ce57ff8b2",
+        "quantity": 1,
+        "name": "Ichor Rats",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "18e84b42-3de3-489a-8826-53ee73dbff09",
+        "quantity": 1,
+        "name": "Inexorable Tide",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "2d66e63b-8dbf-4024-865a-aca11445199a",
+        "quantity": 1,
+        "name": "Infectious Bite",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f9fecf31-2518-4620-97bd-1e0abcc4785e",
+        "quantity": 1,
+        "name": "Exotic Orchard",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6982cd96-f6fe-4491-85c8-5874f5c21cac",
+        "quantity": 1,
+        "name": "Infectious Inquiry",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "9d65f34d-bc5e-4979-8f58-2b52f7496d6c",
+        "quantity": 1,
+        "name": "War Room",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "05b4d7d5-b418-418d-b3e6-daeedac17aec",
+        "quantity": 1,
+        "name": "Thrummingbird",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e0350ea1-a2b6-4799-b75b-e4593ac61766",
+        "quantity": 1,
+        "name": "Command Tower",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "ec764a62-83e8-467a-ac97-c679d272a0c9",
+        "quantity": 1,
+        "name": "Counterspell",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "69ff8944-04ea-41ea-8de2-59838aaa81b9",
+        "quantity": 1,
+        "name": "Cyclonic Rift",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "22f842b3-b07a-43de-ab2e-38177f81c442",
+        "quantity": 1,
+        "name": "Rhystic Study",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "240ff041-4d43-4b06-a775-3a3e6cf9b416",
+        "quantity": 1,
+        "name": "Baleful Strix",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3d40d410-6caf-47cc-8e93-8a657bda5a61",
+        "quantity": 1,
+        "name": "Fated Infatuation",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "ba16553c-6084-4f8c-b2f3-0e82442c265f",
+        "quantity": 1,
+        "name": "Sorin, Vengeful Bloodlord",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f642fb85-c842-462f-9ccf-a512a9038385",
+        "quantity": 1,
+        "name": "Teferi, Time Raveler",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "dc6d22d9-2ab1-44d7-8bd6-97d57102d612",
+        "quantity": 1,
+        "name": "Glen Elendra Archmage",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "53222e71-5a85-4859-8f40-de2fc7c5d1ae",
+        "quantity": 1,
+        "name": "Leyline Binding",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "8fac796c-f3c9-440b-92e9-b51cb9501a8b",
+        "quantity": 1,
+        "name": "Windfall",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6c09117b-9b35-4d54-9ce1-05c827f16852",
+        "quantity": 1,
+        "name": "Creeping Renaissance",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a145d081-4887-445a-bf1e-0a9bc6b0b1ec",
+        "quantity": 1,
+        "name": "Narset, Parter of Veils",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3d4b3009-fa7e-4e91-8594-bd7d0cfe0434",
+        "quantity": 1,
+        "name": "Kaya's Guile",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "bedf456d-c54d-4df9-bb8a-8c1fc9f44d1c",
+        "quantity": 1,
+        "name": "Preordain",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "de945f17-7d55-4d3c-87cc-ec275360e967",
+        "quantity": 1,
+        "name": "Karn Liberated",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "007ccd31-5201-4c62-b5d1-18ee12e0f94e",
+        "quantity": 1,
+        "name": "Ponder",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "961c2858-160c-40eb-b3cb-8ed89396deaa",
+        "quantity": 1,
+        "name": "Crux of Fate",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "5fedd101-937d-4f03-b31f-5d13baf8886f",
+        "quantity": 1,
+        "name": "Noxious Gearhulk",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "65b8381e-1a6e-48f4-9628-2e99cde90009",
+        "quantity": 1,
+        "name": "Toxic Deluge",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6c2c0309-dd07-4e1e-93c7-38551249db69",
+        "quantity": 1,
+        "name": "Aetherize",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6a1fcb8c-a488-4cdb-a58b-c0675305f620",
+        "quantity": 1,
+        "name": "Disallow",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "18b46232-481b-4868-884e-1c2d2d3f8f60",
+        "quantity": 1,
+        "name": "Swords to Plowshares",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "1cb4bf20-f7f6-4e89-9c34-3c83d5e7da8d",
+        "quantity": 1,
+        "name": "Culling Sun",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "ed8da0b3-20d8-4ca6-a4d9-97a356a69da9",
+        "quantity": 1,
+        "name": "Reclamation Sage",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b3fce4fa-98e6-4383-98ed-6f3630151cf9",
+        "quantity": 1,
+        "name": "Sorin Markov",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "1c7c5193-a70d-417a-9ac8-0bc73ed4790f",
+        "quantity": 1,
+        "name": "Bane of Progress",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "cb09f65c-445e-4757-a08a-5ff8d9435e01",
+        "quantity": 1,
+        "name": "Mystic Remora",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "7f6a03a0-d50d-4b12-95fc-22dcdb8a7ca2",
+        "quantity": 1,
+        "name": "Exsanguinate",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a6608e7c-dcdc-407d-9760-216a1ea349f2",
+        "quantity": 1,
+        "name": "Sorin the Mirthless",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e7ad0ae2-a2fc-454c-b9ad-af9853479601",
+        "quantity": 1,
+        "name": "Hardened Scales",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "234476eb-dade-4f68-90b4-3ad59f947f4a",
+        "quantity": 1,
+        "name": "Phyrexian Arena",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "af4dbd03-8804-42d5-8672-546dcb1a77a2",
+        "quantity": 1,
+        "name": "Arcane Signet",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a1ddecec-d124-455f-affb-7d29c3e3a110",
+        "quantity": 1,
+        "name": "Pernicious Deed",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "97668bff-c6b9-4c44-8181-01ae15f2b933",
+        "quantity": 1,
+        "name": "Skyclave Shade",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e052e629-239f-49d1-a68f-f678f18e93dc",
+        "quantity": 1,
+        "name": "Fellwar Stone",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c3518ecd-8385-4227-9447-c9460f37d3a6",
+        "quantity": 1,
+        "name": "Torment of Hailfire",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "d4b54aab-89a0-45e4-b3b2-ff0dcacbf3f6",
+        "quantity": 1,
+        "name": "Sanguine Bond",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "51e3fbc4-d5ab-4840-ab7f-3da36bf1068a",
+        "quantity": 1,
+        "name": "Cystbearer",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "388d4e01-5626-4581-8b8e-97f37785a842",
+        "quantity": 1,
+        "name": "Glistener Elf",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "910dcd2b-a07f-4efa-8250-a58049cca516",
+        "quantity": 1,
+        "name": "Ichorclaw Myr",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "098aa6be-33e2-44a2-93cf-cbaf8e0a12e4",
+        "quantity": 1,
+        "name": "Infectious Horror",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "7e529ccb-4933-45f2-9cdb-a1c9d6ba42d0",
+        "quantity": 1,
+        "name": "Phyrexian Crusader",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "ff01b14a-cc54-4e73-8abb-aa3d6563e85e",
+        "quantity": 1,
+        "name": "Tainted Strike",
+        "is_basic_land": false
+      }
+    ],
+    "removals": [],
+    "removals_detailed": [],
+    "reasoning": "Deck completado com cartas sinérgicas ao arquétipo Control, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.",
+    "deck_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "4.00",
+      "type_distribution": {
+        "creatures": 1,
+        "instants": 0,
+        "sorceries": 0,
+        "enchantments": 0,
+        "artifacts": 0,
+        "planeswalkers": 0,
+        "lands": 0,
+        "battles": 0
+      },
+      "total_cards": 1,
+      "mana_curve_assessment": "ALERTA: Curva fora do ideal para Midrange (2.5-3.5)",
+      "mana_base_assessment": "Falta mana W (Tem 0 fontes, ideal > 10). Falta mana U (Tem 0 fontes, ideal > 10). Falta mana B (Tem 0 fontes, ideal > 10). Falta mana G (Tem 0 fontes, ideal > 10)",
+      "archetype_confidence": "baixa"
+    },
+    "post_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "3.07",
+      "type_distribution": {
+        "creatures": 29,
+        "instants": 12,
+        "sorceries": 14,
+        "enchantments": 11,
+        "artifacts": 11,
+        "planeswalkers": 8,
+        "lands": 19,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "BOA: Curva equilibrada para Midrange",
+      "mana_base_assessment": "Falta mana W (Tem 6 fontes, ideal > 10). Falta mana U (Tem 6 fontes, ideal > 10). Falta mana B (Tem 6 fontes, ideal > 15). Falta mana G (Tem 6 fontes, ideal > 10)",
+      "archetype_confidence": "média"
+    },
+    "validation_warnings": [],
+    "warnings": {
+      "invalid_cards": [
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces"
+      ],
+      "blocked_by_bracket": {
+        "blocked_additions": [
+          {
+            "name": "Scalding Tarn",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Fabled Passage",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Mystical Tutor",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Vampiric Tutor",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Demonic Tutor",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Doomsday",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Kodama's Reach",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          },
+          {
+            "name": "Cultivate",
+            "categories": [
+              "tutor"
+            ],
+            "reason": "Excede o limite do bracket 2."
+          }
+        ]
+      }
+    }
+  },
+  "bulk_status": 200,
+  "bulk_response": {
+    "ok": true,
+    "total_cards": 100
+  }
+}

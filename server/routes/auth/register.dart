@@ -3,10 +3,10 @@ import 'package:dart_frog/dart_frog.dart';
 import '../../lib/auth_service.dart';
 
 /// Registro de novo usuário com gravação no banco de dados
-/// 
+///
 /// POST /auth/register
 /// Body: {"username": "joao", "email": "joao@example.com", "password": "senha123"}
-/// 
+///
 /// Retorna:
 /// - 201: {token, user: {id, username, email}}
 /// - 400: Validação falhou ou username/email já existe
@@ -18,8 +18,8 @@ Future<Response> onRequest(RequestContext context) async {
 
   try {
     final body = await context.request.json() as Map<String, dynamic>;
-    final username = body['username'] as String?;
-    final email = body['email'] as String?;
+    final username = (body['username'] as String?)?.trim();
+    final email = (body['email'] as String?)?.trim();
     final password = body['password'] as String?;
 
     // Validações básicas

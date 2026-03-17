@@ -3,10 +3,10 @@ import 'package:dart_frog/dart_frog.dart';
 import '../../lib/auth_service.dart';
 
 /// Login com autenticação real no banco de dados
-/// 
+///
 /// POST /auth/login
 /// Body: {"email": "user@example.com", "password": "senha123"}
-/// 
+///
 /// Retorna:
 /// - 200: {token, user: {id, username, email}}
 /// - 400: Validação falhou
@@ -19,7 +19,7 @@ Future<Response> onRequest(RequestContext context) async {
 
   try {
     final body = await context.request.json() as Map<String, dynamic>;
-    final email = body['email'] as String?;
+    final email = (body['email'] as String?)?.trim();
     final password = body['password'] as String?;
 
     // Validação básica
@@ -59,14 +59,14 @@ Future<Response> onRequest(RequestContext context) async {
     print('[ERROR] handler: $e');
     // Erros de negócio (credenciais inválidas, etc)
     final message = e.toString().replaceFirst('Exception: ', '');
-    
+
     if (message.contains('Credenciais inválidas')) {
       return Response.json(
         statusCode: HttpStatus.unauthorized,
         body: {'message': message},
       );
     }
-    
+
     return Response.json(
       statusCode: HttpStatus.badRequest,
       body: {'message': message},

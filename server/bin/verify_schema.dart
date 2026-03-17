@@ -16,86 +16,208 @@ void main() async {
     // Definição do schema esperado (Tabela -> Lista de Colunas)
     final expectedSchema = {
       'users': [
-        'id', 'username', 'email', 'password_hash', 'display_name', 'avatar_url', 'created_at', 'updated_at'
+        'id',
+        'username',
+        'email',
+        'password_hash',
+        'display_name',
+        'avatar_url',
+        'created_at',
+        'updated_at'
       ],
       'user_plans': [
-        'user_id', 'plan_name', 'status', 'started_at', 'renews_at', 'updated_at'
+        'user_id',
+        'plan_name',
+        'status',
+        'started_at',
+        'renews_at',
+        'updated_at'
       ],
       'cards': [
-        'id', 'scryfall_id', 'name', 'mana_cost', 'type_line', 'oracle_text', 
-        'colors', 'image_url', 'set_code', 'rarity', 'ai_description', 'price', 'created_at'
+        'id',
+        'scryfall_id',
+        'name',
+        'mana_cost',
+        'type_line',
+        'oracle_text',
+        'colors',
+        'image_url',
+        'set_code',
+        'rarity',
+        'ai_description',
+        'price',
+        'created_at'
       ],
       'sets': [
-        'code', 'name', 'release_date', 'type', 'block', 'is_online_only', 'is_foreign_only', 'created_at', 'updated_at'
+        'code',
+        'name',
+        'release_date',
+        'type',
+        'block',
+        'is_online_only',
+        'is_foreign_only',
+        'created_at',
+        'updated_at'
       ],
-      'card_legalities': [
-        'id', 'card_id', 'format', 'status'
-      ],
-      'rules': [
-        'id', 'title', 'description', 'category', 'created_at'
-      ],
+      'card_legalities': ['id', 'card_id', 'format', 'status'],
+      'rules': ['id', 'title', 'description', 'category', 'created_at'],
       'decks': [
-        'id', 'user_id', 'name', 'format', 'description', 'is_public', 
-        'synergy_score', 'strengths', 'weaknesses', 'created_at', 'deleted_at'
+        'id',
+        'user_id',
+        'name',
+        'format',
+        'description',
+        'is_public',
+        'synergy_score',
+        'strengths',
+        'weaknesses',
+        'created_at',
+        'deleted_at'
       ],
-      'deck_cards': [
-        'id', 'deck_id', 'card_id', 'quantity', 'is_commander'
-      ],
+      'deck_cards': ['id', 'deck_id', 'card_id', 'quantity', 'is_commander'],
       'deck_matchups': [
-        'id', 'deck_id', 'opponent_deck_id', 'win_rate', 'notes', 'updated_at'
+        'id',
+        'deck_id',
+        'opponent_deck_id',
+        'win_rate',
+        'notes',
+        'updated_at'
       ],
       'battle_simulations': [
-        'id', 'deck_a_id', 'deck_b_id', 'winner_deck_id', 'turns_played', 'game_log', 'created_at'
+        'id',
+        'deck_a_id',
+        'deck_b_id',
+        'winner_deck_id',
+        'turns_played',
+        'game_log',
+        'created_at'
       ],
       'meta_decks': [
-        'id', 'format', 'archetype', 'source_url', 'card_list', 'placement', 'created_at'
+        'id',
+        'format',
+        'archetype',
+        'source_url',
+        'card_list',
+        'placement',
+        'created_at'
       ],
       'format_staples': [
-        'id', 'card_name', 'format', 'archetype', 'color_identity', 'edhrec_rank', 
-        'category', 'scryfall_id', 'is_banned', 'last_synced_at', 'created_at'
+        'id',
+        'card_name',
+        'format',
+        'archetype',
+        'color_identity',
+        'edhrec_rank',
+        'category',
+        'scryfall_id',
+        'is_banned',
+        'last_synced_at',
+        'created_at'
       ],
       'sync_log': [
-        'id', 'sync_type', 'format', 'records_updated', 'records_inserted', 
-        'records_deleted', 'status', 'error_message', 'started_at', 'finished_at'
+        'id',
+        'sync_type',
+        'format',
+        'records_updated',
+        'records_inserted',
+        'records_deleted',
+        'status',
+        'error_message',
+        'started_at',
+        'finished_at'
       ],
-      'sync_state': [
-        'key', 'value', 'updated_at'
-      ],
+      'sync_state': ['key', 'value', 'updated_at'],
       'archetype_counters': [
-        'id', 'archetype', 'counter_archetype', 'hate_cards', 'priority', 'format', 
-        'color_identity', 'notes', 'effectiveness_score', 'last_synced_at', 'created_at'
+        'id',
+        'archetype',
+        'counter_archetype',
+        'hate_cards',
+        'priority',
+        'format',
+        'color_identity',
+        'notes',
+        'effectiveness_score',
+        'last_synced_at',
+        'created_at'
       ],
       'deck_weakness_reports': [
-        'id', 'deck_id', 'weakness_type', 'severity', 'description', 
-        'recommendations', 'auto_detected', 'addressed', 'created_at'
+        'id',
+        'deck_id',
+        'weakness_type',
+        'severity',
+        'description',
+        'recommendations',
+        'auto_detected',
+        'addressed',
+        'created_at'
       ],
       'ai_optimize_fallback_telemetry': [
-        'id', 'user_id', 'deck_id', 'mode', 'recognized_format', 'triggered',
-        'applied', 'no_candidate', 'no_replacement', 'candidate_count',
-        'replacement_count', 'pair_count', 'created_at'
+        'id',
+        'user_id',
+        'deck_id',
+        'mode',
+        'recognized_format',
+        'triggered',
+        'applied',
+        'no_candidate',
+        'no_replacement',
+        'candidate_count',
+        'replacement_count',
+        'pair_count',
+        'created_at'
+      ],
+      'ai_optimize_jobs': [
+        'id',
+        'deck_id',
+        'archetype',
+        'user_id',
+        'status',
+        'stage',
+        'stage_number',
+        'total_stages',
+        'result',
+        'error',
+        'quality_error',
+        'created_at',
+        'updated_at'
       ],
       'ai_user_preferences': [
-        'user_id', 'preferred_archetype', 'preferred_bracket',
-        'keep_theme_default', 'preferred_colors', 'budget_tier',
-        'playstyle', 'created_at', 'updated_at'
+        'user_id',
+        'preferred_archetype',
+        'preferred_bracket',
+        'keep_theme_default',
+        'preferred_colors',
+        'budget_tier',
+        'playstyle',
+        'created_at',
+        'updated_at'
       ],
       'ai_optimize_cache': [
-        'id', 'cache_key', 'user_id', 'deck_id', 'deck_signature',
-        'payload', 'created_at', 'expires_at'
+        'id',
+        'cache_key',
+        'user_id',
+        'deck_id',
+        'deck_signature',
+        'payload',
+        'created_at',
+        'expires_at'
       ],
-      'rate_limit_events': [
-        'id', 'bucket', 'identifier', 'created_at'
-      ],
+      'rate_limit_events': ['id', 'bucket', 'identifier', 'created_at'],
       'activation_funnel_events': [
-        'id', 'user_id', 'event_name', 'format', 'deck_id', 'source',
-        'metadata', 'created_at'
+        'id',
+        'user_id',
+        'event_name',
+        'format',
+        'deck_id',
+        'source',
+        'metadata',
+        'created_at'
       ],
     };
 
     // Busca todas as colunas do banco
     final result = await conn.execute(Sql.named(
-      "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'"
-    ));
+        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'"));
 
     final currentSchema = <String, Set<String>>{};
 
@@ -126,7 +248,7 @@ void main() async {
           hasErrors = true;
         }
       }
-      
+
       // Opcional: Verificar colunas extras
       // for (final col in currentColumns) {
       //   if (!expectedColumns.contains(col)) {
@@ -140,7 +262,6 @@ void main() async {
     } else {
       print('⚠️ Foram encontradas divergências no schema.');
     }
-
   } catch (e) {
     print('Erro ao verificar schema: $e');
     hasErrors = true;

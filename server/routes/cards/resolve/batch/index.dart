@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../../../lib/card_resolution_support.dart';
+
 /// POST /cards/resolve/batch
 ///
 /// Resolve múltiplos nomes de cartas em uma única chamada.
@@ -86,22 +88,28 @@ Future<Response> onRequest(RequestContext context) async {
         )
         SELECT
           i.input_name,
-          c.id::text AS card_id,
-          c.name AS matched_name
+          c.card_id,
+          c.candidate_name
         FROM input_names i
         LEFT JOIN LATERAL (
-          SELECT id, name
-          FROM cards
-          WHERE name ILIKE '%' || i.input_name || '%'
-          ORDER BY
-            CASE
-              WHEN LOWER(name) = LOWER(i.input_name) THEN 0
-              WHEN LOWER(name) LIKE LOWER(i.input_name) || '%' THEN 1
-              ELSE 2
-            END,
-            name ASC
-          LIMIT 1
+          SELECT card_id, candidate_name
+          FROM (
+            SELECT DISTINCT ON (c.name)
+              c.id::text AS card_id,
+              c.name AS candidate_name,
+              CASE
+                WHEN LOWER(c.name) = LOWER(i.input_name) THEN 0
+                WHEN LOWER(c.name) LIKE LOWER(i.input_name) || '%' THEN 1
+                ELSE 2
+              END AS rank
+            FROM cards c
+            WHERE c.name ILIKE '%' || i.input_name || '%'
+            ORDER BY c.name, rank ASC, c.id ASC
+          ) ranked
+          ORDER BY rank ASC, candidate_name ASC
+          LIMIT 5
         ) c ON TRUE
+        ORDER BY i.input_name ASC
       '''),
       parameters: {
         'names': TypedValue(Type.textArray, names),
@@ -110,33 +118,80 @@ Future<Response> onRequest(RequestContext context) async {
 
     final resolved = <Map<String, dynamic>>[];
     final unresolved = <String>[];
+    final ambiguous = <Map<String, dynamic>>[];
+    final candidateNamesByInput = <String, List<String>>{};
+    final representativeCardIdByInput = <String, Map<String, String>>{};
 
     for (final row in result) {
       final map = row.toColumnMap();
       final inputName = (map['input_name'] as String?)?.trim();
-      final cardId = map['card_id'] as String?;
-      final matchedName = map['matched_name'] as String?;
-
       if (inputName == null || inputName.isEmpty) continue;
+      final candidateName = (map['candidate_name'] as String?)?.trim();
+      final cardId = (map['card_id'] as String?)?.trim();
 
-      if (cardId == null || cardId.isEmpty || matchedName == null || matchedName.isEmpty) {
-        unresolved.add(inputName);
+      if (candidateName == null || candidateName.isEmpty) {
+        candidateNamesByInput.putIfAbsent(inputName, () => <String>[]);
+      } else {
+        candidateNamesByInput.putIfAbsent(inputName, () => <String>[]).add(
+              candidateName,
+            );
+        if (cardId != null && cardId.isNotEmpty) {
+          representativeCardIdByInput.putIfAbsent(
+              inputName, () => <String, String>{})[candidateName] = cardId;
+        }
+      }
+    }
+
+    for (final inputName in names.toSet()) {
+      final decision = resolveCardCandidateNames(
+        inputName,
+        candidateNamesByInput[inputName] ?? const <String>[],
+      );
+
+      if (decision.isResolved) {
+        final matchedName = decision.matchedName!;
+        final cardId =
+            representativeCardIdByInput[inputName]?[matchedName]?.trim();
+        if (cardId == null || cardId.isEmpty) {
+          unresolved.add(inputName);
+          continue;
+        }
+
+        resolved.add({
+          'input_name': inputName,
+          'card_id': cardId,
+          'matched_name': matchedName,
+          'strategy': decision.strategy,
+        });
         continue;
       }
 
-      resolved.add({
-        'input_name': inputName,
-        'card_id': cardId,
-        'matched_name': matchedName,
-      });
+      if (decision.isAmbiguous) {
+        ambiguous.add({
+          'input_name': inputName,
+          'candidates': decision.candidateNames,
+        });
+        continue;
+      }
+
+      unresolved.add(inputName);
     }
+
+    unresolved.sort();
+    ambiguous.sort((a, b) {
+      final left = a['input_name']?.toString() ?? '';
+      final right = b['input_name']?.toString() ?? '';
+      return left.compareTo(right);
+    });
 
     return Response.json(
       body: {
         'data': resolved,
         'unresolved': unresolved,
+        'ambiguous': ambiguous,
         'total_input': names.length,
         'total_resolved': resolved.length,
+        'total_ambiguous': ambiguous.length,
       },
     );
   } catch (e) {

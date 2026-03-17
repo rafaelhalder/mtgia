@@ -19,6 +19,7 @@ class Deck {
   final bool isPublic;
   final DateTime createdAt;
   final int cardCount;
+  final List<String> colorIdentity;
 
   Deck({
     required this.id,
@@ -39,6 +40,7 @@ class Deck {
     required this.isPublic,
     required this.createdAt,
     this.cardCount = 0,
+    this.colorIdentity = const [],
   });
 
   /// Factory para criar Deck a partir de JSON (API response)
@@ -65,6 +67,10 @@ class Deck {
       isPublic: json['is_public'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       cardCount: json['card_count'] as int? ?? 0,
+      colorIdentity: (json['color_identity'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
     );
   }
 
@@ -89,6 +95,7 @@ class Deck {
       'is_public': isPublic,
       'created_at': createdAt.toIso8601String(),
       'card_count': cardCount,
+      'color_identity': colorIdentity,
     };
   }
 
@@ -112,6 +119,7 @@ class Deck {
     bool? isPublic,
     DateTime? createdAt,
     int? cardCount,
+    List<String>? colorIdentity,
   }) {
     return Deck(
       id: id ?? this.id,
@@ -132,6 +140,7 @@ class Deck {
       isPublic: isPublic ?? this.isPublic,
       createdAt: createdAt ?? this.createdAt,
       cardCount: cardCount ?? this.cardCount,
+      colorIdentity: colorIdentity ?? this.colorIdentity,
     );
   }
 }

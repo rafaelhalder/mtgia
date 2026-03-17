@@ -4,33 +4,7 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:postgres/postgres.dart';
-
-String? _normalizeScryfallImageUrl(String? url) {
-  if (url == null) return null;
-  final trimmed = url.trim();
-  if (trimmed.isEmpty) return null;
-  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
-
-  try {
-    final uri = Uri.parse(trimmed);
-    final qp = Map<String, String>.from(uri.queryParameters);
-
-    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
-
-    final exact = qp['exact'];
-    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
-      final left = exact.split('//').first.trim();
-      if (left.isNotEmpty) qp['exact'] = left;
-    }
-
-    return uri.replace(queryParameters: qp).toString();
-  } catch (_) {
-    return trimmed.replaceAllMapped(
-      RegExp(r'([?&]set=)([^&]+)'),
-      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
-    );
-  }
-}
+import '../../../lib/scryfall_image_url.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
@@ -85,11 +59,10 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
   int limit,
   bool hasSets,
 ) async {
-
   // Usamos DISTINCT ON (LOWER(c.set_code)) para deduplicar variantes do mesmo set
   // Isso garante que cada edição apareça apenas uma vez no seletor
   final String sql;
-  
+
   if (hasSets) {
     sql = '''
       SELECT * FROM (
@@ -154,7 +127,7 @@ Future<List<Map<String, dynamic>>> _queryPrintings(
 
   final data = result.map((row) {
     final m = row.toColumnMap();
-    final imageUrl = _normalizeScryfallImageUrl(m['image_url']?.toString());
+    final imageUrl = normalizeScryfallImageUrl(m['image_url']?.toString());
     return <String, dynamic>{
       'id': m['id'],
       'scryfall_id': m['scryfall_id'],
@@ -215,14 +188,18 @@ Future<int> _syncPrintingsFromScryfall(Pool pool, String name) async {
   if (printsResponse.statusCode != 200) return 0;
 
   final body = jsonDecode(printsResponse.body) as Map<String, dynamic>;
-  final printings = (body['data'] as List?)?.whereType<Map<String, dynamic>>() ?? [];
+  final printings =
+      (body['data'] as List?)?.whereType<Map<String, dynamic>>() ?? [];
   // Filtrar: só paper, sem art_series, sem tokens
-  final filtered = printings.where((p) {
-    final games = p['games'] as List?;
-    final isPaper = games?.contains('paper') ?? false;
-    final layout = p['layout']?.toString() ?? '';
-    return isPaper && layout != 'art_series' && layout != 'token';
-  }).take(30).toList();
+  final filtered = printings
+      .where((p) {
+        final games = p['games'] as List?;
+        final isPaper = games?.contains('paper') ?? false;
+        final layout = p['layout']?.toString() ?? '';
+        return isPaper && layout != 'art_series' && layout != 'token';
+      })
+      .take(30)
+      .toList();
 
   var imported = 0;
 
@@ -253,10 +230,36 @@ Future<int> _syncPrintingsFromScryfall(Pool pool, String name) async {
       }
     }
 
-    final encodedCardName = Uri.encodeQueryComponent(cardName);
-    final setParam = setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
-    final imageUrl =
-        'https://api.scryfall.com/cards/named?exact=$encodedCardName$setParam&format=image';
+    // Image URL: preferir URL direta do Scryfall (image_uris.normal)
+    // Fallback para card_faces[0] em cartas double-faced
+    String? imageUrl;
+    final imageUris = p['image_uris'] as Map<String, dynamic>?;
+    if (imageUris != null && imageUris['normal'] != null) {
+      imageUrl = imageUris['normal'].toString();
+    } else {
+      final cardFaces = p['card_faces'] as List?;
+      if (cardFaces != null && cardFaces.isNotEmpty) {
+        final firstFace = cardFaces[0] as Map<String, dynamic>?;
+        final faceImageUris = firstFace?['image_uris'] as Map<String, dynamic>?;
+        if (faceImageUris != null && faceImageUris['normal'] != null) {
+          imageUrl = faceImageUris['normal'].toString();
+        }
+      }
+    }
+    // Se ainda não temos URL, usa ID-based redirect
+    if (imageUrl == null || imageUrl.isEmpty) {
+      if (scryfallId.isNotEmpty) {
+        imageUrl =
+            'https://api.scryfall.com/cards/$scryfallId?format=image&version=normal';
+      } else {
+        // Último fallback: name-based (menos confiável)
+        final encodedCardName = Uri.encodeQueryComponent(cardName);
+        final setParam =
+            setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
+        imageUrl =
+            'https://api.scryfall.com/cards/named?exact=$encodedCardName$setParam&format=image';
+      }
+    }
 
     try {
       await pool.execute(

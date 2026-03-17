@@ -262,7 +262,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                     return ActionChip(
                       label: Text(
                         example,
-                        style: const TextStyle(fontSize: AppTheme.fontSm),
+                        style: const TextStyle(fontSize: AppTheme.fontSm, color: AppTheme.textSecondary),
                       ),
                       onPressed: () {
                         setState(() {
@@ -346,7 +346,7 @@ class _DeckGenerateScreenState extends State<DeckGenerateScreen> {
                 icon: const Icon(Icons.save),
                 label: const Text(
                   'Salvar Deck',
-                  style: TextStyle(fontSize: AppTheme.fontLg, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: AppTheme.fontLg, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                 ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),

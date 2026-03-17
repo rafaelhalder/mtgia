@@ -368,7 +368,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${card.name} adicionada ao deck!'),
-          backgroundColor: AppTheme.loomCyan.withValues(alpha: 0.9),
+          backgroundColor: AppTheme.primarySoft.withValues(alpha: 0.9),
           action: SnackBarAction(
             label: 'Ver Deck',
             textColor: Colors.white,
@@ -496,7 +496,7 @@ class _CardScannerScreenState extends State<CardScannerScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.loomCyan.withValues(alpha: 0.85),
+                  color: AppTheme.primarySoft.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(AppTheme.radiusXl),
                 ),
                 child: Row(

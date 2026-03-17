@@ -594,10 +594,18 @@ Future<int> _upsertCardsFromSet(
           (card['colorIdentity'] as List?)?.map((e) => e.toString()).toList() ??
               const <String>[];
 
-      final encodedName = Uri.encodeQueryComponent(name);
-      final setParam = setCode.isNotEmpty ? '&set=$setCode' : '';
-      final imageUrl =
-          'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
+      // Use scryfallId for direct image URL (more reliable than name-based)
+      final scryfallId = ids?['scryfallId']?.toString();
+      String imageUrl;
+      if (scryfallId != null && scryfallId.isNotEmpty) {
+        imageUrl = 'https://api.scryfall.com/cards/$scryfallId?format=image&version=normal';
+      } else {
+        // Fallback to name-based URL (less reliable)
+        final encodedName = Uri.encodeQueryComponent(name);
+        final setParam = setCode.isNotEmpty ? '&set=$setCode' : '';
+        imageUrl =
+            'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
+      }
 
       // MTGJSON: "number" = collector number, "hasFoil"/"hasNonFoil" para foil status
       final collectorNumber = card['number']?.toString();
@@ -668,11 +676,19 @@ List<Object?>? _extractCardRow(String cardName, List<dynamic> printings) {
       (chosen['printings'] as List?)?.cast<dynamic>().firstOrNull?.toString();
   final rarity = chosen['rarity']?.toString();
 
-  final encodedName = Uri.encodeQueryComponent(name);
-  final setParam =
-      setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
-  final imageUrl =
-      'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
+  // Use scryfallId for direct image URL (more reliable than name-based)
+  final scryfallId = ids?['scryfallId']?.toString();
+  String imageUrl;
+  if (scryfallId != null && scryfallId.isNotEmpty) {
+    imageUrl = 'https://api.scryfall.com/cards/$scryfallId?format=image&version=normal';
+  } else {
+    // Fallback to name-based URL (less reliable)
+    final encodedName = Uri.encodeQueryComponent(name);
+    final setParam =
+        setCode != null && setCode.isNotEmpty ? '&set=$setCode' : '';
+    imageUrl =
+        'https://api.scryfall.com/cards/named?exact=$encodedName$setParam&format=image';
+  }
 
   return [
     oracleId, name, manaCost, typeLine, oracleText,

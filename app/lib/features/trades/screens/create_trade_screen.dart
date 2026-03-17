@@ -290,7 +290,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
                           ],
                         ),
                         trailing: const Icon(Icons.add_circle_outline,
-                            color: AppTheme.loomCyan),
+                            color: AppTheme.primarySoft),
                         onTap: () {
                           Navigator.pop(ctx);
                           onSelect(item);
@@ -313,7 +313,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Nova Proposta'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -359,7 +359,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
                   onRemove: (i) => setState(() => _myItems.removeAt(i)),
                   onQtyChange: (i, q) =>
                       setState(() => _myItems[i].quantity = q),
-                  accentColor: AppTheme.loomCyan,
+                  accentColor: AppTheme.primarySoft,
                 ),
               const SizedBox(height: 20),
             ],
@@ -449,7 +449,7 @@ class _CreateTradeScreenState extends State<CreateTradeScreen> {
   Widget _buildTypeSelector() {
     return Row(
       children: [
-        _typeChip('Troca', 'trade', Icons.swap_horiz, AppTheme.loomCyan),
+        _typeChip('Troca', 'trade', Icons.swap_horiz, AppTheme.primarySoft),
         const SizedBox(width: 8),
         _typeChip('Compra', 'sale', Icons.shopping_cart, AppTheme.mythicGold),
         const SizedBox(width: 8),

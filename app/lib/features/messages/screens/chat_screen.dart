@@ -80,7 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
         iconTheme: const IconThemeData(color: AppTheme.textPrimary),
         title: Row(
           children: [
@@ -169,7 +169,7 @@ class _ChatScreenState extends State<ChatScreen> {
               bottom: 8 + MediaQuery.of(context).viewInsets.bottom,
             ),
             decoration: const BoxDecoration(
-              color: AppTheme.surfaceSlate2,
+              color: AppTheme.surfaceElevated,
               border: Border(
                 top: BorderSide(color: AppTheme.outlineMuted, width: 0.5),
               ),

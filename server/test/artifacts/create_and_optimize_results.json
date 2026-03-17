@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-03-13 15:05:01",
+  "decks_created": 2,
+  "results": [
+    {
+      "deck_id": "c91706a4-c247-4f6c-be72-6c95a93c6c5f",
+      "commander": "Toxrill, the Corrosive",
+      "success": true,
+      "total_cards": 100,
+      "lands": 0,
+      "additions": 71,
+      "elapsed_seconds": 198.951721906662,
+      "errors": [
+        "Lands fora do esperado (30-42): 0"
+      ]
+    },
+    {
+      "deck_id": "f5102c9f-2213-4ae8-afb5-64c382607f87",
+      "commander": "Gev, Scaled Scorch",
+      "success": true,
+      "total_cards": 100,
+      "lands": 0,
+      "additions": 74,
+      "elapsed_seconds": 129.79174280166626,
+      "errors": [
+        "Lands fora do esperado (30-42): 0"
+      ]
+    }
+  ],
+  "all_passed": true
+}

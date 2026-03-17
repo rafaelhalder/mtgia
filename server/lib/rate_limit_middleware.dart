@@ -6,7 +6,7 @@ import 'package:postgres/postgres.dart';
 import 'distributed_rate_limiter.dart';
 
 /// Rate Limiter Middleware para prevenir abuso de endpoints
-/// 
+///
 /// **Uso:**
 /// ```dart
 /// // Em routes/auth/_middleware.dart (aplicar apenas nas rotas de auth)
@@ -15,17 +15,17 @@ import 'distributed_rate_limiter.dart';
 ///     .use(rateLimitMiddleware(maxRequests: 5, windowSeconds: 60));
 /// }
 /// ```
-/// 
+///
 /// **Estratégia:**
 /// - Limita o número de requisições por IP em uma janela de tempo
 /// - Retorna 429 (Too Many Requests) se exceder o limite
 /// - Usa memória local (em produção, recomenda-se Redis)
-/// 
+///
 /// **Parâmetros:**
 /// - `maxRequests`: Número máximo de requisições permitidas na janela
 /// - `windowSeconds`: Duração da janela em segundos
 /// - `identifier`: Função para identificar o cliente (default: IP address)
-/// 
+///
 /// **Exemplo de Limites Sugeridos:**
 /// - Login/Register: 5 requisições por minuto
 /// - Endpoints gerais autenticados: 100 requisições por minuto
@@ -45,16 +45,41 @@ class RateLimiter {
   }) : identifier = identifier ?? _defaultIdentifier;
 
   static String _defaultIdentifier(RequestContext context) {
-    // Tenta obter o IP real (considerando proxies)
-    final forwardedFor = context.request.headers['X-Forwarded-For'];
-    if (forwardedFor != null && forwardedFor.isNotEmpty) {
-      return forwardedFor.split(',').first.trim();
+    return buildClientIdentifierFromHeaders(context.request.headers);
+  }
+
+  static String buildClientIdentifierFromHeaders(Map<String, String> headers) {
+    const ipHeaders = [
+      'X-Forwarded-For',
+      'X-Real-IP',
+      'CF-Connecting-IP',
+      'Fly-Client-IP',
+      'True-Client-IP',
+    ];
+
+    for (final header in ipHeaders) {
+      final value = headers[header];
+      if (value == null || value.trim().isEmpty) continue;
+      if (header == 'X-Forwarded-For') {
+        final firstIp = value.split(',').first.trim();
+        if (firstIp.isNotEmpty) return firstIp;
+        continue;
+      }
+      return value.trim();
     }
-    
-    // Fallback: usar "anonymous" quando IP não está disponível
-    // Em produção com proxy reverso (ex: Nginx), X-Forwarded-For sempre estará presente
-    // Se não estiver disponível, não podemos identificar o cliente de forma confiável
-    return 'anonymous';
+
+    final fingerprintParts = [
+      headers['User-Agent']?.trim() ?? '',
+      headers['Accept-Language']?.trim() ?? '',
+      headers['Sec-CH-UA']?.trim() ?? '',
+      headers['Host']?.trim() ?? '',
+    ].where((value) => value.isNotEmpty).toList();
+
+    if (fingerprintParts.isEmpty) {
+      return 'anonymous';
+    }
+
+    return 'fingerprint:${Object.hashAll(fingerprintParts)}';
   }
 
   bool isAllowed(String clientId) {
@@ -63,7 +88,8 @@ class RateLimiter {
 
     // Limpar requisições antigas da janela
     if (_requestLog.containsKey(clientId)) {
-      _requestLog[clientId]!.removeWhere((timestamp) => timestamp.isBefore(windowStart));
+      _requestLog[clientId]!
+          .removeWhere((timestamp) => timestamp.isBefore(windowStart));
     } else {
       _requestLog[clientId] = [];
     }
@@ -81,7 +107,8 @@ class RateLimiter {
   void cleanup() {
     // Periodicamente limpar IDs antigos para evitar memory leak
     // (Implementação simplificada - em produção, usar um timer)
-    final cutoff = DateTime.now().subtract(Duration(seconds: windowSeconds * 2));
+    final cutoff =
+        DateTime.now().subtract(Duration(seconds: windowSeconds * 2));
     _requestLog.removeWhere((_, timestamps) {
       timestamps.removeWhere((t) => t.isBefore(cutoff));
       return timestamps.isEmpty;
@@ -112,7 +139,10 @@ final _aiRateLimiterDev = RateLimiter(
 
 bool _isProduction() {
   final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
-  final mode = (env['ENVIRONMENT'] ?? Platform.environment['ENVIRONMENT'] ?? 'development').toLowerCase();
+  final mode = (env['ENVIRONMENT'] ??
+          Platform.environment['ENVIRONMENT'] ??
+          'development')
+      .toLowerCase();
   return mode == 'production';
 }
 
@@ -172,7 +202,8 @@ Middleware rateLimitMiddleware({
           statusCode: HttpStatus.tooManyRequests, // 429
           body: {
             'error': 'Too Many Requests',
-            'message': 'Você excedeu o limite de $maxRequests requisições em $windowSeconds segundos.',
+            'message':
+                'Você excedeu o limite de $maxRequests requisições em $windowSeconds segundos.',
             'retry_after': windowSeconds,
           },
           headers: {
@@ -185,10 +216,11 @@ Middleware rateLimitMiddleware({
 
       // Adicionar headers informativos na resposta bem-sucedida
       final response = await handler(context);
-      
+
       // Contar quantas requisições restam (estimativa)
-      final remaining = maxRequests - (limiter._requestLog[clientId]?.length ?? 0);
-      
+      final remaining =
+          maxRequests - (limiter._requestLog[clientId]?.length ?? 0);
+
       return response.copyWith(
         headers: {
           ...response.headers,
@@ -276,7 +308,8 @@ Middleware aiRateLimit() {
           statusCode: HttpStatus.tooManyRequests,
           body: {
             'error': 'Too Many AI Requests',
-            'message': 'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
+            'message':
+                'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
             'retry_after': 60,
             'rate_limit_backend': 'distributed',
           },
@@ -293,7 +326,8 @@ Middleware aiRateLimit() {
           statusCode: HttpStatus.tooManyRequests,
           body: {
             'error': 'Too Many AI Requests',
-            'message': 'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
+            'message':
+                'Você atingiu o limite de requisições de IA. Aguarde 1 minuto.',
             'retry_after': 60,
             'rate_limit_backend': 'in_memory_fallback',
           },

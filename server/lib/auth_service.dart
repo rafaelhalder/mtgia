@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:bcrypt/bcrypt.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
@@ -7,30 +9,29 @@ import 'database.dart';
 import 'plan_service.dart';
 
 /// Serviço centralizado de autenticação
-/// 
+///
 /// Responsabilidades:
 /// - Hash e verificação de senhas com bcrypt
 /// - Geração e validação de JWT tokens
 /// - Operações de autenticação no banco de dados
 class AuthService {
+  static const String _bcryptSha256Prefix = 'bcrypt_sha256\$';
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
-  
+
   late final String _jwtSecret;
 
   AuthService._internal() {
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
     final secret = env['JWT_SECRET'] ?? Platform.environment['JWT_SECRET'];
-    
+
     if (secret == null || secret.isEmpty) {
-      throw StateError(
-        'ERRO CRÍTICO: JWT_SECRET não configurado!\n'
-        'Adicione no arquivo .env:\n'
-        'JWT_SECRET=sua_chave_secreta_aleatoria_aqui\n\n'
-        'Gere uma chave segura com: openssl rand -base64 48'
-      );
+      throw StateError('ERRO CRÍTICO: JWT_SECRET não configurado!\n'
+          'Adicione no arquivo .env:\n'
+          'JWT_SECRET=sua_chave_secreta_aleatoria_aqui\n\n'
+          'Gere uma chave segura com: openssl rand -base64 48');
     }
-    
+
     _jwtSecret = secret;
   }
 
@@ -38,25 +39,41 @@ class AuthService {
   final Duration _tokenDuration = const Duration(hours: 24);
 
   /// Cria um hash seguro da senha usando bcrypt
-  /// 
+  ///
   /// Bcrypt é um algoritmo de hashing adaptativo que inclui:
   /// - Salt automático (proteção contra rainbow tables)
   /// - Custo computacional configurável (resistência a força bruta)
   String hashPassword(String password) {
-    return BCrypt.hashpw(password, BCrypt.gensalt());
+    final normalizedPassword = _normalizePasswordForStorage(password);
+    final hash = BCrypt.hashpw(normalizedPassword.value, BCrypt.gensalt());
+    return normalizedPassword.preHashed ? '$_bcryptSha256Prefix$hash' : hash;
   }
 
   /// Verifica se a senha fornecida corresponde ao hash armazenado
   bool verifyPassword(String password, String hashedPassword) {
     try {
+      if (hashedPassword.startsWith(_bcryptSha256Prefix)) {
+        final strippedHash =
+            hashedPassword.substring(_bcryptSha256Prefix.length);
+        final normalizedPassword = _preparePassword(password);
+        return BCrypt.checkpw(normalizedPassword, strippedHash);
+      }
       return BCrypt.checkpw(password, hashedPassword);
     } on ArgumentError catch (e) {
       throw Exception('Invalid password hash format: $e');
     }
   }
 
+  static String normalizeEmail(String email) {
+    return email.trim().toLowerCase();
+  }
+
+  static String normalizeUsername(String username) {
+    return username.trim().toLowerCase();
+  }
+
   /// Gera um JWT token contendo o ID e username do usuário
-  /// 
+  ///
   /// Estrutura do payload:
   /// - userId: UUID do usuário
   /// - username: Nome de usuário
@@ -73,7 +90,7 @@ class AuthService {
   }
 
   /// Valida e decodifica um JWT token
-  /// 
+  ///
   /// Retorna o payload se válido, null se inválido/expirado
   Map<String, dynamic>? verifyToken(String token) {
     try {
@@ -94,12 +111,12 @@ class AuthService {
   }
 
   /// Registra um novo usuário no banco de dados
-  /// 
+  ///
   /// Validações:
   /// - Username único
   /// - Email único
   /// - Senha com hash bcrypt
-  /// 
+  ///
   /// Retorna: Map com 'userId', 'username', 'email' e 'token'
   Future<Map<String, dynamic>> register({
     required String username,
@@ -109,10 +126,13 @@ class AuthService {
     final db = Database();
     final conn = db.connection;
 
+    final normalizedUsername = normalizeUsername(username);
+    final normalizedEmail = normalizeEmail(email);
+
     // Verificar se username já existe
     final usernameCheck = await conn.execute(
-      Sql.named('SELECT id FROM users WHERE username = @username'),
-      parameters: {'username': username},
+      Sql.named('SELECT id FROM users WHERE LOWER(username) = @username'),
+      parameters: {'username': normalizedUsername},
     );
 
     if (usernameCheck.isNotEmpty) {
@@ -121,8 +141,8 @@ class AuthService {
 
     // Verificar se email já existe
     final emailCheck = await conn.execute(
-      Sql.named('SELECT id FROM users WHERE email = @email'),
-      parameters: {'email': email},
+      Sql.named('SELECT id FROM users WHERE LOWER(email) = @email'),
+      parameters: {'email': normalizedEmail},
     );
 
     if (emailCheck.isNotEmpty) {
@@ -140,8 +160,8 @@ class AuthService {
         RETURNING id, username, email
       '''),
       parameters: {
-        'username': username,
-        'email': email,
+        'username': normalizedUsername,
+        'email': normalizedEmail,
         'password_hash': hashedPassword,
       },
     );
@@ -165,11 +185,11 @@ class AuthService {
   }
 
   /// Autentica um usuário com email e senha
-  /// 
+  ///
   /// Validações:
   /// - Email existe no banco
   /// - Senha corresponde ao hash armazenado
-  /// 
+  ///
   /// Retorna: Map com 'userId', 'username', 'email' e 'token'
   Future<Map<String, dynamic>> login({
     required String email,
@@ -178,10 +198,18 @@ class AuthService {
     final db = Database();
     final conn = db.connection;
 
+    final normalizedEmail = normalizeEmail(email);
+
     // Buscar usuário por email
     final result = await conn.execute(
-      Sql.named('SELECT id, username, email, password_hash FROM users WHERE email = @email'),
-      parameters: {'email': email},
+      Sql.named('''
+        SELECT id, username, email, password_hash
+        FROM users
+        WHERE email = @email OR LOWER(email) = @email
+        ORDER BY CASE WHEN email = @email THEN 0 ELSE 1 END
+        LIMIT 1
+      '''),
+      parameters: {'email': normalizedEmail},
     );
 
     if (result.isEmpty) {
@@ -211,19 +239,20 @@ class AuthService {
   }
 
   /// Busca informações do usuário a partir do token JWT
-  /// 
+  ///
   /// Útil para endpoints que precisam identificar o usuário autenticado
   Future<Map<String, dynamic>?> getUserFromToken(String token) async {
     final payload = verifyToken(token);
     if (payload == null) return null;
 
     final userId = payload['userId'] as String;
-    
+
     final db = Database();
     final conn = db.connection;
 
     final result = await conn.execute(
-      Sql.named('SELECT id, username, email, display_name, avatar_url FROM users WHERE id = @userId'),
+      Sql.named(
+          'SELECT id, username, email, display_name, avatar_url FROM users WHERE id = @userId'),
       parameters: {'userId': userId},
     );
 
@@ -238,4 +267,30 @@ class AuthService {
       'avatar_url': row[4] as String?,
     };
   }
+
+  _PasswordPreparation _normalizePasswordForStorage(String password) {
+    final normalized = _preparePassword(password);
+    return _PasswordPreparation(
+      value: normalized,
+      preHashed: normalized != password,
+    );
+  }
+
+  String _preparePassword(String password) {
+    final passwordBytes = utf8.encode(password);
+    if (passwordBytes.length <= 72) {
+      return password;
+    }
+    return sha256.convert(passwordBytes).toString();
+  }
+}
+
+class _PasswordPreparation {
+  const _PasswordPreparation({
+    required this.value,
+    required this.preHashed,
+  });
+
+  final String value;
+  final bool preHashed;
 }

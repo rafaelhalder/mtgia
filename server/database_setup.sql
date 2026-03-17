@@ -370,6 +370,32 @@ CREATE INDEX IF NOT EXISTS idx_opt_fallback_user ON ai_optimize_fallback_telemet
 CREATE INDEX IF NOT EXISTS idx_opt_fallback_deck ON ai_optimize_fallback_telemetry (deck_id);
 CREATE INDEX IF NOT EXISTS idx_opt_fallback_triggered ON ai_optimize_fallback_telemetry (triggered, applied);
 
+-- 14.1.1 Jobs assíncronos de /ai/optimize persistidos
+-- Garante polling consistente mesmo após restart ou múltiplas instâncias.
+CREATE TABLE IF NOT EXISTS ai_optimize_jobs (
+    id TEXT PRIMARY KEY,
+    deck_id UUID NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    archetype TEXT NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    stage TEXT NOT NULL DEFAULT 'Iniciando...',
+    stage_number INTEGER NOT NULL DEFAULT 0,
+    total_stages INTEGER NOT NULL DEFAULT 6,
+    result JSONB,
+    error TEXT,
+    quality_error JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_ai_optimize_jobs_status
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_optimize_jobs_user_updated
+    ON ai_optimize_jobs (user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_optimize_jobs_created
+    ON ai_optimize_jobs (created_at DESC);
+
 -- 14.2 Memória de preferências de otimização por usuário
 CREATE TABLE IF NOT EXISTS ai_user_preferences (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

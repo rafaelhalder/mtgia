@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
@@ -31,6 +29,7 @@ Future<Response> onRequest(RequestContext context) async {
       }
     });
   } catch (e) {
-    return internalServerError('Falha ao carregar plano do usuário', details: e);
+    return internalServerError('Falha ao carregar plano do usuário',
+        details: e);
   }
 }

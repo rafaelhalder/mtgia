@@ -226,7 +226,7 @@ class _NotificationTile extends StatelessWidget {
   Color _typeColor(String type) {
     switch (type) {
       case 'new_follower':
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case 'trade_offer_received':
         return AppTheme.mythicGold;
       case 'trade_accepted':
@@ -236,7 +236,7 @@ class _NotificationTile extends StatelessWidget {
       case 'trade_shipped':
         return Colors.orange;
       case 'trade_delivered':
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case 'trade_completed':
         return Colors.green;
       case 'trade_message':

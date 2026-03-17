@@ -154,6 +154,38 @@ void main() {
     }
   });
 
+  group('POST /decks - Create Deck', () {
+    test('should respect is_public when creating deck', () async {
+      final response = await http.post(
+        Uri.parse('$baseUrl/decks'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $authToken',
+        },
+        body: jsonEncode({
+          'name': 'Public Deck ${DateTime.now().millisecondsSinceEpoch}',
+          'format': 'commander',
+          'description': 'Deck público de teste',
+          'is_public': true,
+          'cards': [],
+        }),
+      );
+
+      expect(response.statusCode, anyOf(200, 201), reason: response.body);
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      testDeckId = data['id'] as String;
+
+      final deckResponse = await http.get(
+        Uri.parse('$baseUrl/decks/$testDeckId'),
+        headers: {'Authorization': 'Bearer $authToken'},
+      );
+
+      expect(deckResponse.statusCode, equals(200), reason: deckResponse.body);
+      final deckData = jsonDecode(deckResponse.body) as Map<String, dynamic>;
+      expect(deckData['is_public'], isTrue, reason: deckResponse.body);
+    });
+  });
+
   group('PUT /decks/:id - Update Deck', () {
     test('should update deck name successfully', () async {
       // Arrange: Cria um deck

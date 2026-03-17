@@ -1,26 +1,7 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
-
-String? _normalizeScryfallImageUrl(String? url) {
-  if (url == null) return null;
-  final trimmed = url.trim();
-  if (trimmed.isEmpty) return null;
-  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
-  try {
-    final uri = Uri.parse(trimmed);
-    final qp = Map<String, String>.from(uri.queryParameters);
-    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
-    final exact = qp['exact'];
-    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
-      final left = exact.split('//').first.trim();
-      if (left.isNotEmpty) qp['exact'] = left;
-    }
-    return uri.replace(queryParameters: qp).toString();
-  } catch (_) {
-    return trimmed;
-  }
-}
+import '../../../lib/scryfall_image_url.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
@@ -127,7 +108,7 @@ Future<Response> _listPublicDecks(RequestContext context) async {
         map['created_at'] = (map['created_at'] as DateTime).toIso8601String();
       }
       map['commander_image_url'] =
-          _normalizeScryfallImageUrl(map['commander_image_url']?.toString());
+          normalizeScryfallImageUrl(map['commander_image_url']?.toString());
       return map;
     }).toList();
 

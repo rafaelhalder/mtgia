@@ -11,26 +11,26 @@ import 'package:test/test.dart';
 // Simulação das classes do sistema (para testes isolados)
 // Em produção, importar de '../routes/ai/optimize/index.dart'
 
-/// Calcula média de CMC
+/// Calcula média de CMC (CORRIGIDO: respeita quantity)
 double calculateAverageCMC(List<Map<String, dynamic>> cards) {
   if (cards.isEmpty) return 0.0;
 
-  final nonLandCards = cards.where((c) {
-    final typeLine = (c['type_line'] as String?) ?? '';
-    return !typeLine.toLowerCase().contains('land');
-  }).toList();
-
-  if (nonLandCards.isEmpty) return 0.0;
-
   double totalCMC = 0;
-  for (final card in nonLandCards) {
-    totalCMC += (card['cmc'] as num?)?.toDouble() ?? 0.0;
+  int totalNonLandCopies = 0;
+
+  for (final card in cards) {
+    final typeLine = (card['type_line'] as String?) ?? '';
+    if (typeLine.toLowerCase().contains('land')) continue;
+    final qty = (card['quantity'] as int?) ?? 1;
+    totalCMC += ((card['cmc'] as num?)?.toDouble() ?? 0.0) * qty;
+    totalNonLandCopies += qty;
   }
 
-  return totalCMC / nonLandCards.length;
+  if (totalNonLandCopies == 0) return 0.0;
+  return totalCMC / totalNonLandCopies;
 }
 
-/// Conta cartas por tipo
+/// Conta cartas por tipo (CORRIGIDO: respeita quantity)
 Map<String, int> countCardTypes(List<Map<String, dynamic>> cards) {
   final counts = <String, int>{
     'creatures': 0,
@@ -44,14 +44,21 @@ Map<String, int> countCardTypes(List<Map<String, dynamic>> cards) {
 
   for (final card in cards) {
     final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+    final qty = (card['quantity'] as int?) ?? 1;
 
-    if (typeLine.contains('land')) counts['lands'] = counts['lands']! + 1;
-    if (typeLine.contains('creature')) counts['creatures'] = counts['creatures']! + 1;
-    if (typeLine.contains('planeswalker')) counts['planeswalkers'] = counts['planeswalkers']! + 1;
-    if (typeLine.contains('instant')) counts['instants'] = counts['instants']! + 1;
-    if (typeLine.contains('sorcery')) counts['sorceries'] = counts['sorceries']! + 1;
-    if (typeLine.contains('artifact')) counts['artifacts'] = counts['artifacts']! + 1;
-    if (typeLine.contains('enchantment')) counts['enchantments'] = counts['enchantments']! + 1;
+    if (typeLine.contains('land')) counts['lands'] = counts['lands']! + qty;
+    if (typeLine.contains('creature'))
+      counts['creatures'] = counts['creatures']! + qty;
+    if (typeLine.contains('planeswalker'))
+      counts['planeswalkers'] = counts['planeswalkers']! + qty;
+    if (typeLine.contains('instant'))
+      counts['instants'] = counts['instants']! + qty;
+    if (typeLine.contains('sorcery'))
+      counts['sorceries'] = counts['sorceries']! + qty;
+    if (typeLine.contains('artifact'))
+      counts['artifacts'] = counts['artifacts']! + qty;
+    if (typeLine.contains('enchantment'))
+      counts['enchantments'] = counts['enchantments']! + qty;
   }
 
   return counts;
@@ -61,13 +68,16 @@ Map<String, int> countCardTypes(List<Map<String, dynamic>> cards) {
 String detectArchetype(List<Map<String, dynamic>> cards) {
   final avgCMC = calculateAverageCMC(cards);
   final typeCounts = countCardTypes(cards);
-  final totalNonLands = cards.length - (typeCounts['lands'] ?? 0);
+  final totalCards =
+      cards.fold<int>(0, (s, c) => s + ((c['quantity'] as int?) ?? 1));
+  final totalNonLands = totalCards - (typeCounts['lands'] ?? 0);
 
   if (totalNonLands == 0) return 'unknown';
 
   final creatureRatio = (typeCounts['creatures'] ?? 0) / totalNonLands;
   final instantSorceryRatio =
-      ((typeCounts['instants'] ?? 0) + (typeCounts['sorceries'] ?? 0)) / totalNonLands;
+      ((typeCounts['instants'] ?? 0) + (typeCounts['sorceries'] ?? 0)) /
+          totalNonLands;
   final enchantmentRatio = (typeCounts['enchantments'] ?? 0) / totalNonLands;
 
   // Aggro: CMC baixo (< 2.5), muitas criaturas (> 40%)
@@ -91,7 +101,10 @@ String detectArchetype(List<Map<String, dynamic>> cards) {
   }
 
   // Midrange: Valor médio de CMC e equilíbrio de tipos
-  if (avgCMC >= 2.5 && avgCMC <= 3.5 && creatureRatio >= 0.25 && creatureRatio <= 0.45) {
+  if (avgCMC >= 2.5 &&
+      avgCMC <= 3.5 &&
+      creatureRatio >= 0.25 &&
+      creatureRatio <= 0.45) {
     return 'midrange';
   }
 
@@ -113,21 +126,27 @@ String inferArchetypeFromCards(List<Map<String, dynamic>> cards) {
     final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
 
     // Control indicators
-    if (oracle.contains('counter') || oracle.contains('destroy') ||
-        oracle.contains('exile') || oracle.contains('return') ||
+    if (oracle.contains('counter') ||
+        oracle.contains('destroy') ||
+        oracle.contains('exile') ||
+        oracle.contains('return') ||
         oracle.contains('draw') && oracle.contains('card')) {
       keywords['control'] = keywords['control']! + 1;
     }
 
     // Aggro indicators
-    if (oracle.contains('haste') || oracle.contains('first strike') ||
-        oracle.contains('+1/+1') || oracle.contains('attack')) {
+    if (oracle.contains('haste') ||
+        oracle.contains('first strike') ||
+        oracle.contains('+1/+1') ||
+        oracle.contains('attack')) {
       keywords['aggro'] = keywords['aggro']! + 1;
     }
 
     // Combo indicators
-    if (oracle.contains('infinite') || oracle.contains('untap') ||
-        oracle.contains('tutor') || oracle.contains('storm')) {
+    if (oracle.contains('infinite') ||
+        oracle.contains('untap') ||
+        oracle.contains('tutor') ||
+        oracle.contains('storm')) {
       keywords['combo'] = keywords['combo']! + 1;
     }
 
@@ -138,9 +157,10 @@ String inferArchetypeFromCards(List<Map<String, dynamic>> cards) {
     }
 
     // Tribal indicators
-    if (typeLine.contains('—') && 
-        (oracle.contains('whenever') || oracle.contains('gets +') ||
-         oracle.contains('other') && oracle.contains('you control'))) {
+    if (typeLine.contains('—') &&
+        (oracle.contains('whenever') ||
+            oracle.contains('gets +') ||
+            oracle.contains('other') && oracle.contains('you control'))) {
       keywords['tribal'] = keywords['tribal']! + 1;
     }
   }
@@ -148,7 +168,7 @@ String inferArchetypeFromCards(List<Map<String, dynamic>> cards) {
   // Encontrar arquétipo dominante
   String dominant = 'value';
   int maxScore = 0;
-  
+
   keywords.forEach((archetype, score) {
     if (score > maxScore) {
       maxScore = score;
@@ -227,9 +247,9 @@ void main() {
         {'type_line': 'Basic Land — Plains'},
         {'type_line': 'Artifact Creature — Construct'},
       ];
-      
+
       final counts = countCardTypes(cards);
-      
+
       expect(counts['creatures'], 3); // 2 criaturas + 1 artifact creature
       expect(counts['instants'], 1);
       expect(counts['sorceries'], 1);
@@ -256,7 +276,7 @@ void main() {
 
     test('detecta control (CMC alto + poucos criaturas + muitos instants)', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 20 lands
       for (var i = 0; i < 20; i++) {
         cards.add({'type_line': 'Basic Land — Island', 'cmc': 0});
@@ -273,13 +293,13 @@ void main() {
       for (var i = 0; i < 10; i++) {
         cards.add({'type_line': 'Sorcery', 'cmc': 4});
       }
-      
+
       expect(detectArchetype(cards), 'control');
     });
 
     test('detecta combo (muitos instants/sorceries)', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 20 lands
       for (var i = 0; i < 20; i++) {
         cards.add({'type_line': 'Basic Land', 'cmc': 0});
@@ -292,13 +312,13 @@ void main() {
       for (var i = 0; i < 30; i++) {
         cards.add({'type_line': i % 2 == 0 ? 'Instant' : 'Sorcery', 'cmc': 2});
       }
-      
+
       expect(detectArchetype(cards), 'combo');
     });
 
     test('detecta stax (muitos enchantments)', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 20 lands
       for (var i = 0; i < 20; i++) {
         cards.add({'type_line': 'Basic Land', 'cmc': 0});
@@ -311,13 +331,13 @@ void main() {
       for (var i = 0; i < 20; i++) {
         cards.add({'type_line': 'Creature', 'cmc': 3});
       }
-      
+
       expect(detectArchetype(cards), 'stax');
     });
 
     test('retorna midrange como fallback', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 20 lands
       for (var i = 0; i < 20; i++) {
         cards.add({'type_line': 'Basic Land', 'cmc': 0});
@@ -332,7 +352,7 @@ void main() {
       for (var i = 0; i < 5; i++) {
         cards.add({'type_line': 'Enchantment', 'cmc': 4});
       }
-      
+
       expect(detectArchetype(cards), 'midrange');
     });
 
@@ -365,16 +385,25 @@ void main() {
         {'oracle_text': 'Haste', 'type_line': 'Creature — Goblin'},
         {'oracle_text': 'First strike', 'type_line': 'Creature — Knight'},
         {'oracle_text': 'Gets +1/+1 until end of turn', 'type_line': 'Instant'},
-        {'oracle_text': 'Whenever this attacks...', 'type_line': 'Creature — Goblin'},
+        {
+          'oracle_text': 'Whenever this attacks...',
+          'type_line': 'Creature — Goblin'
+        },
       ];
       expect(inferArchetypeFromCards(cards), 'aggro');
     });
 
     test('infere combo por keywords', () {
       final cards = [
-        {'oracle_text': 'Search your library for any card (tutor)', 'type_line': 'Instant'},
+        {
+          'oracle_text': 'Search your library for any card (tutor)',
+          'type_line': 'Instant'
+        },
         {'oracle_text': 'Untap target permanent', 'type_line': 'Instant'},
-        {'oracle_text': 'Storm (copy for each spell cast)', 'type_line': 'Sorcery'},
+        {
+          'oracle_text': 'Storm (copy for each spell cast)',
+          'type_line': 'Sorcery'
+        },
         {'oracle_text': 'Add infinite mana', 'type_line': 'Artifact'},
       ];
       expect(inferArchetypeFromCards(cards), 'combo');
@@ -383,7 +412,10 @@ void main() {
     test('infere ramp por keywords', () {
       final cards = [
         {'oracle_text': 'Add one mana of any color', 'type_line': 'Artifact'},
-        {'oracle_text': 'Search your library for a basic land card', 'type_line': 'Sorcery'},
+        {
+          'oracle_text': 'Search your library for a basic land card',
+          'type_line': 'Sorcery'
+        },
         {'oracle_text': 'Add {G}{G}', 'type_line': 'Creature — Elf'},
         {'oracle_text': 'Search for a land', 'type_line': 'Sorcery'},
       ];
@@ -482,18 +514,17 @@ void main() {
   group('Cenários de decks reais', () {
     test('deck de goblins é detectado como aggro', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 20 Mountains
       for (var i = 0; i < 20; i++) {
-        cards.add({'type_line': 'Basic Land — Mountain', 'cmc': 0, 'oracle_text': ''});
+        cards.add({
+          'type_line': 'Basic Land — Mountain',
+          'cmc': 0,
+          'oracle_text': ''
+        });
       }
-      
+
       // Goblins baixo custo
-      final goblinNames = [
-        'Goblin Guide', 'Goblin Lackey', 'Goblin Piledriver', 'Goblin Warchief',
-        'Goblin Chieftain', 'Krenko, Mob Boss', 'Goblin Matron', 'Goblin Ringleader'
-      ];
-      
       for (var i = 0; i < 30; i++) {
         cards.add({
           'type_line': 'Creature — Goblin',
@@ -501,7 +532,7 @@ void main() {
           'oracle_text': 'Haste. When this attacks, deal damage.'
         });
       }
-      
+
       // Burn
       for (var i = 0; i < 10; i++) {
         cards.add({
@@ -510,22 +541,23 @@ void main() {
           'oracle_text': 'Deal 3 damage to any target.'
         });
       }
-      
+
       final archetype = detectArchetype(cards);
       final inferredArchetype = inferArchetypeFromCards(cards);
-      
+
       expect(archetype, 'aggro');
       expect(inferredArchetype, 'aggro');
     });
 
     test('deck de blue control é detectado corretamente', () {
       final cards = <Map<String, dynamic>>[];
-      
+
       // 25 Islands
       for (var i = 0; i < 25; i++) {
-        cards.add({'type_line': 'Basic Land — Island', 'cmc': 0, 'oracle_text': ''});
+        cards.add(
+            {'type_line': 'Basic Land — Island', 'cmc': 0, 'oracle_text': ''});
       }
-      
+
       // Counterspells
       for (var i = 0; i < 15; i++) {
         cards.add({
@@ -534,7 +566,7 @@ void main() {
           'oracle_text': 'Counter target spell.'
         });
       }
-      
+
       // Draw spells
       for (var i = 0; i < 10; i++) {
         cards.add({
@@ -543,7 +575,7 @@ void main() {
           'oracle_text': 'Draw three cards.'
         });
       }
-      
+
       // Win conditions (poucas criaturas)
       for (var i = 0; i < 5; i++) {
         cards.add({
@@ -552,7 +584,7 @@ void main() {
           'oracle_text': 'Flying. When this enters, draw a card.'
         });
       }
-      
+
       // Removal
       for (var i = 0; i < 5; i++) {
         cards.add({
@@ -561,10 +593,10 @@ void main() {
           'oracle_text': 'Return target creature to its owner\'s hand.'
         });
       }
-      
+
       final archetype = detectArchetype(cards);
       final inferredArchetype = inferArchetypeFromCards(cards);
-      
+
       expect(archetype, 'control');
       expect(inferredArchetype, 'control');
     });

@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
+import '../../../lib/deck_rules_service.dart';
 import '../../../lib/import_card_lookup_service.dart';
 import '../../../lib/import_list_service.dart';
 import '../../../lib/http_responses.dart';
@@ -129,35 +129,90 @@ Future<Response> _importToDeck(RequestContext context) async {
 
   try {
     await pool.runTx((session) async {
-      // Se replaceAll, remove as cartas existentes
-      if (replaceAll) {
-        await session.execute(
-          Sql.named('DELETE FROM deck_cards WHERE deck_id = @deckId'),
+      final finalCards = <Map<String, dynamic>>[];
+
+      if (!replaceAll) {
+        final existingResult = await session.execute(
+          Sql.named('''
+            SELECT card_id::text, quantity::int, is_commander, condition
+            FROM deck_cards
+            WHERE deck_id = @deckId
+          '''),
           parameters: {'deckId': deckId},
         );
+
+        for (final row in existingResult) {
+          final cardId = row[0] as String;
+          finalCards.add({
+            'card_id': cardId,
+            'quantity': row[1] as int,
+            'is_commander': row[2] as bool? ?? false,
+            'condition': row[3] as String? ?? 'NM',
+          });
+        }
       }
 
-      // Upsert para evitar violação de UNIQUE em (deck_id, card_id)
-      const upsertSql = '''
-INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander)
-VALUES (@deckId, @cardId, @qty, @isCmd)
-ON CONFLICT (deck_id, card_id)
-DO UPDATE SET
-  quantity = deck_cards.quantity + EXCLUDED.quantity,
-  is_commander = (deck_cards.is_commander OR EXCLUDED.is_commander)
-''';
+      final byId = <String, Map<String, dynamic>>{
+        for (final card in finalCards) card['card_id'] as String: card,
+      };
 
       for (final card in consolidatedCards) {
         final cardId = card['card_id'] as String;
-        await session.execute(
-          Sql.named(upsertSql),
-          parameters: {
-            'deckId': deckId,
-            'cardId': cardId,
-            'qty': card['quantity'],
-            'isCmd': card['is_commander'] ?? false,
-          },
-        );
+        final existing = byId[cardId];
+        if (existing == null) {
+          byId[cardId] = {
+            'card_id': cardId,
+            'quantity': card['quantity'],
+            'is_commander': card['is_commander'] ?? false,
+            'condition': 'NM',
+          };
+          continue;
+        }
+
+        byId[cardId] = {
+          ...existing,
+          'quantity': (existing['quantity'] as int) + (card['quantity'] as int),
+          'is_commander':
+              (existing['is_commander'] as bool? ?? false) ||
+              (card['is_commander'] as bool? ?? false),
+        };
+      }
+
+      final validatedCards = byId.values.toList();
+      await DeckRulesService(session).validateAndThrow(
+        format: format.toLowerCase(),
+        cards: validatedCards,
+        strict: false,
+      );
+
+      await session.execute(
+        Sql.named('DELETE FROM deck_cards WHERE deck_id = @deckId'),
+        parameters: {'deckId': deckId},
+      );
+
+      if (validatedCards.isNotEmpty) {
+        final values = <String>[];
+        final params = <String, dynamic>{'deckId': deckId};
+
+        for (var i = 0; i < validatedCards.length; i++) {
+          final card = validatedCards[i];
+          final pId = 'c$i';
+          final pQty = 'q$i';
+          final pCmd = 'cmd$i';
+          final pCond = 'cond$i';
+
+          values.add('(@deckId, @$pId, @$pQty, @$pCmd, @$pCond)');
+          params[pId] = card['card_id'];
+          params[pQty] = card['quantity'];
+          params[pCmd] = card['is_commander'] ?? false;
+          params[pCond] = card['condition'] ?? 'NM';
+        }
+
+        final sql = '''
+          INSERT INTO deck_cards (deck_id, card_id, quantity, is_commander, condition)
+          VALUES ${values.join(', ')}
+        ''';
+        await session.execute(Sql.named(sql), parameters: params);
       }
     });
 
@@ -167,6 +222,8 @@ DO UPDATE SET
       'not_found_lines': notFoundCards,
       'warnings': warnings,
     });
+  } on DeckRulesException catch (e) {
+    return badRequest(e.message);
   } catch (e) {
     print('[ERROR] Failed to import cards: $e');
     return internalServerError('Failed to import cards');

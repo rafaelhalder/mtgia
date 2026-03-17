@@ -53,18 +53,15 @@ class GameCard {
   bool get isPlaneswalker => typeLine.toLowerCase().contains('planeswalker');
 
   // Keywords simplificadas
-  bool get hasFlying =>
-      oracleText?.toLowerCase().contains('flying') ?? false;
-  bool get hasHaste =>
-      oracleText?.toLowerCase().contains('haste') ?? false;
+  bool get hasFlying => oracleText?.toLowerCase().contains('flying') ?? false;
+  bool get hasHaste => oracleText?.toLowerCase().contains('haste') ?? false;
   bool get hasVigilance =>
       oracleText?.toLowerCase().contains('vigilance') ?? false;
   bool get hasLifelink =>
       oracleText?.toLowerCase().contains('lifelink') ?? false;
   bool get hasDeathtouch =>
       oracleText?.toLowerCase().contains('deathtouch') ?? false;
-  bool get hasTrample =>
-      oracleText?.toLowerCase().contains('trample') ?? false;
+  bool get hasTrample => oracleText?.toLowerCase().contains('trample') ?? false;
   bool get hasFirstStrike =>
       oracleText?.toLowerCase().contains('first strike') ?? false;
 
@@ -85,8 +82,7 @@ class GameCard {
   bool get isRamp {
     final text = oracleText?.toLowerCase() ?? '';
     return text.contains('add {') ||
-        text.contains('search your library for a') &&
-            text.contains('land');
+        text.contains('search your library for a') && text.contains('land');
   }
 
   bool get isBoardWipe {
@@ -125,8 +121,7 @@ class GameCard {
       };
 
   @override
-  String toString() =>
-      isCreature ? '$name ($power/$toughness)' : name;
+  String toString() => isCreature ? '$name ($power/$toughness)' : name;
 }
 
 /// Estado de um jogador durante a partida.
@@ -152,8 +147,7 @@ class PlayerState {
   List<GameCard> get untappedCreatures =>
       creatures.where((c) => !c.isTapped).toList();
 
-  int get totalPower =>
-      creatures.fold(0, (sum, c) => sum + (c.power ?? 0));
+  int get totalPower => creatures.fold(0, (sum, c) => sum + (c.power ?? 0));
 
   void drawCard() {
     if (library.isNotEmpty) {
@@ -442,12 +436,11 @@ class BattleSimulator {
     // IA: bloqueadores
     final blocks = _aiDecideBlockers(opponent, attackers);
 
-    _log(opponent, 'combat', 'declare_blockers',
-        details: {
-          'blocks': blocks.entries
-              .map((e) => {'attacker': e.key.name, 'blocker': e.value.name})
-              .toList()
-        });
+    _log(opponent, 'combat', 'declare_blockers', details: {
+      'blocks': blocks.entries
+          .map((e) => {'attacker': e.key.name, 'blocker': e.value.name})
+          .toList()
+    });
 
     // Resolve combate
     _resolveCombat(active, opponent, attackers, blocks);
@@ -474,7 +467,6 @@ class BattleSimulator {
       } else {
         // Combate
         final attackerPower = attacker.power ?? 0;
-        final attackerToughness = attacker.toughness ?? 0;
         final blockerPower = blocker.power ?? 0;
         final blockerToughness = blocker.toughness ?? 0;
 
@@ -515,8 +507,10 @@ class BattleSimulator {
 
     if (damageToOpponent > 0) {
       opponent.life -= damageToOpponent;
-      _log(active, 'combat', 'deal_damage',
-          details: {'damage': damageToOpponent, 'opponent_life': opponent.life});
+      _log(active, 'combat', 'deal_damage', details: {
+        'damage': damageToOpponent,
+        'opponent_life': opponent.life
+      });
     }
 
     if (lifeGained > 0) {
@@ -529,7 +523,8 @@ class BattleSimulator {
   void _destroyCreature(PlayerState owner, GameCard creature) {
     owner.battlefield.remove(creature);
     owner.graveyard.add(creature);
-    _log(owner, 'combat', 'creature_dies', details: {'creature': creature.name});
+    _log(owner, 'combat', 'creature_dies',
+        details: {'creature': creature.name});
   }
 
   void _endPhase(PlayerState player) {
@@ -585,7 +580,8 @@ class BattleSimulator {
     }
 
     // 4. Remoção se oponente tem ameaça
-    final threats = opponent.creatures.where((c) => (c.power ?? 0) >= 4).toList();
+    final threats =
+        opponent.creatures.where((c) => (c.power ?? 0) >= 4).toList();
     if (threats.isNotEmpty) {
       for (final card in active.hand) {
         if (card.isRemoval && card.cmc <= active.manaAvailable) {
@@ -681,12 +677,11 @@ class BattleSimulator {
           active.graveyard.addAll(destroyedA);
           opponent.graveyard.addAll(destroyedB);
 
-          _log(active, 'main', 'cast_wipe',
-              details: {
-                'card': card.name,
-                'destroyed_own': destroyedA.length,
-                'destroyed_opponent': destroyedB.length,
-              });
+          _log(active, 'main', 'cast_wipe', details: {
+            'card': card.name,
+            'destroyed_own': destroyedA.length,
+            'destroyed_opponent': destroyedB.length,
+          });
         }
 
       case 'play_ramp':
@@ -725,15 +720,16 @@ class BattleSimulator {
   }
 
   List<GameCard> _aiDecideAttackers(PlayerState active, PlayerState opponent) {
-    final potentialAttackers = active.creatures.where((c) => c.canAttack).toList();
+    final potentialAttackers =
+        active.creatures.where((c) => c.canAttack).toList();
     if (potentialAttackers.isEmpty) return [];
 
     final attackers = <GameCard>[];
-    final totalAttackPower = potentialAttackers.fold(
-        0, (sum, c) => sum + (c.power ?? 0));
+    final totalAttackPower =
+        potentialAttackers.fold(0, (sum, c) => sum + (c.power ?? 0));
     final opponentBlockers = opponent.untappedCreatures;
-    final opponentBlockPower = opponentBlockers.fold(
-        0, (sum, c) => sum + (c.power ?? 0));
+    final opponentBlockPower =
+        opponentBlockers.fold(0, (sum, c) => sum + (c.power ?? 0));
 
     // Estratégia simplificada:
     // - Ataca com tudo se tem vantagem significativa

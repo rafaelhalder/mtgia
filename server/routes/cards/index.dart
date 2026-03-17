@@ -1,36 +1,7 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 import '../../lib/endpoint_cache.dart';
-
-String? _normalizeScryfallImageUrl(String? url) {
-  if (url == null) return null;
-  final trimmed = url.trim();
-  if (trimmed.isEmpty) return null;
-  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
-
-  try {
-    final uri = Uri.parse(trimmed);
-    final qp = Map<String, String>.from(uri.queryParameters);
-
-    // Normalize set= to lowercase to avoid 404 (Scryfall expects lowercase set codes).
-    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
-
-    // Some MTGJSON rows use "Name // Name". Scryfall named endpoint expects the
-    // canonical card name, so fallback to the left side.
-    final exact = qp['exact'];
-    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
-      final left = exact.split('//').first.trim();
-      if (left.isNotEmpty) qp['exact'] = left;
-    }
-
-    return uri.replace(queryParameters: qp).toString();
-  } catch (_) {
-    return trimmed.replaceAllMapped(
-      RegExp(r'([?&]set=)([^&]+)'),
-      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
-    );
-  }
-}
+import '../../lib/scryfall_image_url.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   // Apenas método GET é permitido
@@ -64,8 +35,11 @@ Future<Response> onRequest(RequestContext context) async {
 
   try {
     final query = _buildQuery(
-      nameFilter, setFilter, safeLimit, offset,
-      includeSetInfo: hasSets, 
+      nameFilter,
+      setFilter,
+      safeLimit,
+      offset,
+      includeSetInfo: hasSets,
       deduplicate: deduplicate,
     );
 
@@ -77,7 +51,7 @@ Future<Response> onRequest(RequestContext context) async {
     // Mapeamento do resultado para JSON
     final cards = queryResult.map((row) {
       final map = row.toColumnMap();
-      final imageUrl = _normalizeScryfallImageUrl(map['image_url']?.toString());
+      final imageUrl = normalizeScryfallImageUrl(map['image_url']?.toString());
       return {
         'id': map['id'],
         'scryfall_id': map['scryfall_id'],
@@ -106,7 +80,8 @@ Future<Response> onRequest(RequestContext context) async {
       'total_returned': cards.length,
     };
 
-    EndpointCache.instance.set(cacheKey, payload, ttl: const Duration(seconds: 45));
+    EndpointCache.instance
+        .set(cacheKey, payload, ttl: const Duration(seconds: 45));
     return Response.json(body: payload);
   } catch (e) {
     print('[ERROR] Erro interno ao buscar cartas: $e');
@@ -126,13 +101,12 @@ class _QueryBuilder {
 _QueryBuilder _buildQuery(
     String? nameFilter, String? setFilter, int limit, int offset,
     {required bool includeSetInfo, bool deduplicate = false}) {
-  
   final params = <String, dynamic>{};
   final conditions = <String>[];
-  
+
   // Para ordenação: prioriza match exato, depois basic lands, depois alfabético
   String orderExpression = 'c.name ASC';
-  
+
   if (nameFilter != null && nameFilter.isNotEmpty) {
     conditions.add('c.name ILIKE @name');
     params['name'] = '%$nameFilter%';
@@ -155,12 +129,11 @@ _QueryBuilder _buildQuery(
     params['set'] = setFilter;
   }
 
-  final whereClause = conditions.isNotEmpty 
-      ? 'WHERE ${conditions.join(' AND ')}' 
-      : '';
+  final whereClause =
+      conditions.isNotEmpty ? 'WHERE ${conditions.join(' AND ')}' : '';
 
   String sql;
-  
+
   if (deduplicate) {
     // Deduplicar por (name, LOWER(set_code)) para evitar variantes e inconsistências de case
     // Nota: para dedup com priorização, fazemos ORDER BY com CASE no select externo

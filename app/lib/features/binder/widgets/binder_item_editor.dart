@@ -395,7 +395,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? AppTheme.manaViolet.withValues(alpha: 0.25)
-                                : AppTheme.surfaceSlate2,
+                                : AppTheme.surfaceElevated,
                             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                             border: Border.all(
                               color: isSelected
@@ -489,13 +489,13 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
                         color: _listType == 'have'
-                            ? AppTheme.loomCyan.withValues(alpha: 0.15)
-                            : AppTheme.surfaceSlate2,
+                            ? AppTheme.primarySoft.withValues(alpha: 0.15)
+                            : AppTheme.surfaceElevated,
                         borderRadius: const BorderRadius.horizontal(
                             left: Radius.circular(AppTheme.radiusMd)),
                         border: Border.all(
                           color: _listType == 'have'
-                              ? AppTheme.loomCyan
+                              ? AppTheme.primarySoft
                               : AppTheme.outlineMuted,
                         ),
                       ),
@@ -505,13 +505,13 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                           Icon(Icons.inventory_2,
                               size: 16,
                               color: _listType == 'have'
-                                  ? AppTheme.loomCyan
+                                  ? AppTheme.primarySoft
                                   : AppTheme.textSecondary),
                           const SizedBox(width: 6),
                           Text('Tenho',
                               style: TextStyle(
                                 color: _listType == 'have'
-                                    ? AppTheme.loomCyan
+                                    ? AppTheme.primarySoft
                                     : AppTheme.textSecondary,
                                 fontWeight: FontWeight.w600,
                               )),
@@ -528,7 +528,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                       decoration: BoxDecoration(
                         color: _listType == 'want'
                             ? AppTheme.mythicGold.withValues(alpha: 0.15)
-                            : AppTheme.surfaceSlate2,
+                            : AppTheme.surfaceElevated,
                         borderRadius: const BorderRadius.horizontal(
                             right: Radius.circular(AppTheme.radiusMd)),
                         border: Border.all(
@@ -608,7 +608,7 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                   selected: selected,
                   onSelected: (_) => setState(() => _condition = c),
                   selectedColor: AppTheme.manaViolet,
-                  backgroundColor: AppTheme.surfaceSlate2,
+                  backgroundColor: AppTheme.surfaceElevated,
                   labelStyle: TextStyle(
                     color: selected
                         ? Colors.white
@@ -644,10 +644,10 @@ class _BinderItemEditorState extends State<BinderItemEditor> {
                   style: TextStyle(color: AppTheme.textSecondary)),
               secondary: Icon(Icons.swap_horiz,
                   color:
-                      _forTrade ? AppTheme.loomCyan : AppTheme.outlineMuted),
+                      _forTrade ? AppTheme.primarySoft : AppTheme.outlineMuted),
               value: _forTrade,
               onChanged: (v) => setState(() => _forTrade = v),
-              activeThumbColor: AppTheme.loomCyan,
+              activeThumbColor: AppTheme.primarySoft,
             ),
 
             // Para Venda

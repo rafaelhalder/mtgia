@@ -25,7 +25,7 @@ class CardDetailScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 0,
             pinned: true,
-            backgroundColor: AppTheme.surfaceSlate2,
+            backgroundColor: AppTheme.surfaceElevated,
             title: Text(
               card.name,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -288,7 +288,7 @@ class CardDetailScreen extends StatelessWidget {
         Text(
           'Texto de Regras',
           style: theme.textTheme.titleSmall?.copyWith(
-            color: AppTheme.loomCyan,
+            color: AppTheme.primarySoft,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -297,7 +297,7 @@ class CardDetailScreen extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppTheme.surfaceSlate2,
+            color: AppTheme.surfaceElevated,
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(
               color: AppTheme.outlineMuted.withValues(alpha: 0.4),
@@ -335,7 +335,7 @@ class CardDetailScreen extends StatelessWidget {
         Text(
           'Detalhes',
           style: theme.textTheme.titleSmall?.copyWith(
-            color: AppTheme.loomCyan,
+            color: AppTheme.primarySoft,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -343,7 +343,7 @@ class CardDetailScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: AppTheme.surfaceSlate2,
+            color: AppTheme.surfaceElevated,
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(
               color: AppTheme.outlineMuted.withValues(alpha: 0.4),

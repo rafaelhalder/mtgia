@@ -219,7 +219,7 @@ class DeckProgressChip extends StatelessWidget {
       case DeckStatus.complete:
         return AppTheme.success;
       case DeckStatus.incomplete:
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case DeckStatus.invalid:
         return AppTheme.error;
       case DeckStatus.unknown:

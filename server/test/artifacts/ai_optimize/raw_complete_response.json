@@ -1,0 +1,465 @@
+{
+  "job_id": "76fafc5ff2c5e873ee14732412b3b1e8",
+  "deck_id": "88887282-d112-4e3d-876c-d3faf209ab29",
+  "archetype": "aggro",
+  "status": "completed",
+  "stage": "Concluído",
+  "stage_number": 6,
+  "total_stages": 6,
+  "result": {
+    "mode": "complete",
+    "constraints": {
+      "keep_theme": true
+    },
+    "theme": {
+      "theme": "spellslinger",
+      "confidence": "alta",
+      "match_score": 0.5,
+      "core_cards": [
+        "Krenko, Mob Boss",
+        "Aardwolf's Advantage"
+      ]
+    },
+    "bracket": null,
+    "target_additions": 75,
+    "iterations": 3,
+    "additions": [
+      "Raid Bombardment",
+      "Battle Hymn",
+      "Hordeling Outburst",
+      "Goblin Bombardment",
+      "Pashalik Mons",
+      "Goblin Trashmaster",
+      "Battle Cry Goblin",
+      "Goblin Recruiter",
+      "Goblin Ringleader",
+      "Kiki-Jiki, Mirror Breaker",
+      "Gempalm Incinerator",
+      "Goblin King",
+      "Goblin Lackey",
+      "Goblin Piledriver",
+      "Siege-Gang Commander",
+      "Goro-Goro, Disciple of Ryusei",
+      "Massive Raid",
+      "Three Tree City",
+      "Staff of Domination",
+      "Volley Veteran",
+      "Thousand-Year Elixir",
+      "Goblin Chirurgeon",
+      "General Kreat, the Boltbringer",
+      "Mogg War Marshal",
+      "Sting, the Glinting Dagger",
+      "Searslicer Goblin",
+      "Quest for the Goblin Lord",
+      "Goblin Matron",
+      "Howlsquad Heavy",
+      "Skullclamp",
+      "Empty the Warrens",
+      "Conspicuous Snoop",
+      "Coat of Arms",
+      "Moria Marauder",
+      "Path of Ancestry",
+      "Boggart Shenanigans",
+      "Castle Embereth",
+      "Goblin Grenade",
+      "Hobgoblin Bandit Lord",
+      "Marvin, Murderous Mimic",
+      "Purphoros, God of the Forge",
+      "Krenko, Tin Street Kingpin",
+      "Krenko's Command",
+      "Warren Instigator",
+      "Goblin Chieftain",
+      "Impact Tremors",
+      "Rundvelt Hordemaster",
+      "Beetleback Chief",
+      "Goblin Instigator",
+      "Goblin Motivator",
+      "Brightstone Ritual",
+      "Dragon Fodder",
+      "Muxus, Goblin Grandee",
+      "Patriar's Seal",
+      "Skirk Prospector",
+      "Mountain"
+    ],
+    "additions_detailed": [
+      {
+        "card_id": "79faf312-c6ea-40c2-bc98-8d28a7f6106f",
+        "quantity": 1,
+        "name": "Raid Bombardment",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "4ee370c6-04d7-4341-8186-1002d9f8f7d1",
+        "quantity": 1,
+        "name": "Battle Hymn",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "eb4c6186-0d4e-47ca-9b57-42c87a169543",
+        "quantity": 1,
+        "name": "Hordeling Outburst",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "d5ef9d47-7e7f-47ff-a98d-a31bc256a964",
+        "quantity": 1,
+        "name": "Goblin Bombardment",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "5b987808-93bb-479c-9e4f-552647c32b6c",
+        "quantity": 1,
+        "name": "Pashalik Mons",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "5ac3426d-7d6c-4a0b-9e46-c094dd531016",
+        "quantity": 1,
+        "name": "Goblin Trashmaster",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "08661f74-dbaf-4689-b718-b967bcba3ec6",
+        "quantity": 1,
+        "name": "Battle Cry Goblin",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "88268761-7ccf-47da-b527-b3f60b7730bb",
+        "quantity": 1,
+        "name": "Goblin Recruiter",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "189e6ea3-b789-4b96-a636-dd4650bcc6d4",
+        "quantity": 1,
+        "name": "Goblin Ringleader",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "398cb3f5-437b-4aee-8505-98021fa49973",
+        "quantity": 1,
+        "name": "Kiki-Jiki, Mirror Breaker",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f9c656ce-4e1e-4fc8-868f-c2142fd1b3cf",
+        "quantity": 1,
+        "name": "Gempalm Incinerator",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c7b1472c-9977-4e5a-a394-1e63da4f236b",
+        "quantity": 1,
+        "name": "Goblin King",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "970934f1-0e93-4ad1-83ae-f83357f94780",
+        "quantity": 1,
+        "name": "Goblin Lackey",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e78b2989-6882-40ba-8bc4-e222dde87b4f",
+        "quantity": 1,
+        "name": "Goblin Piledriver",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3d112d41-7390-46e8-b607-938d5f9a907e",
+        "quantity": 1,
+        "name": "Siege-Gang Commander",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "da615fc2-310d-45d7-8eae-0bd8a164dcf6",
+        "quantity": 1,
+        "name": "Goro-Goro, Disciple of Ryusei",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "9c2219e3-a6de-4be9-811a-c63f386cde73",
+        "quantity": 1,
+        "name": "Massive Raid",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6a216749-6744-4019-ade0-970086f8c5e8",
+        "quantity": 1,
+        "name": "Three Tree City",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "d5a93d35-8766-4215-8de6-9fe502d88fdc",
+        "quantity": 1,
+        "name": "Staff of Domination",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "2200348a-09f9-464a-94bb-f96280ef7e87",
+        "quantity": 1,
+        "name": "Volley Veteran",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "a1ff43a7-20da-41f0-807c-740f8283bf60",
+        "quantity": 1,
+        "name": "Thousand-Year Elixir",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "51dc1356-46f4-4ca7-8e0d-9e6909fe2bb1",
+        "quantity": 1,
+        "name": "Goblin Chirurgeon",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "074e6fd5-cd93-47c7-b8e7-87613f4e033d",
+        "quantity": 1,
+        "name": "General Kreat, the Boltbringer",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "9df82f92-c7e7-4474-b1c3-813fabd615c2",
+        "quantity": 1,
+        "name": "Mogg War Marshal",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3cbb574f-1fca-49a3-900f-a2cfa0d96250",
+        "quantity": 1,
+        "name": "Sting, the Glinting Dagger",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "497a7437-8875-4b33-aa1b-7ec381c59bdc",
+        "quantity": 1,
+        "name": "Searslicer Goblin",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "6f084fe1-94fc-4311-8692-cb0edc5269d0",
+        "quantity": 1,
+        "name": "Quest for the Goblin Lord",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "8d2aada8-75ad-4420-83d8-e79f548740de",
+        "quantity": 1,
+        "name": "Goblin Matron",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "e54ef89c-1952-43e6-92a2-0e9ac71f2a37",
+        "quantity": 1,
+        "name": "Howlsquad Heavy",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "53f9ed4b-c7f3-42c6-a751-4b79287f4a0a",
+        "quantity": 1,
+        "name": "Skullclamp",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "44b31d30-d35a-40de-b9f5-a00c765f1cd9",
+        "quantity": 1,
+        "name": "Empty the Warrens",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "cccab49a-94a9-47d2-b440-5cd9c7ab41f4",
+        "quantity": 1,
+        "name": "Conspicuous Snoop",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "eddb4bcc-9b49-4e37-862f-73ec904ce1ed",
+        "quantity": 1,
+        "name": "Coat of Arms",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "55cac75c-772f-464a-828d-f966a61ec955",
+        "quantity": 1,
+        "name": "Moria Marauder",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "8410f44b-d1cb-4612-a15b-57c2efeccbb5",
+        "quantity": 1,
+        "name": "Path of Ancestry",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b0d7d153-4d60-4ecc-846c-b9f0abf45faa",
+        "quantity": 1,
+        "name": "Boggart Shenanigans",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "0a8189e8-5111-4676-b41c-4576f12fa3ed",
+        "quantity": 1,
+        "name": "Castle Embereth",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3e77695b-3dc0-4976-b657-0025818bd630",
+        "quantity": 1,
+        "name": "Goblin Grenade",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "be3db48b-48cb-4ad6-814a-600e3f8ad390",
+        "quantity": 1,
+        "name": "Hobgoblin Bandit Lord",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "97e464e6-ab71-4ec1-9cb0-4dfa2dc1a468",
+        "quantity": 1,
+        "name": "Marvin, Murderous Mimic",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c1839983-cb9a-492e-9eac-8a73e4ca9a6b",
+        "quantity": 1,
+        "name": "Purphoros, God of the Forge",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "43b56e08-d9f5-4df8-826b-0c0d4c4cd7ae",
+        "quantity": 1,
+        "name": "Krenko, Tin Street Kingpin",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "c03f8e8c-b2ea-4068-84d6-fa696966037e",
+        "quantity": 1,
+        "name": "Krenko's Command",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b7a3066b-9a95-4bc5-b748-8d90f149e514",
+        "quantity": 1,
+        "name": "Warren Instigator",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "f684006a-94e1-438a-bb49-03f2c3608c05",
+        "quantity": 1,
+        "name": "Goblin Chieftain",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b699a93e-d5ff-4e6c-a0e3-72b05386c2e2",
+        "quantity": 1,
+        "name": "Impact Tremors",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "db5eb354-0831-4514-b4fc-2a14062f1ef6",
+        "quantity": 1,
+        "name": "Rundvelt Hordemaster",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "72f97ad2-b138-4014-a383-340ee9f47bd7",
+        "quantity": 1,
+        "name": "Beetleback Chief",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "d1716845-6429-49c2-a17d-c7130d462eb4",
+        "quantity": 1,
+        "name": "Goblin Instigator",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "b52a4b91-13fe-4299-93f1-05bbcbf6325f",
+        "quantity": 1,
+        "name": "Goblin Motivator",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "798d1921-1010-4d38-8fcd-a618fff33966",
+        "quantity": 1,
+        "name": "Brightstone Ritual",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "0a84b605-fe90-40c9-9f6d-ce81e00e6edc",
+        "quantity": 1,
+        "name": "Dragon Fodder",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3b94345c-804c-49b4-832b-d5ed70ef33e7",
+        "quantity": 1,
+        "name": "Muxus, Goblin Grandee",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "3a1d9e26-ab86-452f-a7fc-d510cea0f8d5",
+        "quantity": 1,
+        "name": "Patriar's Seal",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "876be1f3-fb78-4d55-886a-4e37f696851b",
+        "quantity": 1,
+        "name": "Skirk Prospector",
+        "is_basic_land": false
+      },
+      {
+        "card_id": "73d87611-651a-4318-a0ae-5e83446dd762",
+        "quantity": 20,
+        "name": "Mountain",
+        "is_basic_land": true
+      }
+    ],
+    "removals": [],
+    "removals_detailed": [],
+    "reasoning": "Deck completado com cartas sinérgicas ao arquétipo aggro, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.",
+    "deck_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "2.56",
+      "type_distribution": {
+        "creatures": 7,
+        "instants": 5,
+        "sorceries": 3,
+        "enchantments": 0,
+        "artifacts": 1,
+        "planeswalkers": 0,
+        "lands": 9,
+        "battles": 0
+      },
+      "total_cards": 25,
+      "mana_curve_assessment": "BOA: Curva equilibrada para Midrange",
+      "mana_base_assessment": "Falta mana R (Tem 6 fontes, ideal > 15)",
+      "archetype_confidence": "baixa"
+    },
+    "post_analysis": {
+      "detected_archetype": "midrange",
+      "average_cmc": "2.62",
+      "type_distribution": {
+        "creatures": 40,
+        "instants": 8,
+        "sorceries": 8,
+        "enchantments": 6,
+        "artifacts": 8,
+        "planeswalkers": 0,
+        "lands": 32,
+        "battles": 0
+      },
+      "total_cards": 100,
+      "mana_curve_assessment": "BOA: Curva equilibrada para Midrange",
+      "mana_base_assessment": "Base de mana equilibrada",
+      "archetype_confidence": "média"
+    },
+    "validation_warnings": []
+  },
+  "created_at": "2026-03-13T11:58:55.668830",
+  "updated_at": "2026-03-13T12:00:35.327588"
+}

@@ -314,9 +314,34 @@ class MLKnowledgeService {
       }
     }
     
-    // Sinergias encontradas
+    // Sinergias baseadas em top_pairs (cartas que frequentemente aparecem juntas)
+    if (context.cardInsights.isNotEmpty) {
+      final pairsBuffer = StringBuffer();
+      var pairsCount = 0;
+      
+      for (final entry in context.cardInsights.entries) {
+        final insight = entry.value;
+        if (insight.topPairs.isNotEmpty && pairsCount < 5) {
+          final topPair = insight.topPairs.first;
+          final pairCard = topPair['card']?.toString();
+          final pairCount = topPair['count'] ?? 0;
+          if (pairCard != null && pairCount > 5) {
+            pairsBuffer.writeln('• ${entry.key} sinergiza com $pairCard (${pairCount}x juntos)');
+            pairsCount++;
+          }
+        }
+      }
+      
+      if (pairsCount > 0) {
+        buffer.writeln('\n[SINERGIAS POR CO-OCORRÊNCIA]');
+        buffer.writeln('Cartas frequentemente usadas juntas em meta decks:');
+        buffer.write(pairsBuffer);
+      }
+    }
+    
+    // Sinergias encontradas na tabela synergy_packages
     if (context.relevantSynergies.isNotEmpty) {
-      buffer.writeln('\n[SINERGIAS CONHECIDAS]');
+      buffer.writeln('\n[COMBOS/PACKAGES CONHECIDOS]');
       for (final synergy in context.relevantSynergies.take(5)) {
         buffer.writeln('• ${synergy.name} (${synergy.type}, conf: ${(synergy.confidenceScore * 100).toStringAsFixed(0)}%)');
       }

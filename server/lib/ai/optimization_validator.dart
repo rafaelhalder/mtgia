@@ -5,6 +5,7 @@ import 'package:dotenv/dotenv.dart';
 import '../logger.dart';
 import '../openai_runtime_config.dart';
 import 'goldfish_simulator.dart';
+import 'optimization_functional_roles.dart';
 
 /// Motor de Validação Pós-Otimização
 ///
@@ -146,8 +147,9 @@ class OptimizationValidator {
         );
 
         // Keep se: 2-5 effective lands E tem jogada early (ou hand size <= 5)
-        final shouldKeep = (effectiveLands >= 1.5 && effectiveLands <= 5.5 && hasEarlyPlay) ||
-            handSize <= 5; // Keep at 5 cards regardless
+        final shouldKeep =
+            (effectiveLands >= 1.5 && effectiveLands <= 5.5 && hasEarlyPlay) ||
+                handSize <= 5; // Keep at 5 cards regardless
 
         if (shouldKeep || attempt == 3) {
           // Kept
@@ -204,7 +206,8 @@ class OptimizationValidator {
 
       // Encontrar dados da carta removida
       final removedCard = originalDeck.firstWhere(
-        (c) => (c['name'] as String?)?.toLowerCase() == removedName.toLowerCase(),
+        (c) =>
+            (c['name'] as String?)?.toLowerCase() == removedName.toLowerCase(),
         orElse: () => <String, dynamic>{},
       );
 
@@ -228,8 +231,8 @@ class OptimizationValidator {
       }
 
       // Classificar papel funcional
-      final removedRole = _classifyFunctionalRole(removedCard);
-      final addedRole = _classifyFunctionalRole(addedCard);
+      final removedRole = classifyOptimizationFunctionalRole(removedCard);
+      final addedRole = classifyOptimizationFunctionalRole(addedCard);
 
       // CMC comparison
       final removedCmc = _getCmc(removedCard);
@@ -269,16 +272,30 @@ class OptimizationValidator {
 
     // Contagem global
     final upgrades = swapAnalysis.where((s) => s.verdict == 'upgrade').length;
-    final sidegrades = swapAnalysis.where((s) => s.verdict == 'sidegrade').length;
+    final sidegrades =
+        swapAnalysis.where((s) => s.verdict == 'sidegrade').length;
     final tradeoffs = swapAnalysis.where((s) => s.verdict == 'tradeoff').length;
-    final questionable = swapAnalysis.where((s) => s.verdict == 'questionável').length;
+    final questionable =
+        swapAnalysis.where((s) => s.verdict == 'questionável').length;
 
     // Análise de categorias (deck perde removal? perde draw?)
     final removedRoles = swapAnalysis.map((s) => s.removedRole).toList();
     final addedRoles = swapAnalysis.map((s) => s.addedRole).toList();
 
     final roleDelta = <String, int>{};
-    for (final role in ['draw', 'removal', 'ramp', 'creature', 'artifact', 'enchantment', 'land', 'utility', 'wipe', 'tutor', 'protection']) {
+    for (final role in [
+      'draw',
+      'removal',
+      'ramp',
+      'creature',
+      'artifact',
+      'enchantment',
+      'land',
+      'utility',
+      'wipe',
+      'tutor',
+      'protection'
+    ]) {
       final lost = removedRoles.where((r) => r == role).length;
       final gained = addedRoles.where((r) => r == role).length;
       roleDelta[role] = gained - lost;
@@ -292,70 +309,6 @@ class OptimizationValidator {
       questionable: questionable,
       roleDelta: roleDelta,
     );
-  }
-
-  /// Classifica o papel funcional de uma carta
-  String _classifyFunctionalRole(Map<String, dynamic> card) {
-    final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
-    final oracle = ((card['oracle_text'] as String?) ?? '').toLowerCase();
-
-    if (typeLine.contains('land')) return 'land';
-
-    // Card draw
-    if (oracle.contains('draw') ||
-        oracle.contains('look at the top') ||
-        (oracle.contains('scry') && oracle.contains('draw'))) {
-      return 'draw';
-    }
-
-    // Removal
-    if (oracle.contains('destroy target') ||
-        oracle.contains('exile target') ||
-        oracle.contains('counter target') ||
-        (oracle.contains('return target') && oracle.contains('to its owner')) ||
-        // Damage-based removal: "deals X damage to target creature/planeswalker"
-        (oracle.contains('deals') && oracle.contains('damage') &&
-            (oracle.contains('target creature') ||
-                oracle.contains('target planeswalker') ||
-                oracle.contains('any target')))) {
-      return 'removal';
-    }
-
-    // Board wipe
-    if (oracle.contains('destroy all') ||
-        oracle.contains('exile all') ||
-        (oracle.contains('each creature') && oracle.contains('damage'))) {
-      return 'wipe';
-    }
-
-    // Ramp
-    if (oracle.contains('add {') ||
-        (oracle.contains('search your library for a') && oracle.contains('land')) ||
-        oracle.contains('mana of any') ||
-        (typeLine.contains('artifact') && oracle.contains('add'))) {
-      return 'ramp';
-    }
-
-    // Tutor
-    if (oracle.contains('search your library') && !oracle.contains('land')) {
-      return 'tutor';
-    }
-
-    // Protection
-    if (oracle.contains('hexproof') ||
-        oracle.contains('indestructible') ||
-        oracle.contains('shroud') ||
-        oracle.contains('ward')) {
-      return 'protection';
-    }
-
-    // Creature
-    if (typeLine.contains('creature')) return 'creature';
-    if (typeLine.contains('artifact')) return 'artifact';
-    if (typeLine.contains('enchantment')) return 'enchantment';
-    if (typeLine.contains('planeswalker')) return 'planeswalker';
-
-    return 'utility';
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -390,7 +343,8 @@ class OptimizationValidator {
     );
 
     try {
-      final criticPrompt = '''Você é um revisor crítico de otimizações de deck de Magic: The Gathering (Commander).
+      final criticPrompt =
+          '''Você é um revisor crítico de otimizações de deck de Magic: The Gathering (Commander).
 
 Outro sistema de IA sugeriu estas trocas para um deck de ${commanders.join(' & ')} ($archetype):
 
@@ -483,8 +437,8 @@ SUA TAREFA: Avaliar se as trocas são REALMENTE boas. Retorne apenas JSON:
     score += consistencyDelta * 0.5; // Cada ponto de consistência vale 0.5
 
     // Mulligan: keep rate melhorou?
-    final mulliganDelta =
-        monteCarlo.afterMulligan.keepAt7Rate - monteCarlo.beforeMulligan.keepAt7Rate;
+    final mulliganDelta = monteCarlo.afterMulligan.keepAt7Rate -
+        monteCarlo.beforeMulligan.keepAt7Rate;
     score += mulliganDelta * 20; // Cada 1% de melhoria vale 0.2
 
     // Screw rate: diminuiu?
@@ -528,7 +482,8 @@ SUA TAREFA: Avaliar se as trocas são REALMENTE boas. Retorne apenas JSON:
     // Warnings
     final warnings = <String>[];
     if (consistencyDelta < -3) {
-      warnings.add('Consistência do deck diminuiu (${monteCarlo.before.consistencyScore} → ${monteCarlo.after.consistencyScore})');
+      warnings.add(
+          'Consistência do deck diminuiu (${monteCarlo.before.consistencyScore} → ${monteCarlo.after.consistencyScore})');
     }
     if (lostRemoval) {
       warnings.add('O deck perdeu cartas de remoção. Pode ficar vulnerável.');
@@ -537,13 +492,16 @@ SUA TAREFA: Avaliar se as trocas são REALMENTE boas. Retorne apenas JSON:
       warnings.add('O deck perdeu card draw. Pode perder gás no late game.');
     }
     if (lostWipe) {
-      warnings.add('O deck perdeu board wipe(s). Pode ter dificuldade contra ameaças múltiplas.');
+      warnings.add(
+          'O deck perdeu board wipe(s). Pode ter dificuldade contra ameaças múltiplas.');
     }
     if (lostRamp) {
-      warnings.add('O deck perdeu cartas de ramp. Pode ficar lento no early game.');
+      warnings
+          .add('O deck perdeu cartas de ramp. Pode ficar lento no early game.');
     }
     if (functional.questionable > 0) {
-      warnings.add('${functional.questionable} troca(s) questionável(is) — mudou função E ficou mais cara.');
+      warnings.add(
+          '${functional.questionable} troca(s) questionável(is) — mudou função E ficou mais cara.');
     }
     if (monteCarlo.after.screwRate > monteCarlo.before.screwRate + 0.03) {
       warnings.add('Risco de mana screw aumentou significativamente.');
@@ -564,7 +522,9 @@ SUA TAREFA: Avaliar se as trocas são REALMENTE boas. Retorne apenas JSON:
   // ═══════════════════════════════════════════════════════════════
 
   bool _isLand(Map<String, dynamic> card) {
-    return ((card['type_line'] as String?) ?? '').toLowerCase().contains('land');
+    return ((card['type_line'] as String?) ?? '')
+        .toLowerCase()
+        .contains('land');
   }
 
   int _getCmc(Map<String, dynamic> card) {
@@ -609,7 +569,8 @@ class MonteCarloComparison {
           'turn2_play_delta': double.parse(
               (after.turn2PlayRate - before.turn2PlayRate).toStringAsFixed(3)),
           'mulligan_keep7_delta': double.parse(
-              (afterMulligan.keepAt7Rate - beforeMulligan.keepAt7Rate).toStringAsFixed(3)),
+              (afterMulligan.keepAt7Rate - beforeMulligan.keepAt7Rate)
+                  .toStringAsFixed(3)),
         },
       };
 }
@@ -640,7 +601,8 @@ class MulliganReport {
         'keep_at_6': double.parse(keepAt6Rate.toStringAsFixed(3)),
         'keep_at_5': double.parse(keepAt5Rate.toStringAsFixed(3)),
         'keep_at_4_or_less': double.parse(keepAt4OrLessRate.toStringAsFixed(3)),
-        'keepable_after_mull': double.parse(keepableAfterMullRate.toStringAsFixed(3)),
+        'keepable_after_mull':
+            double.parse(keepableAfterMullRate.toStringAsFixed(3)),
       };
 }
 

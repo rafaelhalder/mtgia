@@ -1,78 +1,11 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../lib/deck_schema_support.dart';
 import '../../lib/deck_rules_service.dart';
 import '../../lib/http_responses.dart';
 import '../../lib/logger.dart';
-
-String? _normalizeScryfallImageUrl(String? url) {
-  if (url == null) return null;
-  final trimmed = url.trim();
-  if (trimmed.isEmpty) return null;
-  if (!trimmed.startsWith('https://api.scryfall.com/')) return trimmed;
-
-  try {
-    final uri = Uri.parse(trimmed);
-    final qp = Map<String, String>.from(uri.queryParameters);
-
-    if (qp['set'] != null) qp['set'] = qp['set']!.toLowerCase();
-
-    final exact = qp['exact'];
-    if (uri.path == '/cards/named' && exact != null && exact.contains('//')) {
-      final left = exact.split('//').first.trim();
-      if (left.isNotEmpty) qp['exact'] = left;
-    }
-
-    return uri.replace(queryParameters: qp).toString();
-  } catch (_) {
-    return trimmed.replaceAllMapped(
-      RegExp(r'([?&]set=)([^&]+)'),
-      (m) => '${m.group(1)}${m.group(2)!.toLowerCase()}',
-    );
-  }
-}
-
-bool? _hasDeckMetaColumnsCache;
-Future<bool> _hasDeckMetaColumns(Pool pool) async {
-  if (_hasDeckMetaColumnsCache != null) return _hasDeckMetaColumnsCache!;
-  try {
-    final result = await pool.execute(
-      Sql.named('''
-        SELECT COUNT(*)::int
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'decks'
-          AND column_name IN ('archetype', 'bracket')
-      '''),
-    );
-    final count = (result.first[0] as int?) ?? 0;
-    _hasDeckMetaColumnsCache = count >= 2;
-  } catch (_) {
-    _hasDeckMetaColumnsCache = false;
-  }
-  return _hasDeckMetaColumnsCache!;
-}
-
-bool? _hasDeckPricingColumnsCache;
-Future<bool> _hasDeckPricingColumns(Pool pool) async {
-  if (_hasDeckPricingColumnsCache != null) return _hasDeckPricingColumnsCache!;
-  try {
-    final result = await pool.execute(
-      Sql.named('''
-        SELECT COUNT(*)::int
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'decks'
-          AND column_name IN ('pricing_currency','pricing_total','pricing_missing_cards','pricing_updated_at')
-      '''),
-    );
-    final count = (result.first[0] as int?) ?? 0;
-    _hasDeckPricingColumnsCache = count >= 4;
-  } catch (_) {
-    _hasDeckPricingColumnsCache = false;
-  }
-  return _hasDeckPricingColumnsCache!;
-}
+import '../../lib/scryfall_image_url.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   // Este arquivo vai lidar com diferentes métodos HTTP para a rota /decks
@@ -100,8 +33,8 @@ Future<Response> _listDecks(RequestContext context) async {
     Log.d('🔌 Conexão com banco obtida.');
 
     Log.d('🔍 Executando query SELECT...');
-    final hasMeta = await _hasDeckMetaColumns(conn);
-    final hasPricing = await _hasDeckPricingColumns(conn);
+    final hasMeta = await hasDeckMetaColumns(conn);
+    final hasPricing = await hasDeckPricingColumns(conn);
     final sql = hasMeta
         ? (hasPricing
             ? '''
@@ -257,7 +190,7 @@ Future<Response> _listDecks(RequestContext context) async {
         map['pricing_updated_at'] =
             (map['pricing_updated_at'] as DateTime).toIso8601String();
       }
-      map['commander_image_url'] = _normalizeScryfallImageUrl(
+      map['commander_image_url'] = normalizeScryfallImageUrl(
         map['commander_image_url']?.toString(),
       );
       // PostgreSQL DECIMAL retorna String, converter para double
@@ -269,6 +202,46 @@ Future<Response> _listDecks(RequestContext context) async {
       }
       return map;
     }).toList();
+
+    // ── Fetch color identity for each deck (batch) ──────────────
+    if (decks.isNotEmpty) {
+      try {
+        final colorResult = await conn.execute(
+          Sql.named('''
+            SELECT
+              dc.deck_id::text,
+              array_agg(DISTINCT unnested ORDER BY unnested) AS color_identity
+            FROM deck_cards dc
+            JOIN cards c ON c.id = dc.card_id
+            CROSS JOIN LATERAL unnest(COALESCE(c.color_identity, '{}')) AS unnested
+            WHERE dc.deck_id = ANY(
+              SELECT id FROM decks WHERE user_id = @userId
+            )
+            GROUP BY dc.deck_id
+          '''),
+          parameters: {'userId': userId},
+        );
+        final colorMap = <String, List<String>>{};
+        for (final row in colorResult) {
+          final m = row.toColumnMap();
+          final deckId = m['deck_id']?.toString() ?? '';
+          final colors = m['color_identity'];
+          if (colors is List) {
+            colorMap[deckId] = colors.map((e) => e.toString()).toList();
+          }
+        }
+        for (final deck in decks) {
+          final deckId = deck['id']?.toString() ?? '';
+          deck['color_identity'] = colorMap[deckId] ?? <String>[];
+        }
+      } catch (e) {
+        Log.e('⚠️ Falha ao buscar color_identity: $e');
+        // Non-critical — continue without color identity
+        for (final deck in decks) {
+          deck['color_identity'] = <String>[];
+        }
+      }
+    }
 
     Log.d('📤 Retornando resposta JSON.');
     return Response.json(body: decks);
@@ -292,6 +265,7 @@ Future<Response> _createDeck(RequestContext context) async {
   final bracketRaw = body['bracket'];
   final bracket =
       bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
+  final isPublic = body['is_public'] == true;
   final cards = body['cards'] as List? ??
       []; // Ex: [{'card_id': 'uuid', 'quantity': 2, 'is_commander': false}]
 
@@ -300,7 +274,7 @@ Future<Response> _createDeck(RequestContext context) async {
   }
 
   final conn = context.read<Pool>();
-  final hasMeta = await _hasDeckMetaColumns(conn);
+  final hasMeta = await hasDeckMetaColumns(conn);
 
   // 3. Usar uma transação para garantir a consistência dos dados
   try {
@@ -309,14 +283,15 @@ Future<Response> _createDeck(RequestContext context) async {
       final deckResult = await session.execute(
         Sql.named(
           hasMeta
-              ? 'INSERT INTO decks (user_id, name, format, description, archetype, bracket) VALUES (@userId, @name, @format, @desc, @archetype, @bracket) RETURNING id, name, format, archetype, bracket, created_at'
-              : 'INSERT INTO decks (user_id, name, format, description) VALUES (@userId, @name, @format, @desc) RETURNING id, name, format, created_at',
+              ? 'INSERT INTO decks (user_id, name, format, description, archetype, bracket, is_public) VALUES (@userId, @name, @format, @desc, @archetype, @bracket, @isPublic) RETURNING id, name, format, archetype, bracket, is_public, created_at'
+              : 'INSERT INTO decks (user_id, name, format, description, is_public) VALUES (@userId, @name, @format, @desc, @isPublic) RETURNING id, name, format, is_public, created_at',
         ),
         parameters: {
           'userId': userId,
           'name': name,
           'format': format,
           'desc': body['description'] as String?,
+          'isPublic': isPublic,
           if (hasMeta) 'archetype': archetype,
           if (hasMeta) 'bracket': bracket,
         },

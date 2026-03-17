@@ -148,7 +148,7 @@ class _LatestSetCollectionScreenState extends State<LatestSetCollectionScreen> {
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Última Edição'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
       ),
       body: _buildBody(),
     );

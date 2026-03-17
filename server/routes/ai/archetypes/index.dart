@@ -61,7 +61,13 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     // 2. Prepare Prompt
-    final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    DotEnv env;
+    try {
+      env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
+    } catch (_) {
+      // No .env file (production) — rely on platform environment only
+      env = DotEnv(includePlatformEnvironment: true, quiet: true);
+    }
     final aiConfig = OpenAiRuntimeConfig(env);
     final apiKey = env['OPENAI_API_KEY'];
 
@@ -186,8 +192,9 @@ Formato obrigatório:
       return internalServerError('OpenAI API Error: ${response.statusCode}');
     }
 
-  } catch (e) {
+  } catch (e, st) {
     print('[ERROR] Failed to analyze archetypes: $e');
-    return internalServerError('Failed to analyze archetypes');
+    print('[ERROR] Stacktrace: $st');
+    return internalServerError('Failed to analyze archetypes: $e');
   }
 }

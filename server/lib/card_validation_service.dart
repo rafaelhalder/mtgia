@@ -2,11 +2,11 @@ import 'package:postgres/postgres.dart';
 import 'dart:developer' as developer;
 
 /// Serviço de validação de cartas para prevenir alucinações da IA
-/// 
+///
 /// **Problema:**
 /// A IA (GPT) ocasionalmente sugere cartas que não existem ou têm nomes incorretos.
 /// Isso é chamado de "hallucination" e pode causar erros no sistema.
-/// 
+///
 /// **Solução:**
 /// Este serviço valida todas as cartas sugeridas pela IA contra o banco de dados
 /// antes de aplicá-las ao deck, garantindo que apenas cartas reais sejam usadas.
@@ -27,12 +27,12 @@ class CardValidationService {
 
     for (final cardName in cardNames) {
       final result = await _findCard(cardName);
-      
+
       if (result != null) {
         validCards.add(result);
       } else {
         invalidCards.add(cardName);
-        
+
         // Tentar encontrar cartas similares (fuzzy search)
         final similarCards = await _findSimilarCards(cardName);
         if (similarCards.isNotEmpty) {
@@ -46,6 +46,21 @@ class CardValidationService {
       'invalid': invalidCards,
       'suggestions': suggestions,
     };
+  }
+
+  /// Retorna apenas sugestoes para nomes nao encontrados.
+  Future<Map<String, List<String>>> findSuggestions(
+      List<String> cardNames) async {
+    final suggestions = <String, List<String>>{};
+
+    for (final cardName in cardNames) {
+      final similarCards = await _findSimilarCards(cardName);
+      if (similarCards.isNotEmpty) {
+        suggestions[cardName] = similarCards;
+      }
+    }
+
+    return suggestions;
   }
 
   /// Busca uma carta exata pelo nome (case-insensitive)
@@ -65,7 +80,8 @@ class CardValidationService {
         };
       }
     } catch (e) {
-      developer.log('Erro ao buscar carta $cardName', error: e, name: 'CardValidation');
+      developer.log('Erro ao buscar carta $cardName',
+          error: e, name: 'CardValidation');
     }
 
     return null;
@@ -75,8 +91,9 @@ class CardValidationService {
   Future<List<String>> _findSimilarCards(String cardName) async {
     try {
       // Remove caracteres especiais e espaços extras
-      final cleanName = cardName.trim().replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '');
-      
+      final cleanName =
+          cardName.trim().replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '');
+
       if (cleanName.isEmpty) return [];
 
       // Busca usando ILIKE com % (similar ao LIKE mas case-insensitive)
@@ -89,7 +106,8 @@ class CardValidationService {
 
       return result.map((row) => row[0] as String).toList();
     } catch (e) {
-      developer.log('Erro ao buscar cartas similares', error: e, name: 'CardValidation');
+      developer.log('Erro ao buscar cartas similares',
+          error: e, name: 'CardValidation');
       return [];
     }
   }
@@ -116,7 +134,8 @@ class CardValidationService {
       final status = result.first[0] as String;
       return status == 'legal' || status == 'restricted';
     } catch (e) {
-      developer.log('Erro ao verificar legalidade', error: e, name: 'CardValidation');
+      developer.log('Erro ao verificar legalidade',
+          error: e, name: 'CardValidation');
       return false; // Por segurança, assume ilegal em caso de erro
     }
   }
@@ -137,7 +156,7 @@ class CardValidationService {
     for (final card in cards) {
       final cardId = card['card_id'] as String?;
       final quantity = card['quantity'] as int? ?? 1;
-      
+
       if (cardId == null) {
         errors.add('Carta sem ID fornecido');
         continue;
@@ -157,13 +176,17 @@ class CardValidationService {
       }
 
       // Verifica limite de quantidade
-      final isBasicLand = (cardInfo['type_line'] as String).toLowerCase().contains('basic land');
-      
+      final isBasicLand = (cardInfo['type_line'] as String)
+          .toLowerCase()
+          .contains('basic land');
+
       if (!isBasicLand) {
-        final maxQuantity = (format == 'commander' || format == 'brawl') ? 1 : 4;
-        
+        final maxQuantity =
+            (format == 'commander' || format == 'brawl') ? 1 : 4;
+
         if (quantity > maxQuantity) {
-          errors.add('${cardInfo['name']} excede o limite de $maxQuantity cópia(s) para o formato $format');
+          errors.add(
+              '${cardInfo['name']} excede o limite de $maxQuantity cópia(s) para o formato $format');
           continue;
         }
       }
@@ -183,7 +206,8 @@ class CardValidationService {
   Future<Map<String, dynamic>?> _getCardInfo(String cardId) async {
     try {
       final result = await _pool.execute(
-        Sql.named('SELECT id, name, type_line FROM cards WHERE id = @id LIMIT 1'),
+        Sql.named(
+            'SELECT id, name, type_line FROM cards WHERE id = @id LIMIT 1'),
         parameters: {'id': cardId},
       );
 
@@ -195,7 +219,8 @@ class CardValidationService {
         };
       }
     } catch (e) {
-      developer.log('Erro ao buscar info da carta', error: e, name: 'CardValidation');
+      developer.log('Erro ao buscar info da carta',
+          error: e, name: 'CardValidation');
     }
 
     return null;
@@ -209,11 +234,11 @@ class CardValidationService {
   static String sanitizeCardName(String name) {
     // Remove espaços extras
     var cleaned = name.trim().replaceAll(RegExp(r'\s+'), ' ');
-    
+
     // Remove apenas caracteres de controle e zero-width, preserva unicode
     // (acentos, ligaduras como Æ, tremas, etc. são válidos em nomes de cartas)
     cleaned = cleaned.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
-    
+
     // Remove "(Set Code)" que a IA às vezes inclui: "Sol Ring (CMR)" → "Sol Ring"
     cleaned = cleaned.replaceAll(RegExp(r'\s*\([A-Za-z0-9]+\)\s*$'), '');
 

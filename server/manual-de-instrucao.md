@@ -1,3 +1,185 @@
+## 2026-03-12 — Arquitetura async job para modo complete (otimização pesada)
+
+### O Porquê
+- O endpoint `POST /ai/optimize` no modo `complete` podia levar 30+ segundos (múltiplas chamadas à OpenAI + fallbacks + validações). Manter tudo numa única request HTTP síncrona era frágil: timeouts, conexões perdidas e UX ruim (tela congelada sem feedback).
+- A solução: **job-based async pattern** — o servidor cria um job em background, retorna 202 imediatamente, e o cliente faz polling com progress updates.
+
+### O Como — Server
+
+1. **`server/lib/ai/optimize_job.dart`** (NOVO): In-memory job store com `OptimizeJobStore` (static Map + autocleanup 30min). Cada job tem: id, status (pending→processing→completed/failed), stage, stageNumber, totalStages, result, error.
+
+2. **`server/routes/ai/optimize/jobs/[id].dart`** (NOVO): Endpoint GET de polling que herda JWT da middleware de `/ai/`. Retorna job.toJson() com status e progresso.
+
+3. **`server/routes/ai/optimize/index.dart`** (MODIFICADO):
+   - Modo **complete** agora é interceptado ANTES do processamento pesado:
+     - Cria job via `OptimizeJobStore.create()`
+     - Chama `unawaited(_processCompleteModeAsync(...))` (fire-and-forget via event loop)
+     - Retorna 202 com `job_id` + `poll_url` + `poll_interval_ms`
+   - Modo **optimize** (troca simples de cartas) continua síncrono.
+   - Função `_processCompleteModeAsync()` contém a lógica extraída dos ~800 lines do complete mode, com `OptimizeJobStore.progress()` chamado em 6 estágios.
+
+### O Como — Flutter Client
+
+4. **`app/lib/features/decks/providers/deck_provider.dart`** (MODIFICADO):
+   - `optimizeDeck()` aceita `onProgress` callback
+   - 202 → extrai `job_id` → chama `_pollOptimizeJob()` (max 150 polls × 2s = 5min)
+   - Cada poll chama `onProgress(stage, stageNumber, totalStages)`
+   - Quando `status == 'completed'` → retorna o result. `'failed'` → throw.
+
+5. **`app/lib/features/decks/screens/deck_details_screen.dart`** (MODIFICADO):
+   - Loading dialog usa `ValueNotifier<String>` + `ValueNotifier<double>` para atualizar stage text e progress bar em tempo real.
+   - `LinearProgressIndicator` mostra progresso determinístico quando há stageNumber > 0.
+
+### Fluxo completo (sequência)
+```
+Cliente POST /ai/optimize {deck_id, archetype, ...}
+  ↓ modo complete detectado
+Servidor cria job → retorna 202 {job_id, poll_url}
+  ↓ background: unawaited(_processCompleteModeAsync)
+    Stage 1: Preparando referências do commander
+    Stage 2: Consultando IA para sugestões
+    Stage 3: Preenchendo com cartas sinérgicas
+    Stage 4: Ajustando base de mana
+    Stage 5: (reservado)
+    Stage 6: Processando resultado final
+  ↓
+Cliente GET /ai/optimize/jobs/:id (a cada 2s)
+  ↓ status: processing → mostra stage no dialog
+  ↓ status: completed → retorna result
+  ↓ status: failed → throw Exception
+```
+
+### Decisão arquitetural: por que in-memory e não DB?
+- É um MVP: o job vive 30 minutos e serve apenas para a sessão ativa do usuário.
+- Pool é singleton — a closure captura a referência e continua operando após retornar 202.
+- Para scale-out (múltiplos pods), migrar para Redis ou tabela `optimize_jobs`.
+
+---
+
+## 2026-03-12 — Fix pipeline de otimização IA: timeout, quality gate parcial e UX
+
+### O Porquê
+- O endpoint `POST /ai/optimize` no modo `complete` retornava 422 (`COMPLETE_QUALITY_PARTIAL`) quando a IA adicionava menos cartas que o alvo (ex: 8 de 37).
+- Causas raiz identificadas:
+  1. **Timeout de 8s na OpenAI** — insuficiente para o prompt de `completeDeck` que envia deck inteiro + synergy pool + staples; GPT-4o precisa de 15-30s.
+  2. **Quality gate bloqueante** — `PARTIAL` retornava 422 **sem** incluir as adições que foram encontradas, desperdiçando o trabalho da IA e dos 7 estágios de fallback.
+  3. **Cliente tratava 422 como erro genérico** — mostrava "Falha ao otimizar deck: 422" sem explicação.
+
+### O Como
+1. **`server/lib/ai/otimizacao.dart`**: Aumento do timeout de ambas as chamadas OpenAI (`_callOpenAIComplete` e `_callOpenAI`) de 8s → 30s.
+2. **`server/routes/ai/optimize/index.dart`**: `COMPLETE_QUALITY_PARTIAL` rebaixado de `quality_error` (422 bloqueante) para `quality_warning` (200 com aviso). As adições parciais agora são retornadas normalmente, permitindo que o cliente aplique e re-chame para completar o restante. `BASIC_OVERFLOW` e `DEGENERATE` continuam como 422 (qualidade genuinamente ruim).
+3. **`app/lib/features/decks/providers/deck_provider.dart`**: Tratamento de 422 com extração da mensagem real do `quality_error`.
+4. **`app/lib/features/decks/screens/deck_details_screen.dart`**: Banner dourado de `quality_warning` no dialog de confirmação, informando o jogador que o complete foi parcial e pode ser re-chamado.
+
+### Pipeline completo do `/ai/optimize` (modo complete) — documentação de referência
+
+```
+Estágio 1: PRE-SEED
+  → Cache do commander (commander_reference_profiles)
+  → EDHREC average-deck seed (até 140 nomes)
+  → Competitive priorities de meta_decks (até 120 nomes)
+  → Top cards do profile (até 80 nomes)
+  → Fallback: EDHREC live fetch (até 180 nomes)
+  → Tudo acumula em aiSuggestedNames
+
+Estágio 2: AI LOOP (máx 4 iterações)
+  → optimizer.completeDeck() → chama OpenAI com prompt_complete.md
+  → Valida nomes no DB → Filtra por color identity do commander
+  → Filtra por bracket → Adiciona ao deck virtual (1 cópia non-basic)
+
+Estágio 3: FALLBACK SPELLS (se deck ainda incompleto)
+  → _findSynergyReplacements (IA + RAG)
+  → _loadUniversalCommanderFallbacks (Sol Ring, Arcane Signet, etc)
+  → _loadPreferredNameFillers (usa aiSuggestedNames)
+  → _loadBroadCommanderNonLandFillers (identity-safe do DB)
+  → _loadIdentitySafeNonLandFillers (emergency identity-safe)
+
+Estágio 4: BASIC LANDS (proporcional à identity)
+  → Calcula ideal baseado em CMC médio (28-42 lands)
+  → Cap de maxBasicAdditions = recommended + 6
+
+Estágio 5: FALLBACK GARANTIDO
+  → _loadGuaranteedNonBasicFillers (deterministic slot fillers)
+  → _loadEmergencyNonBasicFillers (last resort, qualquer non-land legal)
+  → Garantia final com basics até maxTotal
+
+Quality Gate:
+  → PARTIAL: agora retorna 200 + quality_warning (antes: 422)
+  → BASIC_OVERFLOW: 422 (excesso de básicos)
+  → DEGENERATE: 422 (só básicos)
+```
+
+### Arquivos alterados
+- `server/lib/ai/otimizacao.dart` — timeout 8s → 30s
+- `server/routes/ai/optimize/index.dart` — PARTIAL rebaixado para warning
+- `app/lib/features/decks/providers/deck_provider.dart` — tratamento 422
+- `app/lib/features/decks/screens/deck_details_screen.dart` — banner quality_warning
+
+### Impacto esperado
+- Otimizações parciais agora são utilizáveis pelo jogador (aplica e re-chama)
+- Timeout mais generoso = mais cartas sugeridas pela IA por iteração
+- UX clara: banner dourado explica que o complete foi parcial
+
+---
+
+## 2026-03-09 — Fix de build Docker sem `pubspec.lock`
+
+### O Porquê
+- O deploy no EasyPanel falhava no passo `COPY pubspec.yaml pubspec.lock ./` quando o repositório não continha `server/pubspec.lock`.
+- Resultado: build interrompido com erro de checksum (`/pubspec.lock: not found`).
+
+### O Como
+- Ajuste no `server/Dockerfile` para copiar apenas `pubspec.yaml` antes do `dart pub get`.
+- Mantivemos o padrão de cache de dependências e eliminamos o acoplamento a um lockfile opcional no contexto de build.
+
+### Arquivo alterado
+- `server/Dockerfile`
+
+### Impacto esperado
+- Pipeline de build/deploy volta a funcionar tanto com quanto sem `pubspec.lock` versionado.
+- Sem alteração de contrato de runtime da API.
+
+## 2026-03-09 — Hotfix de `image_url` malformada (cards/decks/comunidade)
+
+### O Porquê
+- A busca de cartas retornava `200`, mas algumas imagens não renderizavam no app por `image_url` malformada (`ttps://...`, `//api.scryfall.com/...`, `api.scryfall.com/...` ou `http://api.scryfall.com/...`).
+- Isso gerava inconsistência visual no fluxo principal de criação/edição de deck (buscar carta e validar imagem antes de adicionar).
+
+### O Como
+- Backend: a função `_normalizeScryfallImageUrl` foi reforçada nas rotas que retornam `image_url` de carta/deck/comunidade para:
+  - normalizar esquema quebrado para `https`;
+  - preservar retorno direto para hosts não-Scryfall;
+  - manter regras de MTG já existentes para split cards (`exact` com `//`) e `set` em lowercase;
+  - aplicar fallback seguro no `catch` (regex para `set` lowercase).
+- Flutter: `CachedCardImage` ganhou sanitização defensiva local antes do `CachedNetworkImage`, com fallback para placeholder quando a URI for inválida.
+
+### Arquivos alterados
+- `server/routes/cards/index.dart`
+- `server/routes/cards/printings/index.dart`
+- `server/routes/cards/resolve/index.dart`
+- `server/routes/community/decks/index.dart`
+- `server/routes/community/decks/[id].dart`
+- `server/routes/decks/index.dart`
+- `server/routes/decks/[id]/index.dart`
+- `app/lib/core/widgets/cached_card_image.dart`
+
+### Impacto esperado
+- Cartas pesquisadas passam a carregar imagem de forma consistente no app, mesmo com dados legados/parciais do banco.
+- Correção é idempotente e não altera o contrato público da API (`image_url` continua opcional e textual).
+
+## 2026-03-09 — Ajuste de encoding (`+` → `%20`) em `image_url` da Scryfall
+
+### O Porquê
+- Em runtime Flutter, algumas URLs `cards/named?...format=image` retornavam `400`, embora o endpoint de busca retornasse `200`.
+- O padrão com `+` para espaços no parâmetro `exact` mostrou comportamento inconsistente no cliente de imagem.
+
+### O Como
+- Após gerar a URL normalizada com `Uri.replace(queryParameters: qp)`, adicionamos padronização final para `%20` (`replaceAll('+', '%20')`).
+- O ajuste foi aplicado nas mesmas rotas de serialização de cartas/decks/comunidade.
+
+### Impacto esperado
+- Redução de `400` ao carregar imagem em cartas com nomes compostos (vírgula/espaço), preservando o contrato de resposta atual.
+
 ## 2026-02-27 — Fix crítico no `complete` para decks sem `is_commander`
 
 ### Contexto do problema

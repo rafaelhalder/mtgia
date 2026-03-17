@@ -5,12 +5,12 @@ import 'package:dotenv/dotenv.dart';
 import 'package:postgres/postgres.dart';
 
 /// Sistema de Migrações Versionado para MTG IA
-/// 
+///
 /// Gerencia migrações de banco de dados de forma ordenada e idempotente.
 /// Cada migração é executada apenas uma vez e registrada na tabela `schema_migrations`.
-/// 
+///
 /// Uso: dart run bin/migrate.dart [--status] [--rollback N]
-/// 
+///
 /// Opções:
 ///   --status    Mostra o status das migrações
 ///   --rollback N  Reverte as últimas N migrações (não implementado - apenas placeholder)
@@ -301,6 +301,40 @@ final migrations = <Migration>[
       DROP INDEX IF EXISTS idx_cards_set_code_lower;
     ''',
   ),
+  Migration(
+    version: '013',
+    name: 'create_ai_optimize_jobs',
+    up: '''
+      CREATE TABLE IF NOT EXISTS ai_optimize_jobs (
+        id TEXT PRIMARY KEY,
+        deck_id UUID NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+        archetype TEXT NOT NULL,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        stage TEXT NOT NULL DEFAULT 'Iniciando...',
+        stage_number INTEGER NOT NULL DEFAULT 0,
+        total_stages INTEGER NOT NULL DEFAULT 6,
+        result JSONB,
+        error TEXT,
+        quality_error JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT chk_ai_optimize_jobs_status
+          CHECK (status IN ('pending', 'processing', 'completed', 'failed'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ai_optimize_jobs_user_updated
+      ON ai_optimize_jobs (user_id, updated_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_ai_optimize_jobs_created
+      ON ai_optimize_jobs (created_at DESC);
+    ''',
+    down: '''
+      DROP INDEX IF EXISTS idx_ai_optimize_jobs_created;
+      DROP INDEX IF EXISTS idx_ai_optimize_jobs_user_updated;
+      DROP TABLE IF EXISTS ai_optimize_jobs CASCADE;
+    ''',
+  ),
 ];
 
 class Migration {
@@ -321,7 +355,7 @@ class Migration {
 
 void main(List<String> args) async {
   final showStatus = args.contains('--status');
-  
+
   final env = DotEnv()..load();
 
   final connection = await Connection.open(
@@ -355,12 +389,13 @@ void main(List<String> args) async {
       print('📊 Status das Migrações\n');
       print('${'Versão'.padRight(10)} ${'Nome'.padRight(30)} Status');
       print('-' * 60);
-      
+
       for (final m in migrations) {
-        final status = executedVersions.contains(m.version) ? '✅ Executada' : '⬜ Pendente';
+        final status =
+            executedVersions.contains(m.version) ? '✅ Executada' : '⬜ Pendente';
         print('${m.version.padRight(10)} ${m.name.padRight(30)} $status');
       }
-      
+
       print('\nTotal: ${migrations.length} migrações');
       print('Executadas: ${executedVersions.length}');
       print('Pendentes: ${migrations.length - executedVersions.length}');
@@ -378,7 +413,7 @@ void main(List<String> args) async {
       }
 
       print('▶️  Executando ${migration.fullName}...');
-      
+
       try {
         // Executar cada statement da migração separadamente
         final statements = migration.up
@@ -386,11 +421,11 @@ void main(List<String> args) async {
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
             .toList();
-        
+
         for (final statement in statements) {
           await connection.execute(statement);
         }
-        
+
         // Registrar como executada
         await connection.execute(
           Sql.named('''
@@ -403,12 +438,13 @@ void main(List<String> args) async {
             'name': migration.name,
           },
         );
-        
+
         print('   ✅ Sucesso');
         migratedCount++;
       } catch (e) {
         print('   ❌ Erro: $e');
-        print('\n⚠️  Migração interrompida. Corrija o erro e execute novamente.');
+        print(
+            '\n⚠️  Migração interrompida. Corrija o erro e execute novamente.');
         exit(1);
       }
     }
@@ -420,7 +456,6 @@ void main(List<String> args) async {
       print('✅ Banco de dados já está atualizado!');
     }
     print('=' * 50);
-
   } catch (e) {
     print('❌ Erro na migração: $e');
     exit(1);

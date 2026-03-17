@@ -23,10 +23,12 @@ class _DeckListScreenState extends State<DeckListScreen> {
   }
 
   Future<void> _showCreateDeckDialog(BuildContext context) async {
+    final parentContext = context;
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     String selectedFormat = 'commander';
     bool isPublic = false;
+    bool isSubmitting = false;
     final formats = [
       'commander',
       'standard',
@@ -105,30 +107,54 @@ class _DeckListScreenState extends State<DeckListScreen> {
                     ),
                     ElevatedButton(
                       onPressed: () async {
-                        if (nameController.text.isEmpty) return;
+                        if (isSubmitting) return;
+
+                        final trimmedName = nameController.text.trim();
+                        final trimmedDescription = descriptionController.text
+                            .trim();
+
+                        if (trimmedName.isEmpty) {
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            const SnackBar(
+                              content: Text('Informe o nome do deck.'),
+                              backgroundColor: AppTheme.error,
+                            ),
+                          );
+                          return;
+                        }
+
+                        setState(() => isSubmitting = true);
 
                         final success = await context
                             .read<DeckProvider>()
                             .createDeck(
-                              name: nameController.text,
+                              name: trimmedName,
                               format: selectedFormat,
-                              description: descriptionController.text,
+                              description: trimmedDescription.isEmpty
+                                  ? null
+                                  : trimmedDescription,
                               isPublic: isPublic,
                             );
 
                         if (context.mounted) {
+                          setState(() => isSubmitting = false);
+                        }
+
+                        if (context.mounted) {
                           if (success) {
                             Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
                               const SnackBar(
                                 content: Text('Deck criado com sucesso!'),
                               ),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  context.read<DeckProvider>().errorMessage ??
+                                  parentContext
+                                          .read<DeckProvider>()
+                                          .errorMessage ??
                                       'Erro ao criar deck',
                                 ),
                                 backgroundColor: AppTheme.error,
@@ -137,7 +163,16 @@ class _DeckListScreenState extends State<DeckListScreen> {
                           }
                         }
                       },
-                      child: const Text('Criar'),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Criar'),
                     ),
                   ],
                 ),
@@ -184,27 +219,41 @@ class _DeckListScreenState extends State<DeckListScreen> {
           // Error
           if (hasError && decks.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: theme.colorScheme.error,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    errorMessage ?? 'Erro desconhecido',
-                    style: theme.textTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () => context.read<DeckProvider>().fetchDecks(),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Tentar Novamente'),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      size: 56,
+                      color: AppTheme.textHint.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      errorMessage ?? 'Erro desconhecido',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: AppTheme.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Verifique sua conexão e tente novamente.',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontMd,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () => context.read<DeckProvider>().fetchDecks(),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Tentar Novamente'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -212,34 +261,41 @@ class _DeckListScreenState extends State<DeckListScreen> {
           // Empty State
           if (decks.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.style_outlined,
-                    size: 80,
-                    color: theme.colorScheme.secondary.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Nenhum deck criado',
-                    style: theme.textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Toque no botão abaixo para começar',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: AppTheme.textSecondary,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.style_outlined,
+                      size: 64,
+                      color: AppTheme.textHint.withValues(alpha: 0.5),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => context.go('/onboarding/core-flow'),
-                    icon: const Icon(Icons.flag_outlined),
-                    label: const Text('Fluxo guiado'),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+                    Text(
+                      'Nenhum deck criado',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Crie seu primeiro deck ou gere um com IA',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: AppTheme.fontMd,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: () => context.go('/onboarding/core-flow'),
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                      label: const Text('Fluxo guiado'),
+                    ),
+                  ],
+                ),
               ),
             );
           }

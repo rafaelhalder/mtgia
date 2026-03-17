@@ -38,14 +38,14 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       backgroundColor: AppTheme.backgroundAbyss,
       appBar: AppBar(
         title: const Text('Buscar Usuários'),
-        backgroundColor: AppTheme.surfaceSlate2,
+        backgroundColor: AppTheme.surfaceElevated,
       ),
       body: Column(
         children: [
           // Search bar
           Container(
             padding: const EdgeInsets.all(12),
-            color: AppTheme.surfaceSlate2,
+            color: AppTheme.surfaceElevated,
             child: TextField(
               controller: _searchController,
               autofocus: true,
@@ -54,7 +54,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                 hintText: 'Buscar por nome de usuário...',
                 hintStyle: const TextStyle(color: AppTheme.textSecondary),
                 prefixIcon:
-                    const Icon(Icons.search, color: AppTheme.loomCyan),
+                    const Icon(Icons.search, color: AppTheme.primarySoft),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear,
                       color: AppTheme.textSecondary, size: 18),
@@ -235,7 +235,7 @@ class _UserSearchCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.style,
-                            size: 13, color: AppTheme.loomCyan.withValues(alpha: 0.7)),
+                            size: 13, color: AppTheme.primarySoft.withValues(alpha: 0.7)),
                         const SizedBox(width: 4),
                         Text(
                           '${user.publicDeckCount} decks',

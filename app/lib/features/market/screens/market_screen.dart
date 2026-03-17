@@ -142,7 +142,7 @@ class _MarketScreenState extends State<MarketScreen>
   Widget _buildDateHeader(MarketMoversData data) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: AppTheme.surfaceSlate2,
+      color: AppTheme.surfaceElevated,
       child: Row(
         children: [
           const Icon(Icons.calendar_today, size: 14, color: AppTheme.textSecondary),
@@ -348,7 +348,7 @@ class _MoverCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: rank <= 3
                     ? changeColor.withValues(alpha: 0.2)
-                    : AppTheme.surfaceSlate2,
+                    : AppTheme.surfaceElevated,
                 borderRadius: BorderRadius.circular(AppTheme.radiusSm),
               ),
               alignment: Alignment.center,
@@ -374,7 +374,7 @@ class _MoverCard extends StatelessWidget {
                         imageUrl: mover.imageUrl!,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(
-                          color: AppTheme.surfaceSlate2,
+                          color: AppTheme.surfaceElevated,
                           child: const Icon(
                             Icons.style,
                             size: 16,
@@ -382,7 +382,7 @@ class _MoverCard extends StatelessWidget {
                           ),
                         ),
                         errorWidget: (_, __, ___) => Container(
-                          color: AppTheme.surfaceSlate2,
+                          color: AppTheme.surfaceElevated,
                           child: const Icon(
                             Icons.style,
                             size: 16,
@@ -391,7 +391,7 @@ class _MoverCard extends StatelessWidget {
                         ),
                       )
                     : Container(
-                        color: AppTheme.surfaceSlate2,
+                        color: AppTheme.surfaceElevated,
                         child: const Icon(
                           Icons.style,
                           size: 16,
@@ -523,7 +523,7 @@ class _MoverCard extends StatelessWidget {
       case 'rare':
         return AppTheme.mythicGold.withValues(alpha: 0.7);
       case 'uncommon':
-        return AppTheme.loomCyan;
+        return AppTheme.primarySoft;
       case 'common':
         return AppTheme.textSecondary;
       default:

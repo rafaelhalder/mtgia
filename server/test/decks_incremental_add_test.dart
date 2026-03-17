@@ -61,7 +61,11 @@ void main() {
     return data['token'] as String;
   }
 
-  Future<String> createDeck(String token, {String format = 'commander'}) async {
+  Future<String> createDeckWithCards(
+    String token, {
+    String format = 'commander',
+    List<Map<String, dynamic>> cards = const [],
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/decks'),
       headers: {
@@ -72,7 +76,7 @@ void main() {
         'name': 'Deck incremental',
         'format': format,
         'description': 'Deck de teste',
-        'cards': [],
+        'cards': cards,
       }),
     );
     if (response.statusCode != 200 && response.statusCode != 201) {
@@ -80,6 +84,14 @@ void main() {
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['id'] as String;
+  }
+
+  Future<String> createDeck(String token, {String format = 'commander'}) async {
+    return createDeckWithCards(
+      token,
+      format: format,
+      cards: const [],
+    );
   }
 
   Future<Map<String, dynamic>?> findCardByNames(
@@ -140,6 +152,25 @@ void main() {
     return http.post(
       Uri.parse('$baseUrl/decks/$deckId/validate'),
       headers: {'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<http.Response> setCardQuantity(
+    String token, {
+    required String deckId,
+    required String cardId,
+    required int quantity,
+  }) {
+    return http.post(
+      Uri.parse('$baseUrl/decks/$deckId/cards/set'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'card_id': cardId,
+        'quantity': quantity,
+      }),
     );
   }
 
@@ -226,4 +257,51 @@ void main() {
     final validateRes = await validateDeck(token, deckId);
     expect(validateRes.statusCode, equals(400), reason: validateRes.body);
   }, skip: skipIntegration);
+
+  test(
+    'POST /decks/:id/cards/set should reject update that exceeds Commander deck size',
+    () async {
+      final token = await getAuthToken();
+      final commander = await findCardByNames(token, names: [
+        'Talrand, Sky Summoner',
+        'Krenko, Mob Boss',
+        'Lathril, Blade of the Elves',
+        'Niv-Mizzet, Parun',
+      ]);
+      final wastes = await findCardByNames(token, names: ['Wastes']);
+
+      if (commander == null ||
+          !isCommanderEligible(commander) ||
+          wastes == null) {
+        return;
+      }
+
+      final deckId = await createDeckWithCards(
+        token,
+        format: 'commander',
+        cards: [
+          {
+            'card_id': commander['id'],
+            'quantity': 1,
+            'is_commander': true,
+          },
+          {
+            'card_id': wastes['id'],
+            'quantity': 99,
+            'is_commander': false,
+          },
+        ],
+      );
+
+      final response = await setCardQuantity(
+        token,
+        deckId: deckId,
+        cardId: wastes['id'] as String,
+        quantity: 100,
+      );
+
+      expect(response.statusCode, equals(400), reason: response.body);
+    },
+    skip: skipIntegration,
+  );
 }

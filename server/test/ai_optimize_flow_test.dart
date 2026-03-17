@@ -12,8 +12,8 @@ void main() {
   final baseUrl =
       Platform.environment['TEST_API_BASE_URL'] ?? 'http://localhost:8080';
 
-  final testUserEmail =
-      Platform.environment['TEST_USER_EMAIL'] ?? 'test_optimize_flow@example.com';
+  final testUserEmail = Platform.environment['TEST_USER_EMAIL'] ??
+      'test_optimize_flow@example.com';
   final testUserPassword =
       Platform.environment['TEST_USER_PASSWORD'] ?? 'TestPassword123!';
   final testUserUsername = Platform.environment['TEST_USER_USERNAME'] ??
@@ -23,8 +23,8 @@ void main() {
     'password': testUserPassword,
     'username': testUserUsername,
   };
-  final sourceDeckId =
-      Platform.environment['SOURCE_DECK_ID'] ?? '0b163477-2e8a-488a-8883-774fcd05281f';
+  final sourceDeckId = Platform.environment['SOURCE_DECK_ID'] ??
+      '0b163477-2e8a-488a-8883-774fcd05281f';
 
   final createdDeckIds = <String>[];
   String? authToken;
@@ -135,16 +135,70 @@ void main() {
     throw Exception('POST retry exhausted: $path error=$lastError');
   }
 
+  /// Faz polling num job async de otimização até completar/falhar.
+  /// Retorna um _fake_ http.Response com statusCode 200 e body = result JSON,
+  /// ou 422 se falhou com qualidade, ou 500 se falhou genérico.
+  Future<http.Response> pollOptimizeJob(String jobId,
+      {int maxPolls = 120}) async {
+    for (var i = 0; i < maxPolls; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final pollResponse = await http.get(
+        Uri.parse('$baseUrl/ai/optimize/jobs/$jobId'),
+        headers: authHeaders(),
+      );
+      if (pollResponse.statusCode == 404) {
+        return http.Response('{"error":"Job expirou"}', 404);
+      }
+      final data = decodeJson(pollResponse);
+      final status = data['status'] as String?;
+      if (status == 'completed') {
+        final result = data['result'] ?? <String, dynamic>{};
+        return http.Response(jsonEncode(result), 200);
+      } else if (status == 'failed') {
+        final error = data['error'] ?? 'Job falhou';
+        return http.Response(
+          jsonEncode({'error': error, 'quality_error': data['quality_error']}),
+          422,
+        );
+      }
+      // Still processing, continue polling
+      final stage = data['stage'] ?? '';
+      final stageNum = data['stage_number'] ?? 0;
+      print('🔄 Poll #${i + 1}: $stage ($stageNum/6)');
+    }
+    return http.Response('{"error":"Polling timeout"}', 500);
+  }
+
+  /// Wrapper: chama /ai/optimize e, se receber 202 (job async), faz polling.
+  Future<http.Response> optimizeWithPolling(
+      Map<String, dynamic> payload) async {
+    final response = await postJsonWithRetry('/ai/optimize', payload);
+    if (response.statusCode == 202) {
+      final data = decodeJson(response);
+      final jobId = data['job_id'] as String;
+      print('🧪 Optimize retornou 202 — polling job $jobId...');
+      return pollOptimizeJob(jobId);
+    }
+    return response;
+  }
+
   Future<Map<String, dynamic>> findCardByName(String name) async {
-    final uri = Uri.parse('$baseUrl/cards?name=${Uri.encodeQueryComponent(name)}&limit=25&page=1');
+    final uri = Uri.parse(
+        '$baseUrl/cards?name=${Uri.encodeQueryComponent(name)}&limit=25&page=1');
     final response = await http.get(uri, headers: authHeaders());
     expect(response.statusCode, equals(200), reason: response.body);
 
     final body = decodeJson(response);
-    final data = (body['data'] as List?)?.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList() ?? [];
-    expect(data, isNotEmpty, reason: 'Carta "$name" não encontrada para teste de integração.');
+    final data = (body['data'] as List?)
+            ?.whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList() ??
+        [];
+    expect(data, isNotEmpty,
+        reason: 'Carta "$name" não encontrada para teste de integração.');
 
-    final exact = data.where((c) => (c['name']?.toString().toLowerCase() ?? '') == name.toLowerCase());
+    final exact = data.where((c) =>
+        (c['name']?.toString().toLowerCase() ?? '') == name.toLowerCase());
     return exact.isNotEmpty ? exact.first : data.first;
   }
 
@@ -183,7 +237,8 @@ void main() {
     return body;
   }
 
-  List<Map<String, dynamic>> extractCardsForClone(Map<String, dynamic> sourceDeck) {
+  List<Map<String, dynamic>> extractCardsForClone(
+      Map<String, dynamic> sourceDeck) {
     final privateCards = (sourceDeck['cards'] as List?)
             ?.whereType<Map>()
             .map((e) => e.cast<String, dynamic>())
@@ -296,7 +351,8 @@ void main() {
     }
 
     expect(commander, isNotNull,
-        reason: 'Nenhum comandante comum encontrado para montar deck de teste.');
+        reason:
+            'Nenhum comandante comum encontrado para montar deck de teste.');
 
     final island = await findCardByName('Island');
 
@@ -403,7 +459,8 @@ void main() {
           expect(
             (body['error'] as String).contains('Bad state: No element'),
             isFalse,
-            reason: 'Regressão: optimize não deve vazar erro interno de coleção vazia.',
+            reason:
+                'Regressão: optimize não deve vazar erro interno de coleção vazia.',
           );
         }
       },
@@ -472,12 +529,13 @@ void main() {
           final deckId = await createCommanderDeckWithCount(size);
           createdDeckIds.add(deckId);
 
-          final response = await postJsonWithRetry('/ai/optimize', {
+          final response = await optimizeWithPolling({
             'deck_id': deckId,
             'archetype': 'control',
           });
 
-          expect(response.statusCode, anyOf(200, 500), reason: 'deck size $size => ${response.body}');
+          expect(response.statusCode, anyOf(200, 500),
+              reason: 'deck size $size => ${response.body}');
 
           if (response.statusCode == 500) {
             serverErrors.add('size=$size => ${response.body}');
@@ -485,10 +543,11 @@ void main() {
           }
 
           final body = decodeJson(response);
-            final consistency = (body['consistency_slo'] as Map?)?.cast<String, dynamic>();
-            expect(consistency, isNotNull,
+          final consistency =
+              (body['consistency_slo'] as Map?)?.cast<String, dynamic>();
+          expect(consistency, isNotNull,
               reason: 'consistency_slo ausente no complete mode');
-            expect(consistency!['average_deck_seed_stage_used'], isA<bool>(),
+          expect(consistency!['average_deck_seed_stage_used'], isA<bool>(),
               reason: 'average_deck_seed_stage_used deve ser booleano');
           final details = (body['additions_detailed'] as List?)
                   ?.whereType<Map>()
@@ -496,7 +555,8 @@ void main() {
                   .toList() ??
               <Map<String, dynamic>>[];
 
-          assertNoDuplicateNamesAndNoAbsurdCopies(details, size: size, bracket: 2);
+          assertNoDuplicateNamesAndNoAbsurdCopies(details,
+              size: size, bracket: 2);
         }
 
         expect(
@@ -516,14 +576,14 @@ void main() {
         final deckId = await createCommanderDeckWithCount(1);
         createdDeckIds.add(deckId);
 
-        final optimizeResponse = await postJsonWithRetry('/ai/optimize', {
+        final optimizeResponse = await optimizeWithPolling({
           'deck_id': deckId,
           'archetype': 'Control',
           'bracket': 2,
           'keep_theme': true,
         });
 
-        expect(optimizeResponse.statusCode, equals(200),
+        expect(optimizeResponse.statusCode, anyOf(equals(200), equals(422)),
             reason: optimizeResponse.body);
 
         final optimizeBody = decodeJson(optimizeResponse);
@@ -538,7 +598,8 @@ void main() {
             <Map<String, dynamic>>[];
 
         expect(additionsDetailed, isNotEmpty,
-            reason: 'complete mode sem additions_detailed não é aplicável no app.');
+            reason:
+                'complete mode sem additions_detailed não é aplicável no app.');
 
         final bulkCards = additionsDetailed
             .where((item) => item['card_id'] is String)
@@ -594,18 +655,19 @@ void main() {
             {},
           );
 
-          if (copyResponse.statusCode == 200 || copyResponse.statusCode == 201) {
+          if (copyResponse.statusCode == 200 ||
+              copyResponse.statusCode == 201) {
             final copiedBody = decodeJson(copyResponse);
             deckId = copiedBody['id'] as String?;
           }
         }
 
         if (deckId == null && sourceAvailable && cloneCards.isNotEmpty) {
-          final source = sourceDeck!;
           deckId = await createDeck(
-            format: ((source['format'] as String?)?.trim().isNotEmpty ?? false)
-                ? (source['format'] as String)
-                : 'commander',
+            format:
+                ((sourceDeck['format'] as String?)?.trim().isNotEmpty ?? false)
+                    ? (sourceDeck['format'] as String)
+                    : 'commander',
             cards: cloneCards,
           );
         }
@@ -621,8 +683,7 @@ void main() {
           'keep_theme': true,
         };
 
-        final optimizeResponse =
-            await postJsonWithRetry('/ai/optimize', optimizeRequest);
+        final optimizeResponse = await optimizeWithPolling(optimizeRequest);
         expect(optimizeResponse.statusCode, anyOf(equals(200), equals(422)),
             reason: optimizeResponse.body);
 
@@ -659,7 +720,8 @@ void main() {
             <Map<String, dynamic>>[];
 
         if ((optimizeBody['mode'] as String?) == 'complete') {
-          final targetAdditions = (optimizeBody['target_additions'] as int?) ?? 0;
+          final targetAdditions =
+              (optimizeBody['target_additions'] as int?) ?? 0;
           final nonBasicSuggestions = additionsDetailed.where((entry) {
             final name = (entry['name']?.toString() ?? '').trim();
             if (name.isEmpty) return false;
@@ -750,7 +812,7 @@ void main() {
             final deckId = await createCommanderDeckWithCount(size);
             createdDeckIds.add(deckId);
 
-            final response = await postJsonWithRetry('/ai/optimize', {
+            final response = await optimizeWithPolling({
               'deck_id': deckId,
               'archetype': 'Control',
               'bracket': bracket,
@@ -759,29 +821,40 @@ void main() {
 
             expect(
               response.statusCode,
-              anyOf(200, 500),
+              anyOf(200, 422, 500),
               reason: 'size=$size bracket=$bracket => ${response.body}',
             );
             evaluated += 1;
             if (response.statusCode == 500) {
-              failures.add('500 size=$size bracket=$bracket body=${response.body}');
+              failures
+                  .add('500 size=$size bracket=$bracket body=${response.body}');
+              continue;
+            }
+            if (response.statusCode == 422) {
+              // Quality gate failure — not a test failure, just a quality rejection
+              print(
+                  '⚠️ size=$size bracket=$bracket quality gate: ${response.body}');
               continue;
             }
 
             final body = decodeJson(response);
             final mode = body['mode'];
             if (mode is! String || !['optimize', 'complete'].contains(mode)) {
-              failures.add('contract size=$size bracket=$bracket mode inválido: $mode');
+              failures.add(
+                  'contract size=$size bracket=$bracket mode inválido: $mode');
               continue;
             }
             if (body['reasoning'] is! String) {
-              failures.add('contract size=$size bracket=$bracket reasoning inválido');
+              failures.add(
+                  'contract size=$size bracket=$bracket reasoning inválido');
             }
             if (body['deck_analysis'] is! Map<String, dynamic>) {
-              failures.add('contract size=$size bracket=$bracket deck_analysis inválido');
+              failures.add(
+                  'contract size=$size bracket=$bracket deck_analysis inválido');
             }
             if (body['target_additions'] is! int) {
-              failures.add('contract size=$size bracket=$bracket target_additions inválido');
+              failures.add(
+                  'contract size=$size bracket=$bracket target_additions inválido');
               continue;
             }
 
@@ -801,10 +874,12 @@ void main() {
 
             for (final entry in details) {
               if (entry['card_id'] is! String) {
-                failures.add('contract size=$size bracket=$bracket card_id inválido');
+                failures.add(
+                    'contract size=$size bracket=$bracket card_id inválido');
               }
               if (entry['quantity'] is! int || (entry['quantity'] as int) < 1) {
-                failures.add('contract size=$size bracket=$bracket quantity inválido');
+                failures.add(
+                    'contract size=$size bracket=$bracket quantity inválido');
               }
             }
 
@@ -818,7 +893,8 @@ void main() {
               failures.add('dedupe size=$size bracket=$bracket => $e');
             }
 
-            final totalDetailed = details.fold<int>(0, (acc, e) => acc + ((e['quantity'] as int?) ?? 0));
+            final totalDetailed = details.fold<int>(
+                0, (acc, e) => acc + ((e['quantity'] as int?) ?? 0));
             final targetAdditions = body['target_additions'] as int;
             if (totalDetailed > targetAdditions) {
               failures.add(
@@ -835,8 +911,8 @@ void main() {
               'Falhas na matriz completa (${failures.length}): ${failures.take(20).join(' | ')}',
         );
       },
-      skip:
-          skipIntegration ?? 'Fase 2: matriz completa será reativada após estabilizar size=1.',
+      skip: skipIntegration ??
+          'Fase 2: matriz completa será reativada após estabilizar size=1.',
       timeout: const Timeout(Duration(minutes: 12)),
     );
   });

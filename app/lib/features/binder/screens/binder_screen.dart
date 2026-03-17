@@ -50,14 +50,14 @@ class _BinderTabContentState extends State<BinderTabContent>
       children: [
         // Sub-tabs: Tenho / Quero
         Container(
-          color: AppTheme.surfaceSlate2,
+          color: AppTheme.surfaceElevated,
           child: TabBar(
             controller: _subTabController,
             indicatorColor: _subTabController.index == 0
-                ? AppTheme.loomCyan
+                ? AppTheme.primarySoft
                 : AppTheme.mythicGold,
             labelColor: _subTabController.index == 0
-                ? AppTheme.loomCyan
+                ? AppTheme.primarySoft
                 : AppTheme.mythicGold,
             unselectedLabelColor: AppTheme.textSecondary,
             labelStyle: const TextStyle(
@@ -420,7 +420,7 @@ class _BinderListViewState extends State<_BinderListView>
                     label: const Text('Buscar carta'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor:
-                          isHave ? AppTheme.loomCyan : AppTheme.mythicGold,
+                          isHave ? AppTheme.primarySoft : AppTheme.mythicGold,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -486,7 +486,7 @@ class _StatsBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: AppTheme.surfaceSlate2,
+      color: AppTheme.surfaceElevated,
       child: Row(
         children: [
           Expanded(
@@ -507,7 +507,7 @@ class _StatsBar extends StatelessWidget {
                   icon: Icons.swap_horiz,
                   label: '${stats.forTradeCount}',
                   tooltip: 'Para troca',
-                  color: AppTheme.loomCyan,
+                  color: AppTheme.primarySoft,
                 ),
                 _StatChip(
                   icon: Icons.sell,
@@ -527,7 +527,7 @@ class _StatsBar extends StatelessWidget {
           if (onScan != null) ...[
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.camera_alt, color: AppTheme.loomCyan),
+              icon: const Icon(Icons.camera_alt, color: AppTheme.primarySoft),
               tooltip: 'Escanear carta',
               onPressed: onScan,
               constraints: const BoxConstraints(),
@@ -661,23 +661,23 @@ class _SearchFilterBar extends StatelessWidget {
                   label: const Text('Troca'),
                   selected: tradeFilter == true,
                   onSelected: (_) => onTradeToggle(),
-                  selectedColor: AppTheme.loomCyan.withValues(alpha: 0.3),
+                  selectedColor: AppTheme.primarySoft.withValues(alpha: 0.3),
                   backgroundColor: AppTheme.surfaceSlate,
                   labelStyle: TextStyle(
                     color: tradeFilter == true
-                        ? AppTheme.loomCyan
+                        ? AppTheme.primarySoft
                         : AppTheme.textSecondary,
                     fontSize: AppTheme.fontSm,
                   ),
                   side: BorderSide(
                     color: tradeFilter == true
-                        ? AppTheme.loomCyan
+                        ? AppTheme.primarySoft
                         : AppTheme.outlineMuted,
                   ),
                   avatar: Icon(Icons.swap_horiz,
                       size: 14,
                       color: tradeFilter == true
-                          ? AppTheme.loomCyan
+                          ? AppTheme.primarySoft
                           : AppTheme.textSecondary),
                 ),
                 const SizedBox(width: 8),
@@ -842,7 +842,7 @@ class _BinderItemCard extends StatelessWidget {
                       Row(
                         children: [
                           if (item.forTrade)
-                            _statusTag('Troca', AppTheme.loomCyan),
+                            _statusTag('Troca', AppTheme.primarySoft),
                           if (item.forSale) ...[
                             if (item.forTrade) const SizedBox(width: 6),
                             _statusTag('Venda', AppTheme.mythicGold),

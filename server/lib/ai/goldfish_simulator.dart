@@ -36,7 +36,7 @@ class GoldfishResult {
         ((1 - screwRate) * 10) + // 10% em evitar screw
         ((1 - floodRate) * 5); // 5% em evitar flood
 
-    return (score * 100).round().clamp(0, 100);
+    return score.round().clamp(0, 100);
   }
 
   /// Gera recomendações baseadas nas métricas
@@ -80,8 +80,7 @@ class GoldfishResult {
         (cmcDistribution[1] ?? 0) +
         (cmcDistribution[2] ?? 0);
     if (lowCmc < 20) {
-      recs.add(
-          'Apenas $lowCmc cartas com CMC 0-2. Considere mais early game.');
+      recs.add('Apenas $lowCmc cartas com CMC 0-2. Considere mais early game.');
     }
 
     if (recs.isEmpty) {
@@ -106,7 +105,8 @@ class GoldfishResult {
           'turn_2_play': double.parse(turn2PlayRate.toStringAsFixed(3)),
           'turn_3_play': double.parse(turn3PlayRate.toStringAsFixed(3)),
           'turn_4_play': double.parse(turn4PlayRate.toStringAsFixed(3)),
-          'cmc_distribution': cmcDistribution.map((k, v) => MapEntry(k.toString(), v)),
+          'cmc_distribution':
+              cmcDistribution.map((k, v) => MapEntry(k.toString(), v)),
         },
         'recommendations': recommendations,
       };
@@ -161,25 +161,33 @@ class GoldfishSimulator {
       final colorSources = <String, int>{}; // Rastreia fontes de mana colorida
 
       // Turno 1
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
-      if (_canPlayOnTurn(cardsAvailable, 1, landsPlayed, colorSources: colorSources)) {
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed,
+          colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 1, landsPlayed,
+          colorSources: colorSources)) {
         turn1Plays++;
       }
 
       // Turno 2
       if (draws.isNotEmpty) cardsAvailable.add(draws[0]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
-      if (_canPlayOnTurn(cardsAvailable, 2, landsPlayed, colorSources: colorSources)) turn2Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed,
+          colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 2, landsPlayed,
+          colorSources: colorSources)) turn2Plays++;
 
       // Turno 3
       if (draws.length > 1) cardsAvailable.add(draws[1]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
-      if (_canPlayOnTurn(cardsAvailable, 3, landsPlayed, colorSources: colorSources)) turn3Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed,
+          colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 3, landsPlayed,
+          colorSources: colorSources)) turn3Plays++;
 
       // Turno 4
       if (draws.length > 2) cardsAvailable.add(draws[2]);
-      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed, colorSources: colorSources);
-      if (_canPlayOnTurn(cardsAvailable, 4, landsPlayed, colorSources: colorSources)) turn4Plays++;
+      landsPlayed = _playLandIfPossible(cardsAvailable, landsPlayed,
+          colorSources: colorSources);
+      if (_canPlayOnTurn(cardsAvailable, 4, landsPlayed,
+          colorSources: colorSources)) turn4Plays++;
     }
 
     return GoldfishResult(
@@ -262,11 +270,16 @@ class GoldfishSimulator {
     if (typeLine.contains('forest')) producedColors.add('G');
 
     // "Add {X}" patterns in oracle text
-    if (oracle.contains('{w}') || oracle.contains('add {w')) producedColors.add('W');
-    if (oracle.contains('{u}') || oracle.contains('add {u')) producedColors.add('U');
-    if (oracle.contains('{b}') || oracle.contains('add {b')) producedColors.add('B');
-    if (oracle.contains('{r}') || oracle.contains('add {r')) producedColors.add('R');
-    if (oracle.contains('{g}') || oracle.contains('add {g')) producedColors.add('G');
+    if (oracle.contains('{w}') || oracle.contains('add {w'))
+      producedColors.add('W');
+    if (oracle.contains('{u}') || oracle.contains('add {u'))
+      producedColors.add('U');
+    if (oracle.contains('{b}') || oracle.contains('add {b'))
+      producedColors.add('B');
+    if (oracle.contains('{r}') || oracle.contains('add {r'))
+      producedColors.add('R');
+    if (oracle.contains('{g}') || oracle.contains('add {g'))
+      producedColors.add('G');
 
     // "Mana of any color" / "mana of any type"
     if (oracle.contains('any color') || oracle.contains('any type')) {
@@ -467,7 +480,13 @@ class _DeckStats {
     var lands = 0;
 
     // Keywords para detecção
-    const removalKeywords = ['destroy', 'exile', 'sacrifice', '-x/-x', 'damage'];
+    const removalKeywords = [
+      'destroy',
+      'exile',
+      'sacrifice',
+      '-x/-x',
+      'damage'
+    ];
     const wipeKeywords = ['destroy all', 'exile all', 'all creatures'];
     const drawKeywords = ['draw', 'scry', 'look at'];
     const rampKeywords = ['add {', 'search your library for a', 'mana'];

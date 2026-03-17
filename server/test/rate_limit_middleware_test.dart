@@ -6,6 +6,32 @@ import '../lib/rate_limit_middleware.dart';
 
 void main() {
   group('RateLimiter', () {
+    test('extracts first forwarded IP when proxy header is present', () {
+      final clientId = RateLimiter.buildClientIdentifierFromHeaders({
+        'X-Forwarded-For': '203.0.113.10, 10.0.0.1',
+      });
+
+      expect(clientId, equals('203.0.113.10'));
+    });
+
+    test(
+        'builds a fingerprint fallback instead of anonymous when headers exist',
+        () {
+      final clientId = RateLimiter.buildClientIdentifierFromHeaders({
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'pt-BR',
+        'Host': 'localhost:8080',
+      });
+
+      expect(clientId, startsWith('fingerprint:'));
+    });
+
+    test('keeps anonymous only when no identifying headers exist', () {
+      final clientId = RateLimiter.buildClientIdentifierFromHeaders(const {});
+
+      expect(clientId, equals('anonymous'));
+    });
+
     test('allows requests up to limit then blocks', () {
       final limiter = RateLimiter(maxRequests: 2, windowSeconds: 60);
 

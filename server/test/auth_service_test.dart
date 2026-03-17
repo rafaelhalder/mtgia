@@ -2,7 +2,7 @@ import 'package:test/test.dart';
 import 'package:server/auth_service.dart';
 
 /// Testes unitários para o AuthService
-/// 
+///
 /// Cobertura:
 /// - Hash e verificação de senhas
 /// - Geração e validação de tokens JWT
@@ -66,7 +66,8 @@ void main() {
       final token = authService.generateToken(userId, username);
 
       expect(token, isNotEmpty);
-      expect(token.split('.').length, equals(3)); // JWT tem 3 partes separadas por ponto
+      expect(token.split('.').length,
+          equals(3)); // JWT tem 3 partes separadas por ponto
     });
 
     test('verifyToken should return payload for valid token', () {
@@ -123,12 +124,13 @@ void main() {
       // 3. Decodificar e validar dados
       expect(payload!['userId'], equals(userId));
       expect(payload['username'], equals(username));
-      
+
       // 4. Verificar timestamp de emissão
       final iat = payload['iat'] as int;
       final now = DateTime.now().millisecondsSinceEpoch;
       expect(iat, lessThanOrEqualTo(now));
-      expect(iat, greaterThan(now - 10000)); // Token criado nos últimos 10 segundos
+      expect(iat,
+          greaterThan(now - 10000)); // Token criado nos últimos 10 segundos
     });
   });
 
@@ -138,6 +140,20 @@ void main() {
       final hash = authService.hashPassword(longPassword);
 
       expect(authService.verifyPassword(longPassword, hash), isTrue);
+    });
+
+    test('normalizeEmail should trim and lowercase input', () {
+      expect(
+        AuthService.normalizeEmail('  USER@Example.COM  '),
+        equals('user@example.com'),
+      );
+    });
+
+    test('normalizeUsername should trim and lowercase input', () {
+      expect(
+        AuthService.normalizeUsername('  DeckBuilder  '),
+        equals('deckbuilder'),
+      );
     });
 
     test('generateToken should handle special characters in username', () {
@@ -166,7 +182,8 @@ void main() {
       final password = 'testPassword';
       final invalidHash = 'not-a-valid-bcrypt-hash';
 
-      expect(() => authService.verifyPassword(password, invalidHash), throwsException);
+      expect(() => authService.verifyPassword(password, invalidHash),
+          throwsException);
     });
   });
 }

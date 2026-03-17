@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:dotenv/dotenv.dart';
@@ -5,8 +7,10 @@ import 'package:postgres/postgres.dart';
 import '../../../lib/color_identity.dart';
 import '../../../lib/card_validation_service.dart';
 import '../../../lib/ai/otimizacao.dart';
+import '../../../lib/ai/optimization_quality_gate.dart';
 import '../../../lib/ai/optimization_validator.dart';
 import '../../../lib/ai/edhrec_service.dart';
+import '../../../lib/ai/optimize_job.dart';
 import '../../../lib/http_responses.dart';
 import '../../../lib/logger.dart';
 import '../../../lib/edh_bracket_policy.dart';
@@ -20,9 +24,8 @@ int _emptySuggestionFallbackNoReplacementCount = 0;
 Map<String, dynamic> _buildEmptyFallbackAggregate() {
   final triggered = _emptySuggestionFallbackTriggeredCount;
   final applied = _emptySuggestionFallbackAppliedCount;
-  final triggerRate = _optimizeRequestCount > 0
-      ? (triggered / _optimizeRequestCount)
-      : 0.0;
+  final triggerRate =
+      _optimizeRequestCount > 0 ? (triggered / _optimizeRequestCount) : 0.0;
   final applyRate = triggered > 0 ? (applied / triggered) : 0.0;
 
   return {
@@ -45,26 +48,28 @@ class DeckArchetypeAnalyzer {
   DeckArchetypeAnalyzer(this.cards, this.colors);
 
   /// Calcula a curva de mana média (CMC - Converted Mana Cost)
+  /// CORRIGIDO: agora multiplica pelo `quantity` de cada entry.
   double calculateAverageCMC() {
     if (cards.isEmpty) return 0.0;
 
-    final nonLandCards = cards.where((c) {
-      final typeLine = (c['type_line'] as String?) ?? '';
-      return !typeLine.toLowerCase().contains('land');
-    }).toList();
-
-    if (nonLandCards.isEmpty) return 0.0;
-
     double totalCMC = 0;
-    for (final card in nonLandCards) {
-      totalCMC += (card['cmc'] as num?)?.toDouble() ?? 0.0;
+    int totalNonLandCopies = 0;
+
+    for (final card in cards) {
+      final typeLine = (card['type_line'] as String?) ?? '';
+      if (typeLine.toLowerCase().contains('land')) continue;
+      final qty = (card['quantity'] as int?) ?? 1;
+      totalCMC += ((card['cmc'] as num?)?.toDouble() ?? 0.0) * qty;
+      totalNonLandCopies += qty;
     }
 
-    return totalCMC / nonLandCards.length;
+    if (totalNonLandCopies == 0) return 0.0;
+    return totalCMC / totalNonLandCopies;
   }
 
-  /// Conta cartas por tipo
-  /// Agora conta tipos múltiplos (ex: Artifact Creature conta para ambos)
+  /// Conta cartas por tipo (multiplicando por `quantity`)
+  /// Conta tipos múltiplos (ex: Artifact Creature conta para ambos)
+  /// CORRIGIDO: Island x30 agora conta como 30 lands, não 1.
   Map<String, int> countCardTypes() {
     final counts = <String, int>{
       'creatures': 0,
@@ -79,32 +84,33 @@ class DeckArchetypeAnalyzer {
 
     for (final card in cards) {
       final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      final qty = (card['quantity'] as int?) ?? 1;
 
       // Conta TODOS os tipos presentes na carta (não apenas o principal)
       // Isso permite estatísticas mais precisas para arquétipos
       if (typeLine.contains('land')) {
-        counts['lands'] = counts['lands']! + 1;
+        counts['lands'] = counts['lands']! + qty;
       }
       if (typeLine.contains('creature')) {
-        counts['creatures'] = counts['creatures']! + 1;
+        counts['creatures'] = counts['creatures']! + qty;
       }
       if (typeLine.contains('planeswalker')) {
-        counts['planeswalkers'] = counts['planeswalkers']! + 1;
+        counts['planeswalkers'] = counts['planeswalkers']! + qty;
       }
       if (typeLine.contains('instant')) {
-        counts['instants'] = counts['instants']! + 1;
+        counts['instants'] = counts['instants']! + qty;
       }
       if (typeLine.contains('sorcery')) {
-        counts['sorceries'] = counts['sorceries']! + 1;
+        counts['sorceries'] = counts['sorceries']! + qty;
       }
       if (typeLine.contains('artifact')) {
-        counts['artifacts'] = counts['artifacts']! + 1;
+        counts['artifacts'] = counts['artifacts']! + qty;
       }
       if (typeLine.contains('enchantment')) {
-        counts['enchantments'] = counts['enchantments']! + 1;
+        counts['enchantments'] = counts['enchantments']! + qty;
       }
       if (typeLine.contains('battle')) {
-        counts['battles'] = counts['battles']! + 1;
+        counts['battles'] = counts['battles']! + qty;
       }
     }
 
@@ -116,7 +122,10 @@ class DeckArchetypeAnalyzer {
   String detectArchetype() {
     final avgCMC = calculateAverageCMC();
     final typeCounts = countCardTypes();
-    final totalNonLands = cards.length - (typeCounts['lands'] ?? 0);
+    // totalCards com quantity para cálculos de ratio corretos
+    final totalCards =
+        cards.fold<int>(0, (s, c) => s + ((c['quantity'] as int?) ?? 1));
+    final totalNonLands = totalCards - (typeCounts['lands'] ?? 0);
 
     if (totalNonLands == 0) return 'unknown';
 
@@ -166,17 +175,21 @@ class DeckArchetypeAnalyzer {
     final landSources = {'W': 0, 'U': 0, 'B': 0, 'R': 0, 'G': 0, 'Any': 0};
 
     // 1. Contar símbolos de mana nas cartas (Devotion)
+    // CORRIGIDO: multiplica por quantity (ex: Island x30 = 30 fontes)
     for (final card in cards) {
       final manaCost = (card['mana_cost'] as String?) ?? '';
+      final qty = (card['quantity'] as int?) ?? 1;
       for (final color in manaSymbols.keys) {
         manaSymbols[color] =
-            manaSymbols[color]! + manaCost.split(color).length - 1;
+            manaSymbols[color]! + (manaCost.split(color).length - 1) * qty;
       }
     }
 
     // 2. Contar fontes de mana nos terrenos (Heurística melhorada via Oracle Text)
+    // CORRIGIDO: multiplica por quantity
     for (final card in cards) {
       final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      final qty = (card['quantity'] as int?) ?? 1;
       if (typeLine.contains('land')) {
         final cardColors = (card['colors'] as List?)?.cast<String>() ?? [];
         final oracleText =
@@ -185,7 +198,7 @@ class DeckArchetypeAnalyzer {
         // Detecção de Rainbow Lands via texto (sem hardcode de nomes)
         if (oracleText.contains('add one mana of any color') ||
             oracleText.contains('add one mana of any type')) {
-          landSources['Any'] = landSources['Any']! + 1;
+          landSources['Any'] = landSources['Any']! + qty;
         }
         // Detecção de Fetch Lands (simplificada)
         else if (oracleText.contains('search your library for') &&
@@ -198,16 +211,29 @@ class DeckArchetypeAnalyzer {
           // e evitar complexidade excessiva, vamos considerar como "Any" se buscar 2+ tipos,
           // ou contar especificamente se for simples.
           // Por segurança, Fetchs genéricas contam como Any no contexto de correção de cor.
-          landSources['Any'] = landSources['Any']! + 1;
-        } else if (cardColors.isEmpty) {
-          // Terrenos incolores que não são rainbow nem fetch (ex: Reliquary Tower)
-          // Não contam para cores.
+          landSources['Any'] = landSources['Any']! + qty;
         } else {
-          for (final color in cardColors) {
-            if (landSources.containsKey(color)) {
-              landSources[color] = landSources[color]! + 1;
+          // FIX: Lands no DB sempre têm colors=[] (cor é do card, lands não têm custo de mana).
+          // Precisamos parsear oracle_text para detectar que mana o terreno produz.
+          // Ex: Plains → oracle_text: "({T}: Add {W}.)" → produz W.
+          // Ex: Drowned Catacomb → "{T}: Add {U} or {B}." → produz U e B.
+          final detectedColors = _detectManaColorsFromOracleText(oracleText);
+          if (detectedColors.isNotEmpty) {
+            for (final color in detectedColors) {
+              if (landSources.containsKey(color)) {
+                landSources[color] = landSources[color]! + qty;
+              }
+            }
+          } else if (cardColors.isNotEmpty) {
+            // Fallback para cards que têm colors preenchido (raro em lands)
+            for (final color in cardColors) {
+              if (landSources.containsKey(color)) {
+                landSources[color] = landSources[color]! + qty;
+              }
             }
           }
+          // Se detectedColors vazio E cardColors vazio → terreno incolor (ex: Reliquary Tower)
+          // Não conta para nenhuma cor.
         }
       }
     }
@@ -217,6 +243,29 @@ class DeckArchetypeAnalyzer {
       'sources': landSources,
       'assessment': _assessManaBase(manaSymbols, landSources),
     };
+  }
+
+  /// Detecta quais cores de mana um terreno produz parseando o oracle_text.
+  /// Procura padrões como "{W}", "{U}", "{B}", "{R}", "{G}" no texto.
+  /// Também detecta padrões textuais como "add {W} or {B}" e "add {W}, {U}, or {B}".
+  static Set<String> _detectManaColorsFromOracleText(String oracleText) {
+    final colors = <String>{};
+    final colorMap = {
+      'w': 'W',
+      'u': 'U',
+      'b': 'B',
+      'r': 'R',
+      'g': 'G',
+    };
+    // Pattern: {W}, {U}, {B}, {R}, {G} no oracle_text
+    final manaSymbolPattern = RegExp(r'\{([wubrgWUBRG])\}');
+    for (final match in manaSymbolPattern.allMatches(oracleText)) {
+      final symbol = match.group(1)!.toLowerCase();
+      if (colorMap.containsKey(symbol)) {
+        colors.add(colorMap[symbol]!);
+      }
+    }
+    return colors;
   }
 
   String _assessManaBase(Map<String, int> symbols, Map<String, int> sources) {
@@ -294,7 +343,9 @@ class DeckArchetypeAnalyzer {
   String _calculateConfidence(
       double avgCMC, Map<String, int> counts, String archetype) {
     // Confidence baseada em quão bem o deck se encaixa no arquétipo
-    final totalNonLands = cards.length - (counts['lands'] ?? 0);
+    final totalCards =
+        cards.fold<int>(0, (s, c) => s + ((c['quantity'] as int?) ?? 1));
+    final totalNonLands = totalCards - (counts['lands'] ?? 0);
     if (totalNonLands < 20) return 'baixa';
 
     final creatureRatio = (counts['creatures'] ?? 0) / totalNonLands;
@@ -334,28 +385,141 @@ class DeckThemeProfile {
       };
 }
 
+List<Map<String, dynamic>> buildOptimizeAdditionEntries({
+  required List<String> requestedAdditions,
+  required List<Map<String, dynamic>> additionsData,
+}) {
+  final requestedCountsByName = <String, int>{};
+  for (final addition in requestedAdditions) {
+    final normalized = addition.trim().toLowerCase();
+    if (normalized.isEmpty) continue;
+    requestedCountsByName[normalized] =
+        (requestedCountsByName[normalized] ?? 0) + 1;
+  }
+
+  final canonicalByName = <String, Map<String, dynamic>>{};
+  for (final card in additionsData) {
+    final name = ((card['name'] as String?) ?? '').trim();
+    if (name.isEmpty) continue;
+    canonicalByName.putIfAbsent(
+      name.toLowerCase(),
+      () => Map<String, dynamic>.from(card),
+    );
+  }
+
+  final entries = <Map<String, dynamic>>[];
+  for (final entry in requestedCountsByName.entries) {
+    final card = canonicalByName[entry.key];
+    if (card == null) continue;
+    entries.add({
+      ...card,
+      'quantity': entry.value,
+    });
+  }
+
+  return entries;
+}
+
+List<Map<String, dynamic>> buildVirtualDeckForAnalysis({
+  required List<Map<String, dynamic>> originalDeck,
+  List<String> removals = const [],
+  List<Map<String, dynamic>> additions = const [],
+}) {
+  final virtualDeck =
+      originalDeck.map((card) => Map<String, dynamic>.from(card)).toList();
+
+  final removalCountsByName = <String, int>{};
+  for (final removal in removals) {
+    final normalized = removal.trim().toLowerCase();
+    if (normalized.isEmpty) continue;
+    removalCountsByName[normalized] =
+        (removalCountsByName[normalized] ?? 0) + 1;
+  }
+
+  for (final entry in removalCountsByName.entries) {
+    final nameLower = entry.key;
+    var toRemove = entry.value;
+
+    for (var i = virtualDeck.length - 1; i >= 0 && toRemove > 0; i--) {
+      final currentName =
+          ((virtualDeck[i]['name'] as String?) ?? '').trim().toLowerCase();
+      if (currentName != nameLower) continue;
+
+      final quantity = (virtualDeck[i]['quantity'] as int?) ?? 1;
+      if (quantity <= toRemove) {
+        virtualDeck.removeAt(i);
+        toRemove -= quantity;
+      } else {
+        virtualDeck[i] = {
+          ...virtualDeck[i],
+          'quantity': quantity - toRemove,
+        };
+        toRemove = 0;
+      }
+    }
+  }
+
+  for (final addition in additions) {
+    final normalized =
+        ((addition['name'] as String?) ?? '').trim().toLowerCase();
+    if (normalized.isEmpty) continue;
+
+    final incoming = Map<String, dynamic>.from(addition);
+    final incomingQty = (incoming['quantity'] as int?) ?? 1;
+    final existingIndex = virtualDeck.indexWhere(
+      (card) =>
+          ((card['name'] as String?) ?? '').trim().toLowerCase() == normalized,
+    );
+
+    if (existingIndex == -1) {
+      virtualDeck.add({
+        ...incoming,
+        'quantity': incomingQty,
+      });
+      continue;
+    }
+
+    final existing = virtualDeck[existingIndex];
+    final existingQty = (existing['quantity'] as int?) ?? 1;
+    virtualDeck[existingIndex] = {
+      ...existing,
+      ...incoming,
+      'quantity': existingQty + incomingQty,
+    };
+  }
+
+  return virtualDeck;
+}
+
 Future<DeckThemeProfile> _detectThemeProfile(
   List<Map<String, dynamic>> cards, {
   required List<String> commanders,
   required Pool pool,
 }) async {
   int qty(Map<String, dynamic> c) => (c['quantity'] as int?) ?? 1;
-  
+
   // Buscar insights do meta para todas as cartas do deck (batch query)
-  final cardNames = cards.map((c) => c['name'] as String? ?? '').where((n) => n.isNotEmpty).toList();
+  final cardNames = cards
+      .map((c) => c['name'] as String? ?? '')
+      .where((n) => n.isNotEmpty)
+      .toList();
   final metaInsights = <String, Map<String, dynamic>>{};
-  
+
   if (cardNames.isNotEmpty) {
     try {
       final result = await pool.execute(
-        Sql.named('SELECT card_name, usage_count, common_archetypes, learned_role FROM card_meta_insights WHERE LOWER(card_name) IN (${List.generate(cardNames.length, (i) => 'LOWER(@name$i)').join(', ')})'),
-        parameters: {for (var i = 0; i < cardNames.length; i++) 'name$i': cardNames[i]},
+        Sql.named(
+            'SELECT card_name, usage_count, common_archetypes, learned_role FROM card_meta_insights WHERE LOWER(card_name) IN (${List.generate(cardNames.length, (i) => 'LOWER(@name$i)').join(', ')})'),
+        parameters: {
+          for (var i = 0; i < cardNames.length; i++) 'name$i': cardNames[i]
+        },
       );
       for (final row in result) {
         final name = (row[0] as String).toLowerCase();
         metaInsights[name] = {
           'usage_count': row[1] as int? ?? 0,
-          'common_archetypes': row[2] is List ? (row[2] as List).cast<String>() : <String>[],
+          'common_archetypes':
+              row[2] is List ? (row[2] as List).cast<String>() : <String>[],
           'learned_role': row[3] as String? ?? '',
         };
       }
@@ -381,7 +545,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
 
   // Tribal: track creature subtypes for tribe concentration
   final creatureSubtypes = <String, int>{};
-  
+
   // Armazenar dados das cartas para análise de impacto posterior
   final cardData = <Map<String, dynamic>>[];
 
@@ -423,15 +587,20 @@ Future<DeckThemeProfile> _detectThemeProfile(
     }
 
     // --- Reanimator theme ---
-    if ((oracle.contains('return') && oracle.contains('from') && oracle.contains('graveyard')) ||
+    if ((oracle.contains('return') &&
+            oracle.contains('from') &&
+            oracle.contains('graveyard')) ||
         oracle.contains('reanimate') ||
         oracle.contains('unearth') ||
-        (oracle.contains('put') && oracle.contains('graveyard') && oracle.contains('onto the battlefield'))) {
+        (oracle.contains('put') &&
+            oracle.contains('graveyard') &&
+            oracle.contains('onto the battlefield'))) {
       reanimatorReferences += q;
     }
 
     // --- Aristocrats theme (sacrifice + death triggers) ---
-    if ((oracle.contains('sacrifice') && (oracle.contains('whenever') || oracle.contains('you may'))) ||
+    if ((oracle.contains('sacrifice') &&
+            (oracle.contains('whenever') || oracle.contains('you may'))) ||
         (oracle.contains('when') && oracle.contains('dies')) ||
         oracle.contains('drain')) {
       aristocratReferences += q;
@@ -449,21 +618,32 @@ Future<DeckThemeProfile> _detectThemeProfile(
 
     // --- Landfall theme ---
     if (oracle.contains('landfall') ||
-        (oracle.contains('whenever') && oracle.contains('land') && oracle.contains('enters'))) {
+        (oracle.contains('whenever') &&
+            oracle.contains('land') &&
+            oracle.contains('enters'))) {
       landfallReferences += q;
     }
 
     // --- Wheels theme (discard hand + draw) ---
-    if ((oracle.contains('each player') && oracle.contains('discards') && oracle.contains('draws')) ||
-        (oracle.contains('discard') && oracle.contains('hand') && oracle.contains('draw')) ||
+    if ((oracle.contains('each player') &&
+            oracle.contains('discards') &&
+            oracle.contains('draws')) ||
+        (oracle.contains('discard') &&
+            oracle.contains('hand') &&
+            oracle.contains('draw')) ||
         (oracle.contains('whenever') && oracle.contains('draws a card'))) {
       wheelReferences += q;
     }
 
     // --- Stax theme (tax, restrict, slow down) ---
-    if (oracle.contains('each opponent') && (oracle.contains('can\'t') || oracle.contains('pays') || oracle.contains('sacrifices')) ||
-        (oracle.contains('nonland permanent') && oracle.contains('doesn\'t untap')) ||
-        (oracle.contains('players can\'t') && (oracle.contains('cast') || oracle.contains('search')))) {
+    if (oracle.contains('each opponent') &&
+            (oracle.contains('can\'t') ||
+                oracle.contains('pays') ||
+                oracle.contains('sacrifices')) ||
+        (oracle.contains('nonland permanent') &&
+            oracle.contains('doesn\'t untap')) ||
+        (oracle.contains('players can\'t') &&
+            (oracle.contains('cast') || oracle.contains('search')))) {
       staxReferences += q;
     }
 
@@ -471,7 +651,8 @@ Future<DeckThemeProfile> _detectThemeProfile(
     if (typeLine.contains('creature')) {
       final dashIndex = typeLine.indexOf('—');
       if (dashIndex != -1) {
-        final subtypes = typeLine.substring(dashIndex + 1).trim().split(RegExp(r'\s+'));
+        final subtypes =
+            typeLine.substring(dashIndex + 1).trim().split(RegExp(r'\s+'));
         for (final st in subtypes) {
           if (st.isNotEmpty && st != 'creature') {
             creatureSubtypes[st] = (creatureSubtypes[st] ?? 0) + q;
@@ -580,12 +761,12 @@ Future<DeckThemeProfile> _detectThemeProfile(
       final usageCount = insight['usage_count'] as int;
       final archetypes = insight['common_archetypes'] as List<String>;
       final learnedRole = insight['learned_role'] as String;
-      
+
       // Uso alto no meta = carta forte (escala: clamped 5-40)
       if (usageCount > 0) {
         impactScore += (usageCount * 1.0).clamp(5, 40).round();
       }
-      
+
       // Se a carta é comum no arquétipo que o deck está usando = boost
       final themeSimplified = theme.replaceAll('tribal-', '');
       for (final arch in archetypes) {
@@ -594,7 +775,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
           break;
         }
       }
-      
+
       // Role específico que combina com o tema
       if ((theme == 'spellslinger' && learnedRole.contains('counter')) ||
           (theme == 'reanimator' && learnedRole.contains('reanimate')) ||
@@ -656,14 +837,17 @@ Future<DeckThemeProfile> _detectThemeProfile(
 
     // Reanimator: "return from graveyard", "reanimate"
     if (theme == 'reanimator') {
-      if (oracle.contains('return') && oracle.contains('graveyard') && oracle.contains('battlefield')) {
+      if (oracle.contains('return') &&
+          oracle.contains('graveyard') &&
+          oracle.contains('battlefield')) {
         impactScore += 35;
       }
     }
 
     // Spellslinger: "whenever you cast", "copy", "storm"
     if (theme == 'spellslinger') {
-      if (oracle.contains('whenever you cast') && (oracle.contains('instant') || oracle.contains('sorcery'))) {
+      if (oracle.contains('whenever you cast') &&
+          (oracle.contains('instant') || oracle.contains('sorcery'))) {
         impactScore += 35;
       }
       if (oracle.contains('copy') && oracle.contains('spell')) {
@@ -698,7 +882,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
     if (theme.startsWith('tribal-') && dominantTribe != null) {
       final isTribalType = typeLine.contains(dominantTribe);
       final mentionsTribe = oracle.contains(dominantTribe);
-      
+
       if (isTribalType && mentionsTribe) {
         // É do tipo E menciona o tipo no texto = alto valor tribal
         impactScore += 35;
@@ -706,7 +890,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
         // Não é do tipo mas menciona = suporte tribal (ex: Kindred spells)
         impactScore += 25;
       }
-      
+
       // Cartas que dizem "choose a creature type" ou similar
       if (oracle.contains('creature type') && oracle.contains('choose')) {
         impactScore += 20;
@@ -738,7 +922,9 @@ Future<DeckThemeProfile> _detectThemeProfile(
       if (oracle.contains('whenever') && oracle.contains('draws')) {
         impactScore += 35;
       }
-      if (oracle.contains('discard') && oracle.contains('hand') && oracle.contains('draw')) {
+      if (oracle.contains('discard') &&
+          oracle.contains('hand') &&
+          oracle.contains('draw')) {
         impactScore += 40;
       }
     }
@@ -759,7 +945,7 @@ Future<DeckThemeProfile> _detectThemeProfile(
   // Ordenar core por impacto (maior primeiro), pegar top 10
   final sortedCore = core.entries.toList()
     ..sort((a, b) => b.value.compareTo(a.value));
-  
+
   final coreCards = sortedCore.take(10).map((e) => e.key).toList();
 
   return DeckThemeProfile(
@@ -788,10 +974,13 @@ Future<Response> onRequest(RequestContext context) async {
     final archetype = body['archetype'] as String?;
     final bracketRaw = body['bracket'];
     final parsedBracket =
-      bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
+        bracketRaw is int ? bracketRaw : int.tryParse('${bracketRaw ?? ''}');
     final parsedKeepTheme = body['keep_theme'] as bool?;
-    final requestedModeRaw = body['mode']?.toString().trim().toLowerCase() ?? '';
-    final requestMode = requestedModeRaw.contains('complete') ? 'complete' : 'optimize';
+    final requestedModeRaw =
+        body['mode']?.toString().trim().toLowerCase() ?? '';
+    final requestMode =
+        requestedModeRaw.contains('complete') ? 'complete' : 'optimize';
+    final requestStopwatch = Stopwatch()..start();
     final hasBracketOverride = body.containsKey('bracket');
     final hasKeepThemeOverride = body.containsKey('keep_theme');
 
@@ -811,11 +1000,11 @@ Future<Response> onRequest(RequestContext context) async {
       userId: userId,
     );
     final bracket = hasBracketOverride
-      ? parsedBracket
-      : (userPreferences['preferred_bracket'] as int? ?? parsedBracket);
+        ? parsedBracket
+        : (userPreferences['preferred_bracket'] as int? ?? parsedBracket);
     final keepTheme = hasKeepThemeOverride
-      ? (parsedKeepTheme ?? true)
-      : (userPreferences['keep_theme_default'] as bool? ?? true);
+        ? (parsedKeepTheme ?? true)
+        : (userPreferences['keep_theme_default'] as bool? ?? true);
 
     // Get Deck Info
     final deckResult = await pool.execute(
@@ -867,8 +1056,9 @@ Future<Response> onRequest(RequestContext context) async {
         deckFormat == 'commander' ? 100 : (deckFormat == 'brawl' ? 60 : null);
     final shouldAutoComplete =
         maxTotalForFormat != null && currentTotalBeforeMode < maxTotalForFormat;
-    final effectiveMode =
-        requestMode == 'complete' || shouldAutoComplete ? 'complete' : 'optimize';
+    final effectiveMode = requestMode == 'complete' || shouldAutoComplete
+        ? 'complete'
+        : 'optimize';
 
     final deckSignature = _buildDeckSignature(cardsResult);
     final cacheKey = _buildOptimizeCacheKey(
@@ -990,6 +1180,68 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Usar arquétipo passado pelo usuário
     final targetArchetype = archetype;
+    final effectiveOptimizeArchetype = resolveOptimizeArchetype(
+      requestedArchetype: targetArchetype,
+      detectedArchetype: deckAnalysis['detected_archetype']?.toString(),
+    );
+
+    final commanderNameForLogs =
+        commanders.isNotEmpty ? commanders.first.trim() : 'unknown';
+    var optimizeCommanderPrioritySource = 'none';
+    final optimizeCommanderPriorityNames = <String>[];
+    final deterministicSwapCandidates = <Map<String, dynamic>>[];
+
+    Future<Response> respondWithOptimizeTelemetry({
+      required int statusCode,
+      required Map<String, dynamic> body,
+      Map<String, dynamic>? postAnalysisOverride,
+      ValidationReport? validationReport,
+      List<String>? removalsOverride,
+      List<String>? additionsOverride,
+      List<String> validationWarningsOverride = const [],
+      List<String> blockedByColorIdentityOverride = const [],
+      List<Map<String, dynamic>> blockedByBracketOverride = const [],
+    }) async {
+      await _recordOptimizeAnalysisOutcome(
+        pool: pool,
+        deckId: deckId,
+        userId: userId,
+        commanderName: commanderNameForLogs,
+        commanderColors: commanderColorIdentity.toList(),
+        operationMode: body['mode']?.toString() ?? effectiveMode,
+        requestedMode: requestMode,
+        targetArchetype: targetArchetype,
+        detectedTheme: themeProfile.theme,
+        deckAnalysis: deckAnalysis,
+        postAnalysis: postAnalysisOverride,
+        removals: removalsOverride ??
+            ((body['removals'] as List?)?.map((e) => '$e').toList() ??
+                const <String>[]),
+        additions: additionsOverride ??
+            ((body['additions'] as List?)?.map((e) => '$e').toList() ??
+                const <String>[]),
+        statusCode: statusCode,
+        qualityError: body['quality_error'] is Map
+            ? (body['quality_error'] as Map).cast<String, dynamic>()
+            : null,
+        validationReport: validationReport,
+        validationWarnings: validationWarningsOverride.isNotEmpty
+            ? validationWarningsOverride
+            : ((body['validation_warnings'] as List?)
+                    ?.map((e) => '$e')
+                    .toList() ??
+                const <String>[]),
+        blockedByColorIdentity: blockedByColorIdentityOverride,
+        blockedByBracket: blockedByBracketOverride,
+        commanderPriorityNames: optimizeCommanderPriorityNames,
+        commanderPrioritySource: optimizeCommanderPrioritySource,
+        deterministicSwapCandidates: deterministicSwapCandidates,
+        cacheKey: cacheKey,
+        executionTimeMs: requestStopwatch.elapsedMilliseconds,
+      );
+
+      return Response.json(statusCode: statusCode, body: body);
+    }
 
     // 2. Otimização via DeckOptimizerService (IA + RAG)
     final env = DotEnv(includePlatformEnvironment: true, quiet: true)..load();
@@ -1019,294 +1271,2996 @@ Future<Response> onRequest(RequestContext context) async {
       'colors': deckColors.toList(),
     };
 
-    Map<String, dynamic> jsonResponse;
-    try {
-      final maxTotal =
-          deckFormat == 'commander' ? 100 : (deckFormat == 'brawl' ? 60 : null);
+    if (commanders.isNotEmpty) {
+      try {
+        final commanderName = commanders.first.trim();
+        if (commanderName.isNotEmpty) {
+          final priorityNames = await _loadCommanderCompetitivePriorities(
+            pool: pool,
+            commanderName: commanderName,
+            limit: 120,
+          );
 
-      // Modo auto: se o deck está incompleto e é Commander/Brawl, completar primeiro.
-      if (maxTotal != null && currentTotalCards < maxTotal) {
-        if (commanders.isEmpty) {
+          if (priorityNames.isNotEmpty) {
+            optimizeCommanderPrioritySource = 'competitive_meta';
+            optimizeCommanderPriorityNames.addAll(priorityNames);
+          }
+
+          final commanderReferenceProfile =
+              await _loadCommanderReferenceProfileFromCache(
+            pool: pool,
+            commanderName: commanderName,
+          );
+          final averageDeckSeedNames = _extractAverageDeckSeedNamesFromProfile(
+            commanderReferenceProfile,
+            limit: 80,
+          );
+          final profileTopNames = _extractTopCardNamesFromProfile(
+            commanderReferenceProfile,
+            limit: 80,
+          );
+
+          if (optimizeCommanderPriorityNames.isEmpty &&
+              averageDeckSeedNames.isNotEmpty) {
+            optimizeCommanderPrioritySource = 'reference_average_deck_seed';
+          } else if (optimizeCommanderPriorityNames.isEmpty &&
+              profileTopNames.isNotEmpty) {
+            optimizeCommanderPrioritySource = 'reference_top_cards';
+          }
+
+          optimizeCommanderPriorityNames
+            ..addAll(averageDeckSeedNames)
+            ..addAll(profileTopNames);
+
+          if (optimizeCommanderPriorityNames.isEmpty) {
+            final liveEdhrec =
+                await EdhrecService().fetchCommanderData(commanderName);
+            if (liveEdhrec != null && liveEdhrec.topCards.isNotEmpty) {
+              optimizeCommanderPrioritySource = 'live_edhrec';
+              optimizeCommanderPriorityNames.addAll(
+                liveEdhrec.topCards
+                    .map((card) => card.name.trim())
+                    .where((name) => name.isNotEmpty)
+                    .take(120),
+              );
+            }
+          }
+
+          final dedupedPriorityNames = <String>[];
+          final seenPriorityNames = <String>{};
+          for (final rawName in optimizeCommanderPriorityNames) {
+            final name = rawName.trim();
+            if (name.isEmpty) continue;
+            final lower = name.toLowerCase();
+            if (!seenPriorityNames.add(lower)) continue;
+            dedupedPriorityNames.add(name);
+          }
+          optimizeCommanderPriorityNames
+            ..clear()
+            ..addAll(dedupedPriorityNames.take(120));
+
+          if (optimizeCommanderPriorityNames.isNotEmpty) {
+            Log.d(
+              'Optimize commander priority pool carregado: ${optimizeCommanderPriorityNames.length} cartas ($optimizeCommanderPrioritySource)',
+            );
+          }
+        }
+      } catch (e) {
+        optimizeCommanderPrioritySource = 'load_failed';
+        Log.w('Falha ao carregar priority pool do optimize: $e');
+      }
+    }
+
+    try {
+      deterministicSwapCandidates.addAll(
+        await buildDeterministicOptimizeSwapCandidates(
+          pool: pool,
+          allCardData: allCardData,
+          commanders: commanders,
+          commanderColorIdentity: commanderColorIdentity,
+          targetArchetype: effectiveOptimizeArchetype,
+          bracket: bracket,
+          keepTheme: keepTheme,
+          detectedTheme: themeProfile.theme,
+          coreCards: themeProfile.coreCards,
+          commanderPriorityNames: optimizeCommanderPriorityNames,
+        ),
+      );
+      if (deterministicSwapCandidates.isNotEmpty) {
+        Log.d(
+          'Optimize deterministic shortlist carregado: ${deterministicSwapCandidates.length} swap(s)',
+        );
+      }
+    } catch (e) {
+      Log.w('Falha ao montar shortlist deterministico do optimize: $e');
+    }
+
+    Map<String, dynamic> jsonResponse;
+
+    // ================================================================
+    //  ASYNC JOB MODE: modo complete roda em background
+    // ================================================================
+    final maxTotal =
+        deckFormat == 'commander' ? 100 : (deckFormat == 'brawl' ? 60 : null);
+    final isCompleteMode = maxTotal != null && currentTotalCards < maxTotal;
+
+    if (isCompleteMode) {
+      // Validação rápida antes de criar o job
+      if (commanders.isEmpty) {
+        return Response.json(
+          statusCode: HttpStatus.badRequest,
+          body: {
+            'error':
+                'Selecione um comandante antes de completar um deck $deckFormat.'
+          },
+        );
+      }
+
+      final jobId = await OptimizeJobStore.create(
+        pool: pool,
+        deckId: deckId,
+        archetype: targetArchetype,
+        userId: userId,
+      );
+
+      // Fire-and-forget: processamento pesado roda em background.
+      // A closure captura todas as variáveis do setup (pool, allCardData, etc.)
+      // O Pool é singleton e sobrevive ao ciclo do request.
+      unawaited(_processCompleteModeAsync(
+        jobId: jobId,
+        pool: pool,
+        deckId: deckId,
+        deckFormat: deckFormat,
+        maxTotal: maxTotal,
+        currentTotalCards: currentTotalCards,
+        commanders: commanders,
+        allCardData: allCardData,
+        deckColors: deckColors,
+        commanderColorIdentity: commanderColorIdentity,
+        originalCountsById: originalCountsById,
+        optimizer: optimizer,
+        themeProfile: themeProfile,
+        targetArchetype: targetArchetype,
+        bracket: bracket,
+        keepTheme: keepTheme,
+        deckAnalysis: deckAnalysis,
+        userId: userId,
+        cacheKey: cacheKey,
+        userPreferences: userPreferences,
+        hasBracketOverride: hasBracketOverride,
+        hasKeepThemeOverride: hasKeepThemeOverride,
+      ));
+
+      return Response.json(
+        statusCode: HttpStatus.accepted,
+        body: {
+          'job_id': jobId,
+          'status': 'pending',
+          'message':
+              'Otimização iniciada em background. Consulte o progresso via polling.',
+          'poll_url': '/ai/optimize/jobs/$jobId',
+          'poll_interval_ms': 2000,
+          'total_stages': 6,
+        },
+      );
+    }
+
+    // ================================================================
+    //  SYNC MODE: optimize simples (troca de cartas) — roda inline
+    // ================================================================
+    final deterministicFirstEnabled =
+        effectiveMode == 'optimize' && deterministicSwapCandidates.length >= 3;
+    var optimizeFallbackAttempted = false;
+
+    Future<Map<String, dynamic>?> runAiOptimizeAttempt({
+      required String trigger,
+    }) async {
+      try {
+        final aiResponse = await optimizer.optimizeDeck(
+          deckData: deckData,
+          commanders: commanders,
+          targetArchetype: effectiveOptimizeArchetype,
+          priorityPool: optimizeCommanderPriorityNames,
+          deterministicSwapCandidates: deterministicSwapCandidates,
+          bracket: bracket,
+          keepTheme: keepTheme,
+          detectedTheme: themeProfile.theme,
+          coreCards: themeProfile.coreCards,
+        );
+        aiResponse['mode'] ??= 'optimize';
+        aiResponse['strategy_source'] ??= deterministicFirstEnabled
+            ? 'ai_after_deterministic_fallback'
+            : 'ai_primary';
+        aiResponse['fallback_trigger'] ??= trigger;
+        return aiResponse;
+      } catch (e, stackTrace) {
+        Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
+        return null;
+      }
+    }
+
+    if (deterministicFirstEnabled) {
+      jsonResponse = buildDeterministicOptimizeResponse(
+        deterministicSwapCandidates: deterministicSwapCandidates,
+        targetArchetype: effectiveOptimizeArchetype,
+      );
+      Log.i(
+        'Optimize deterministic-first ativado com ${deterministicSwapCandidates.length} swap(s) candidatos.',
+      );
+    } else {
+      final aiResponse = await runAiOptimizeAttempt(trigger: 'primary');
+      if (aiResponse == null) {
+        return respondWithOptimizeTelemetry(
+          statusCode: HttpStatus.internalServerError,
+          body: {
+            'error': 'Optimization failed',
+            'quality_error': {
+              'code': 'OPTIMIZE_EXECUTION_FAILED',
+              'message':
+                  'A execucao da otimizacao falhou antes da validacao final.',
+              'details':
+                  'Falha ao executar optimizeDeck na tentativa primaria.',
+            },
+            'mode': 'optimize',
+          },
+        );
+      }
+      jsonResponse = aiResponse;
+    }
+
+    optimizeAttemptLoop:
+    while (true) {
+      jsonResponse = _normalizeOptimizePayload(
+        jsonResponse,
+        defaultMode: 'optimize',
+      );
+
+      // Se o modo complete já veio “determinístico” (com card_id/quantity),
+      // devolve diretamente sem passar pelo fluxo antigo de validação por nomes.
+      if (jsonResponse['mode'] == 'complete' &&
+          jsonResponse['additions_detailed'] is List) {
+        final qualityError = jsonResponse['quality_error'];
+        if (qualityError is Map) {
           return Response.json(
-            statusCode: HttpStatus.badRequest,
+            statusCode: HttpStatus.unprocessableEntity,
             body: {
               'error':
-                  'Selecione um comandante antes de completar um deck $deckFormat.'
+                  'Complete mode não atingiu qualidade mínima para montagem competitiva.',
+              'quality_error': qualityError,
+              'mode': 'complete',
+              'target_additions': jsonResponse['target_additions'],
             },
           );
         }
 
-        // Loop seguro: simula adições em um deck virtual e re-chama a IA até fechar.
-        final maxIterations = 4;
-        final virtualDeck = List<Map<String, dynamic>>.from(allCardData);
-        final virtualCountsById = Map<String, int>.from(originalCountsById);
-        final virtualCountsByName = <String, int>{};
-        for (final card in virtualDeck) {
-          final name = ((card['name'] as String?) ?? '').trim().toLowerCase();
-          if (name.isEmpty) continue;
-          final quantity = (card['quantity'] as int?) ?? 1;
-          virtualCountsByName[name] = (virtualCountsByName[name] ?? 0) + quantity;
-        }
+        final rawAdditionsDetailed =
+            (jsonResponse['additions_detailed'] as List)
+                .whereType<Map>()
+                .map((m) {
+                  final mm = m.cast<String, dynamic>();
+                  return {
+                    'card_id': mm['card_id']?.toString(),
+                    'quantity': mm['quantity'] as int? ?? 1,
+                  };
+                })
+                .where((m) => (m['card_id'] as String?)?.isNotEmpty ?? false)
+                .toList();
 
-        final addedCountsById = <String, int>{};
-        final blockedByBracketAll = <Map<String, dynamic>>[];
-        final filteredByIdentityAll = <String>[];
-        final invalidAll = <String>[];
-        final aiSuggestedNames = <String>{};
-        final commanderMetaPriorityNames = <String>{};
-        final targetAdditionsForComplete = maxTotal - currentTotalCards;
-        var maxBasicAdditions = 999;
-        Map<String, dynamic>? commanderReferenceProfile;
-        int? commanderRecommendedLands;
+        final ids =
+            rawAdditionsDetailed.map((e) => e['card_id'] as String).toList();
+        final cardInfoById = <String, Map<String, String>>{};
+        var additionsDetailed = <Map<String, dynamic>>[];
+        Map<String, dynamic>? postAnalysisComplete;
 
-        var aiStageUsed = false;
-        var deterministicStageUsed = false;
-        var guaranteedBasicsStageUsed = false;
-        var competitiveModelStageUsed = false;
-        var averageDeckSeedStageUsed = false;
-        var basicAddedDuringBuild = 0;
-
-        if (commanders.isNotEmpty) {
-          final commanderName = commanders.first.trim();
-          if (commanderName.isNotEmpty) {
-            commanderReferenceProfile = await _loadCommanderReferenceProfileFromCache(
-              pool: pool,
-              commanderName: commanderName,
-            );
-            commanderRecommendedLands =
-                _extractRecommendedLandsFromProfile(commanderReferenceProfile);
-
-            if (targetAdditionsForComplete >= 40) {
-              final recommended = (commanderRecommendedLands ?? 38).clamp(28, 42);
-              maxBasicAdditions = recommended + 6;
-            }
-
-            final averageDeckSeedNames = _extractAverageDeckSeedNamesFromProfile(
-              commanderReferenceProfile,
-              limit: 140,
-            );
-            if (averageDeckSeedNames.isNotEmpty) {
-              averageDeckSeedStageUsed = true;
-              aiSuggestedNames
-                  .addAll(averageDeckSeedNames.map((e) => e.toLowerCase()));
-            }
-
-            final priorityNames = await _loadCommanderCompetitivePriorities(
-              pool: pool,
-              commanderName: commanderName,
-              limit: 120,
-            );
-            if (priorityNames.isNotEmpty) {
-              competitiveModelStageUsed = true;
-              commanderMetaPriorityNames.addAll(priorityNames);
-              aiSuggestedNames.addAll(priorityNames.map((e) => e.toLowerCase()));
-            } else {
-              final profileTopNames = _extractTopCardNamesFromProfile(
-                commanderReferenceProfile,
-                limit: 80,
-              );
-              if (profileTopNames.isNotEmpty) {
-                aiSuggestedNames
-                    .addAll(profileTopNames.map((e) => e.toLowerCase()));
-                competitiveModelStageUsed = true;
-              }
-            }
-
-            if (aiSuggestedNames.isEmpty) {
-              try {
-                final liveEdhrec = await EdhrecService()
-                    .fetchCommanderData(commanderName);
-                if (liveEdhrec != null && liveEdhrec.topCards.isNotEmpty) {
-                  final liveNames = liveEdhrec.topCards
-                      .map((card) => card.name.trim().toLowerCase())
-                      .where((name) => name.isNotEmpty)
-                      .take(180)
-                      .toList();
-                  if (liveNames.isNotEmpty) {
-                    aiSuggestedNames.addAll(liveNames);
-                    averageDeckSeedStageUsed = true;
-                    Log.d(
-                        'Complete fallback: aiSuggestedNames alimentado via EDHREC live (${liveNames.length} cartas).');
-                  }
-                }
-              } catch (e) {
-                Log.w('Falha ao carregar EDHREC live para fallback complete: $e');
-              }
-            }
-          }
-        }
-
-        var iterations = 0;
-        var virtualTotal = currentTotalCards;
-        while (iterations < maxIterations && virtualTotal < maxTotal) {
-          iterations++;
-          final missingNow = maxTotal - virtualTotal;
-
-          Map<String, dynamic> iterResponse;
-          try {
-            iterResponse = await optimizer.completeDeck(
-              deckData: {
-                'cards': virtualDeck,
-                'colors': deckColors.toList(),
-              },
-              commanders: commanders,
-              targetArchetype: targetArchetype,
-              targetAdditions: missingNow,
-              bracket: bracket,
-              keepTheme: keepTheme,
-              detectedTheme: themeProfile.theme,
-              coreCards: themeProfile.coreCards,
-            );
-          } catch (e) {
-            Log.w(
-              'Falha no completeDeck da IA; aplicando fallback determinístico. '
-              'iteration=$iterations missing=$missingNow error=$e',
-            );
-            break;
-          }
-
-          final rawAdditions =
-              (iterResponse['additions'] as List?)?.cast<String>() ?? const [];
-          if (rawAdditions.isEmpty) break;
-            aiStageUsed = true;
-
-          // Sanitiza
-          final sanitized =
-              rawAdditions.map(CardValidationService.sanitizeCardName).toList();
-            aiSuggestedNames.addAll(
-            sanitized
-              .where((name) => name.trim().isNotEmpty)
-              .map((name) => name.trim().toLowerCase()),
-            );
-
-          // Valida existência no DB
-          final validationService = CardValidationService(pool);
-          final validation =
-              await validationService.validateCardNames(sanitized);
-          invalidAll.addAll(
-              (validation['invalid'] as List?)?.cast<String>() ?? const []);
-
-          final validList =
-              (validation['valid'] as List).cast<Map<String, dynamic>>();
-          final validNames =
-              validList.map((v) => (v['name'] as String)).toList();
-          if (validNames.isEmpty) break;
-
-          // Carrega dados completos para filtro (type/oracle/colors/identity/id)
-          final additionsInfoResult = await pool.execute(
-            Sql.named('''
-              SELECT id::text, name, type_line, oracle_text, colors, color_identity
-              FROM cards
-              WHERE name = ANY(@names)
-            '''),
-            parameters: {'names': validNames},
+        if (ids.isNotEmpty) {
+          final r = await pool.execute(
+            Sql.named(
+                'SELECT id::text, name, type_line FROM cards WHERE id = ANY(@ids)'),
+            parameters: {'ids': ids},
           );
-          if (additionsInfoResult.isEmpty) break;
-
-          final candidates = additionsInfoResult.map((r) {
-            final id = r[0] as String;
-            final name = r[1] as String;
-            final typeLine = r[2] as String? ?? '';
-            final oracle = r[3] as String? ?? '';
-            final colors = (r[4] as List?)?.cast<String>() ?? const <String>[];
-            final identity =
-                (r[5] as List?)?.cast<String>() ?? const <String>[];
-            return {
-              'card_id': id,
-              'name': name,
-              'type_line': typeLine,
-              'oracle_text': oracle,
-              'colors': colors,
-              'color_identity': identity,
+          for (final row in r) {
+            cardInfoById[row[0] as String] = {
+              'name': row[1] as String,
+              'type_line': (row[2] as String?) ?? '',
             };
-          }).toList();
-
-          // Filtro por identidade do comandante
-          final identityAllowed = <Map<String, dynamic>>[];
-          for (final c in candidates) {
-            final identity = ((c['color_identity'] as List).cast<String>());
-            final colors = ((c['colors'] as List).cast<String>());
-            final ok = isWithinCommanderIdentity(
-              cardIdentity: identity.isNotEmpty ? identity : colors,
-              commanderIdentity: commanderColorIdentity,
-            );
-            if (!ok) {
-              filteredByIdentityAll.add(c['name'] as String);
-              continue;
-            }
-            identityAllowed.add(c);
           }
-          if (identityAllowed.isEmpty) break;
 
-          // Filtro de bracket (intermediário)
-          final bracketAllowed = <Map<String, dynamic>>[];
-          if (bracket != null) {
-            final decision = applyBracketPolicyToAdditions(
-              bracket: bracket,
-              currentDeckCards: virtualDeck,
-              additionsCardsData: identityAllowed.map((c) {
-                return {
-                  'name': c['name'],
-                  'type_line': c['type_line'],
-                  'oracle_text': c['oracle_text'],
-                  'quantity': 1,
-                };
-              }),
-            );
-            blockedByBracketAll.addAll(decision.blocked);
-            final allowedSet =
-                decision.allowed.map((e) => e.toLowerCase()).toSet();
-            for (final c in identityAllowed) {
-              final n = (c['name'] as String).toLowerCase();
-              if (allowedSet.contains(n)) bracketAllowed.add(c);
-            }
-          } else {
-            bracketAllowed.addAll(identityAllowed);
-          }
-          if (bracketAllowed.isEmpty) break;
+          // Colapsa por NOME (não por printing/card_id), aplicando limite de cópias por formato.
+          final aggregatedByName = <String, Map<String, dynamic>>{};
+          for (final entry in rawAdditionsDetailed) {
+            final cardId = entry['card_id'] as String;
+            final cardInfo = cardInfoById[cardId];
+            if (cardInfo == null) continue;
 
-          // Aplica no deck virtual respeitando regras de cópias:
-          // - non-basic: 1 cópia (não adiciona se já existe)
-          // - basic: pode repetir
-          var addedThisIter = 0;
-          for (final c in bracketAllowed) {
-            if (virtualTotal >= maxTotal) break;
-            final id = c['card_id'] as String;
-            final name = c['name'] as String;
-            final typeLine = (c['type_line'] as String).toLowerCase();
-            final isBasic = _isBasicLandTypeLine(typeLine);
-            final nameLower = name.toLowerCase();
+            final name = cardInfo['name'] ?? '';
+            final typeLine = cardInfo['type_line'] ?? '';
+            if (name.trim().isEmpty) continue;
+
             final maxCopies = _maxCopiesForFormat(
               deckFormat: deckFormat,
               typeLine: typeLine,
               name: name,
             );
 
-            if (!isBasic && (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+            final existing = aggregatedByName[name.toLowerCase()];
+            final currentQty = (existing?['quantity'] as int?) ?? 0;
+            final incomingQty = (entry['quantity'] as int?) ?? 1;
+            final allowedToAdd = (maxCopies - currentQty).clamp(0, incomingQty);
+            if (allowedToAdd <= 0) continue;
+
+            if (existing == null) {
+              aggregatedByName[name.toLowerCase()] = {
+                'card_id': cardId,
+                'quantity': allowedToAdd,
+                'name': name,
+                'type_line': typeLine,
+              };
+            } else {
+              aggregatedByName[name.toLowerCase()] = {
+                ...existing,
+                'quantity': currentQty + allowedToAdd,
+              };
+            }
+          }
+
+          additionsDetailed = aggregatedByName.values
+              .map((e) => {
+                    'card_id': e['card_id'],
+                    'quantity': e['quantity'],
+                    'name': e['name'],
+                    'is_basic_land':
+                        _isBasicLandName(((e['name'] as String?) ?? '').trim()),
+                  })
+              .toList();
+
+          // === Gerar post_analysis para modo complete ===
+          try {
+            // 1. Buscar dados completos das cartas adicionadas
+            final additionsDataResult = await pool.execute(
+              Sql.named('''
+              SELECT name, type_line, mana_cost, colors, 
+                     COALESCE(
+                       (SELECT SUM(
+                         CASE 
+                           WHEN m[1] ~ '^[0-9]+\$' THEN m[1]::int
+                           WHEN m[1] IN ('W','U','B','R','G','C') THEN 1
+                           WHEN m[1] = 'X' THEN 0
+                           ELSE 1
+                         END
+                       ) FROM regexp_matches(mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
+                       0
+                     ) as cmc,
+                     oracle_text
+              FROM cards 
+              WHERE id = ANY(@ids)
+            '''),
+              parameters: {'ids': ids},
+            );
+
+            final additionsData = additionsDataResult
+                .map((row) => {
+                      'name': (row[0] as String?) ?? '',
+                      'type_line': (row[1] as String?) ?? '',
+                      'mana_cost': (row[2] as String?) ?? '',
+                      'colors': (row[3] as List?)?.cast<String>() ?? [],
+                      'cmc': (row[4] as num?)?.toDouble() ?? 0.0,
+                      'oracle_text': (row[5] as String?) ?? '',
+                    })
+                .toList();
+
+            final additionsForAnalysis = additionsDetailed.map((add) {
+              final data = additionsData.firstWhere(
+                (d) =>
+                    (d['name'] as String).toLowerCase() ==
+                    ((add['name'] as String?) ?? '').toLowerCase(),
+                orElse: () => {
+                  'name': add['name'] ?? '',
+                  'type_line': '',
+                  'mana_cost': '',
+                  'colors': <String>[],
+                  'cmc': 0.0,
+                  'oracle_text': '',
+                },
+              );
+              return {
+                ...data,
+                'quantity': (add['quantity'] as int?) ?? 1,
+              };
+            }).toList();
+            final virtualDeck = buildVirtualDeckForAnalysis(
+              originalDeck: allCardData,
+              additions: additionsForAnalysis,
+            );
+
+            // 3. Rodar análise no deck virtual
+            final postAnalyzer =
+                DeckArchetypeAnalyzer(virtualDeck, deckColors.toList());
+            postAnalysisComplete = postAnalyzer.generateAnalysis();
+          } catch (e) {
+            Log.w('Falha ao gerar post_analysis para modo complete: $e');
+          }
+        }
+
+        final responseBody = {
+          'mode': 'complete',
+          'constraints': {
+            'keep_theme': keepTheme,
+          },
+          'theme': themeProfile.toJson(),
+          'bracket': bracket,
+          'target_additions': jsonResponse['target_additions'],
+          'iterations': jsonResponse['iterations'],
+          'additions':
+              additionsDetailed.map((e) => e['name'] ?? e['card_id']).toList(),
+          'additions_detailed': additionsDetailed
+              .map((e) => {
+                    'card_id': e['card_id'],
+                    'quantity': e['quantity'],
+                    'name': e['name'],
+                    'is_basic_land': e['is_basic_land'] ??
+                        _isBasicLandName(((e['name'] as String?) ?? '').trim()),
+                  })
+              .toList(),
+          'removals': const <String>[],
+          'removals_detailed': const <Map<String, dynamic>>[],
+          'reasoning': jsonResponse['reasoning'] ?? '',
+          'deck_analysis': deckAnalysis,
+          'post_analysis': postAnalysisComplete,
+          'validation_warnings': const <String>[],
+        };
+
+        final warnings = (jsonResponse['warnings'] is Map)
+            ? (jsonResponse['warnings'] as Map).cast<String, dynamic>()
+            : const <String, dynamic>{};
+        if (warnings.isNotEmpty) {
+          responseBody['warnings'] = warnings;
+        }
+
+        // Incluir quality_warning para adições parciais (PARTIAL)
+        final qw = jsonResponse['quality_warning'];
+        if (qw is Map) {
+          responseBody['quality_warning'] = qw;
+        }
+
+        // Incluir consistency_slo para diagnóstico
+        final slo = jsonResponse['consistency_slo'];
+        if (slo is Map) {
+          responseBody['consistency_slo'] = slo;
+        }
+
+        return Response.json(body: responseBody);
+      }
+
+      // Validar cartas sugeridas pela IA
+
+      // Validar cartas sugeridas pela IA
+      final validationService = CardValidationService(pool);
+
+      List<String> removals = [];
+      List<String> additions = [];
+      var emptySuggestionFallbackTriggered = false;
+      var emptySuggestionFallbackApplied = false;
+      String? emptySuggestionFallbackReason;
+      var emptySuggestionFallbackCandidateCount = 0;
+      var emptySuggestionFallbackReplacementCount = 0;
+      var emptySuggestionFallbackPairCount = 0;
+
+      final parsedSuggestions = parseOptimizeSuggestions(jsonResponse);
+      removals = parsedSuggestions['removals'] as List<String>;
+      additions = parsedSuggestions['additions'] as List<String>;
+      final recognizedSuggestionFormat =
+          parsedSuggestions['recognized_format'] as bool? ?? false;
+
+      final deckNamesLower = allCardData
+          .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      final commanderLower = commanders.map((c) => c.toLowerCase()).toSet();
+      final coreLower =
+          themeProfile.coreCards.map((c) => c.toLowerCase()).toSet();
+      final blockedByTheme = <String>[];
+
+      final isComplete = jsonResponse['mode'] == 'complete';
+
+      if (removals.isEmpty && additions.isEmpty && !isComplete) {
+        emptySuggestionFallbackTriggered = true;
+        _emptySuggestionFallbackTriggeredCount++;
+        final fallbackRemovalCandidates = <String>[];
+        final seenLower = <String>{};
+
+        void collectCandidates({required bool preferNonLand}) {
+          for (final card in allCardData) {
+            final name = ((card['name'] as String?) ?? '').trim();
+            if (name.isEmpty) continue;
+
+            final lower = name.toLowerCase();
+            if (seenLower.contains(lower)) continue;
+            if (commanderLower.contains(lower)) continue;
+            if (coreLower.contains(lower)) continue;
+
+            final typeLine =
+                ((card['type_line'] as String?) ?? '').toLowerCase();
+            final isLand = typeLine.contains('land');
+            if (preferNonLand && isLand) continue;
+
+            seenLower.add(lower);
+            fallbackRemovalCandidates.add(name);
+            if (fallbackRemovalCandidates.length >= 2) break;
+          }
+        }
+
+        collectCandidates(preferNonLand: true);
+        if (fallbackRemovalCandidates.isEmpty) {
+          collectCandidates(preferNonLand: false);
+        }
+        emptySuggestionFallbackCandidateCount =
+            fallbackRemovalCandidates.length;
+
+        if (fallbackRemovalCandidates.isNotEmpty) {
+          final replacements = await _findSynergyReplacements(
+            pool: pool,
+            commanders: commanders,
+            commanderColorIdentity: commanderColorIdentity,
+            targetArchetype: targetArchetype,
+            bracket: bracket,
+            keepTheme: keepTheme,
+            detectedTheme: themeProfile.theme,
+            coreCards: themeProfile.coreCards,
+            missingCount: fallbackRemovalCandidates.length,
+            removedCards: fallbackRemovalCandidates,
+            excludeNames: deckNamesLower,
+            allCardData: allCardData,
+            preferredNames: optimizeCommanderPriorityNames
+                .map((name) => name.toLowerCase())
+                .toSet(),
+          );
+          emptySuggestionFallbackReplacementCount = replacements.length;
+
+          if (replacements.isNotEmpty) {
+            final fallbackAdditions = replacements
+                .map((r) => (r['name'] as String?)?.trim() ?? '')
+                .where((n) => n.isNotEmpty)
+                .toList();
+
+            final pairCount =
+                fallbackRemovalCandidates.length < fallbackAdditions.length
+                    ? fallbackRemovalCandidates.length
+                    : fallbackAdditions.length;
+            emptySuggestionFallbackPairCount = pairCount;
+
+            if (pairCount > 0) {
+              removals = fallbackRemovalCandidates.take(pairCount).toList();
+              additions = fallbackAdditions.take(pairCount).toList();
+              emptySuggestionFallbackApplied = true;
+              _emptySuggestionFallbackAppliedCount++;
+              emptySuggestionFallbackReason =
+                  'IA retornou sugestões vazias; aplicado fallback heurístico orientado a sinergia.';
+              Log.i(
+                  '✅ [AI Optimize] Fallback aplicado com $pairCount swap(s) após retorno vazio da IA.');
+            }
+          }
+        }
+
+        if (!emptySuggestionFallbackApplied) {
+          if (fallbackRemovalCandidates.isEmpty) {
+            _emptySuggestionFallbackNoCandidateCount++;
+            emptySuggestionFallbackReason =
+                'IA retornou sugestões vazias e o deck não possui candidatas seguras para remoção.';
+          } else if (emptySuggestionFallbackReplacementCount == 0) {
+            _emptySuggestionFallbackNoReplacementCount++;
+            emptySuggestionFallbackReason =
+                'IA retornou sugestões vazias e não foi possível encontrar substitutas válidas no fallback.';
+          } else {
+            emptySuggestionFallbackReason =
+                'IA retornou sugestões vazias e não foi possível gerar fallback seguro.';
+          }
+        }
+      }
+
+      // WARN: Se parsing resultou em listas vazias, logar para diagnóstico
+      if (removals.isEmpty && additions.isEmpty && !isComplete) {
+        if (recognizedSuggestionFormat) {
+          Log.d(
+              'ℹ️ [AI Optimize] Payload reconhecido, mas sem sugestões úteis (provável filtro/retorno vazio). Keys: ${jsonResponse.keys.toList()}');
+        } else {
+          Log.w(
+              '⚠️ [AI Optimize] IA retornou formato não reconhecido. Keys: ${jsonResponse.keys.toList()}');
+        }
+      }
+
+      // Suporte ao modo "complete"
+      if (isComplete) {
+        removals = [];
+        // Quando veio do loop, preferimos additions_detailed.
+        final fromDetailed = (jsonResponse['additions_detailed'] as List?)
+            ?.whereType<Map>()
+            .toList();
+        if (fromDetailed != null && fromDetailed.isNotEmpty) {
+          additions = fromDetailed
+              .map((m) => (m['name'] ?? '').toString())
+              .where((s) => s.trim().isNotEmpty)
+              .toList();
+        } else {
+          additions =
+              (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
+        }
+      }
+
+      // GARANTIR EQUILÍBRIO NUMÉRICO (Regra de Ouro)
+      if (!isComplete) {
+        final minCount = removals.length < additions.length
+            ? removals.length
+            : additions.length;
+
+        if (removals.length != additions.length) {
+          Log.w(
+            '⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount',
+          );
+          removals = removals.take(minCount).toList();
+          additions = additions.take(minCount).toList();
+        }
+      }
+
+      var sanitizedRemovals =
+          removals.map(CardValidationService.sanitizeCardName).toList();
+      var sanitizedAdditions =
+          additions.map(CardValidationService.sanitizeCardName).toList();
+
+      // Remoções devem existir no deck (evita no-ops e contagem final errada).
+      sanitizedRemovals = sanitizedRemovals
+          .where((n) => deckNamesLower.contains(n.toLowerCase()))
+          .toList();
+
+      // Nunca remover comandantes.
+      sanitizedRemovals = sanitizedRemovals
+          .where((n) => !commanderLower.contains(n.toLowerCase()))
+          .toList();
+
+      // Se o usuário pediu "otimizar", mas mantendo o tema, bloqueia remoções de core.
+      if (keepTheme) {
+        sanitizedRemovals = sanitizedRemovals.where((n) {
+          final isCore = coreLower.contains(n.toLowerCase());
+          if (isCore) blockedByTheme.add(n);
+          return !isCore;
+        }).toList();
+      }
+
+      // Em modo optimize (swaps), evita sugerir adicionar algo que já existe (no-op).
+      if (!isComplete) {
+        sanitizedAdditions = sanitizedAdditions
+            .where((n) => !deckNamesLower.contains(n.toLowerCase()))
+            .toList();
+      }
+
+      // Re-balancear após filtros.
+      if (!isComplete) {
+        final minCount = sanitizedRemovals.length < sanitizedAdditions.length
+            ? sanitizedRemovals.length
+            : sanitizedAdditions.length;
+        sanitizedRemovals = sanitizedRemovals.take(minCount).toList();
+        sanitizedAdditions = sanitizedAdditions.take(minCount).toList();
+      }
+
+      // Validar todas as cartas sugeridas
+      final allSuggestions = [...sanitizedRemovals, ...sanitizedAdditions];
+      final validation =
+          await validationService.validateCardNames(allSuggestions);
+      final validList =
+          (validation['valid'] as List).cast<Map<String, dynamic>>();
+      final validByNameLower = <String, Map<String, dynamic>>{};
+      for (final v in validList) {
+        final n = (v['name'] as String).toLowerCase();
+        validByNameLower[n] = v;
+      }
+
+      // Filtrar apenas cartas válidas e remover duplicatas
+      var validRemovals = sanitizedRemovals
+          .where((name) {
+            return (validation['valid'] as List).any((card) =>
+                (card['name'] as String).toLowerCase() == name.toLowerCase());
+          })
+          .toSet()
+          .toList();
+
+      // No modo complete, preservamos repetição (para básicos) e ordem.
+      // No modo optimize (swaps), mantemos set para evitar duplicatas.
+      var validAdditions = sanitizedAdditions.where((name) {
+        return (validation['valid'] as List).any((card) =>
+            (card['name'] as String).toLowerCase() == name.toLowerCase());
+      }).toList();
+      if (!isComplete) {
+        validAdditions = validAdditions.toSet().toList();
+      }
+
+      // DEBUG: Log quantidades antes dos filtros avançados
+      Log.d('Antes dos filtros de cor/bracket:');
+      Log.d('  validRemovals.length = ${validRemovals.length}');
+      Log.d('  validAdditions.length = ${validAdditions.length}');
+
+      // Filtrar adições ilegais para Commander/Brawl (identidade de cor do comandante).
+      // Observação: para colorless commander (identity vazia), apenas cartas colorless passam.
+      final filteredByColorIdentity = <String>[];
+      if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
+        final additionsIdentityResult = await pool.execute(
+          Sql.named('''
+            SELECT name, color_identity, colors
+            FROM cards
+            WHERE name = ANY(@names)
+          '''),
+          parameters: {'names': validAdditions},
+        );
+
+        final identityByName = <String, List<String>>{};
+        for (final row in additionsIdentityResult) {
+          final name = (row[0] as String).toLowerCase();
+          final colorIdentity =
+              (row[1] as List?)?.cast<String>() ?? const <String>[];
+          final colors = (row[2] as List?)?.cast<String>() ?? const <String>[];
+          final identity = (colorIdentity.isNotEmpty ? colorIdentity : colors);
+          identityByName[name] = identity;
+        }
+
+        validAdditions = validAdditions.where((name) {
+          final identity =
+              identityByName[name.toLowerCase()] ?? const <String>[];
+          final ok = isWithinCommanderIdentity(
+            cardIdentity: identity,
+            commanderIdentity: commanderColorIdentity,
+          );
+          if (!ok) filteredByColorIdentity.add(name);
+          return ok;
+        }).toList();
+      }
+
+      // Bracket policy (intermediário): bloqueia cartas "acima do bracket" baseado no deck atual.
+      // Aplica somente em Commander/Brawl, quando bracket foi enviado.
+      final blockedByBracket = <Map<String, dynamic>>[];
+      if (bracket != null &&
+          commanders.isNotEmpty &&
+          validAdditions.isNotEmpty) {
+        // Dados atuais do deck (já temos oracle/type em allCardData + quantity)
+        final additionsInfoResult = await pool.execute(
+          Sql.named('''
+            SELECT name, type_line, oracle_text
+            FROM cards
+            WHERE name = ANY(@names)
+          '''),
+          parameters: {'names': validAdditions},
+        );
+        final additionsInfo = additionsInfoResult
+            .map((r) => {
+                  'name': r[0] as String,
+                  'type_line': r[1] as String? ?? '',
+                  'oracle_text': r[2] as String? ?? '',
+                  'quantity': 1,
+                })
+            .toList();
+
+        final decision = applyBracketPolicyToAdditions(
+          bracket: bracket,
+          currentDeckCards: allCardData,
+          additionsCardsData: additionsInfo,
+        );
+
+        blockedByBracket.addAll(decision.blocked);
+        // Modo complete pode conter repetição; para a decisão, usamos os nomes únicos do "allowed"
+        // e depois re-aplicamos mantendo repetição quando possível.
+        final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
+        validAdditions = validAdditions
+            .where((n) => allowedSet.contains(n.toLowerCase()))
+            .toList();
+      }
+
+      // Top-up determinístico no modo complete:
+      // se depois de validações/filtros ainda faltarem cartas para atingir o target, completa com básicos.
+      final additionsDetailed = <Map<String, dynamic>>[];
+      if (isComplete) {
+        final targetAdditions = (jsonResponse['target_additions'] as int?) ?? 0;
+        final desired =
+            targetAdditions > 0 ? targetAdditions : validAdditions.length;
+
+        // Agrega as adições atuais por nome (quantidade 1 por ocorrência)
+        final countsByName = <String, int>{};
+        final basicNamesLower =
+            _basicLandNamesForIdentity(commanderColorIdentity)
+                .map((e) => e.toLowerCase())
+                .toSet();
+        for (final n in validAdditions) {
+          final lower = n.toLowerCase();
+          final current = countsByName[n] ?? 0;
+          final isBasic = basicNamesLower.contains(lower) || lower == 'wastes';
+          if (!isBasic &&
+              (deckFormat.toLowerCase() == 'commander' ||
+                  deckFormat.toLowerCase() == 'brawl') &&
+              current >= 1) {
+            continue;
+          }
+          countsByName[n] = current + 1;
+        }
+
+        // Se faltar, adiciona básicos para preencher
+        var missing =
+            desired - countsByName.values.fold<int>(0, (a, b) => a + b);
+        Map<String, String> basicsWithIds = const {};
+        if (missing > 0) {
+          final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+          basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+
+          if (basicsWithIds.isNotEmpty) {
+            final keys = basicsWithIds.keys.toList();
+            var i = 0;
+            while (missing > 0) {
+              final name = keys[i % keys.length];
+              countsByName[name] = (countsByName[name] ?? 0) + 1;
+              missing--;
+              i++;
+            }
+          }
+        }
+
+        // Converte para additions_detailed com card_id/quantity
+        for (final entry in countsByName.entries) {
+          final v = validByNameLower[entry.key.toLowerCase()];
+          final id =
+              v?['id']?.toString() ?? basicsWithIds[entry.key]?.toString();
+          final name = v?['name']?.toString() ?? entry.key;
+          if (id == null || id.isEmpty) continue;
+          additionsDetailed.add({
+            'name': name,
+            'card_id': id,
+            'quantity': entry.value,
+          });
+        }
+
+        // Mantém additions como lista simples (única) para UI; o app aplica via additions_detailed.
+        validAdditions =
+            additionsDetailed.map((e) => e['name'] as String).toList();
+      }
+
+      // Re-aplicar equilíbrio após validação
+      // FILOSOFIA: Quando additions < removals, a IA deve SUGERIR NOVAS CARTAS
+      // de sinergia — NÃO preencher com lands genéricos. O propósito é OTIMIZAR.
+
+      // ═══════════════════════════════════════════════════════════
+      // PROTEÇÃO DE TERRENOS (sync optimize): impedir remoção de lands quando
+      // o deck já tem poucos terrenos. Sem isso, um deck com 24 lands pode ficar com 20.
+      // ═══════════════════════════════════════════════════════════
+      if (!isComplete) {
+        final currentLandCount = allCardData.fold<int>(0, (sum, c) {
+          final type = ((c['type_line'] as String?) ?? '').toLowerCase();
+          if (!type.contains('land')) return sum;
+          return sum + ((c['quantity'] as int?) ?? 1);
+        });
+        const minSafeLands = 28;
+
+        if (currentLandCount <= minSafeLands + 3) {
+          // Bloquear remoções de terrenos
+          final landRemovalsBefore = validRemovals.length;
+          final landNamesInDeck = <String, String>{};
+          for (final card in allCardData) {
+            final type = ((card['type_line'] as String?) ?? '').toLowerCase();
+            if (type.contains('land')) {
+              landNamesInDeck[((card['name'] as String?) ?? '').toLowerCase()] =
+                  (card['type_line'] as String?) ?? '';
+            }
+          }
+
+          validRemovals = validRemovals.where((name) {
+            return !landNamesInDeck.containsKey(name.toLowerCase());
+          }).toList();
+
+          final landBlockedCount = landRemovalsBefore - validRemovals.length;
+          if (landBlockedCount > 0) {
+            Log.d(
+                '⛔ Land protection: bloqueou $landBlockedCount remoções de terrenos (deck tem $currentLandCount lands, mínimo seguro=$minSafeLands)');
+          }
+        }
+      }
+
+      if (!isComplete && validRemovals.length != validAdditions.length) {
+        Log.d('Re-balanceamento pós-filtros:');
+        Log.d(
+            '  Antes: removals=${validRemovals.length}, additions=${validAdditions.length}');
+
+        if (validAdditions.length < validRemovals.length) {
+          // CORREÇÃO REAL: Re-consultar a IA para cartas substitutas
+          final missingCount = validRemovals.length - validAdditions.length;
+          Log.d(
+              '  Faltam $missingCount adições - consultando IA para substitutas sinérgicas');
+
+          // Montar lista de cartas a excluir (já existentes + já sugeridas + filtradas)
+          final excludeNames = <String>{
+            ...deckNamesLower,
+            ...validAdditions.map((n) => n.toLowerCase()),
+            ...filteredByColorIdentity.map((n) => n.toLowerCase()),
+          };
+
+          // Categorias das cartas removidas para pedir substitutas do mesmo tipo funcional
+          final removedButUnmatched =
+              validRemovals.sublist(validAdditions.length);
+
+          try {
+            final replacementResult = await _findSynergyReplacements(
+              pool: pool,
+              commanders: commanders,
+              commanderColorIdentity: commanderColorIdentity,
+              targetArchetype: targetArchetype,
+              bracket: bracket,
+              keepTheme: keepTheme,
+              detectedTheme: themeProfile.theme,
+              coreCards: themeProfile.coreCards,
+              missingCount: missingCount,
+              removedCards: removedButUnmatched,
+              excludeNames: excludeNames,
+              allCardData: allCardData,
+              preferredNames: optimizeCommanderPriorityNames
+                  .map((name) => name.toLowerCase())
+                  .toSet(),
+            );
+
+            if (replacementResult.isNotEmpty) {
+              for (final replacement in replacementResult) {
+                final name = replacement['name'] as String;
+                final id = replacement['id'] as String;
+                validAdditions.add(name);
+                validByNameLower[name.toLowerCase()] = {
+                  'id': id,
+                  'name': name,
+                };
+              }
+              Log.d(
+                  '  IA sugeriu ${replacementResult.length} substitutas sinérgicas');
+            }
+
+            // Se AINDA faltar (IA não conseguiu preencher tudo), TRUNCAR remoções
+            // para manter equilíbrio. NÃO preencher com básicos em modo optimize —
+            // trocar spells por lands é degradação, não otimização.
+            if (validAdditions.length < validRemovals.length) {
+              final stillMissing = validRemovals.length - validAdditions.length;
+              Log.d(
+                  '  Ainda faltam $stillMissing - truncando remoções (não preencher com básicos em optimize)');
+              validRemovals =
+                  validRemovals.take(validAdditions.length).toList();
+            }
+          } catch (e) {
+            Log.w('Falha ao buscar substitutas IA: $e - usando fallback');
+            // Fallback: truncar remoções para não perder cartas
+            validRemovals = validRemovals.take(validAdditions.length).toList();
+          }
+        } else {
+          // Mais adições que remoções: truncar adições
+          validAdditions = validAdditions.take(validRemovals.length).toList();
+        }
+
+        Log.d(
+            '  Depois: removals=${validRemovals.length}, additions=${validAdditions.length}');
+      }
+
+      if (!isComplete && (validRemovals.isEmpty || validAdditions.isEmpty)) {
+        return respondWithOptimizeTelemetry(
+          statusCode: HttpStatus.unprocessableEntity,
+          body: {
+            'error':
+                'A otimizacao nao encontrou trocas acionaveis apos os filtros de seguranca.',
+            'quality_error': {
+              'code': 'OPTIMIZE_NO_ACTIONABLE_SWAPS',
+              'message':
+                  'As sugestoes remanescentes foram bloqueadas por tema, bracket, protecao de mana ou qualidade funcional.',
+              'blocked_by_theme': blockedByTheme,
+              'blocked_by_bracket': blockedByBracket,
+            },
+            'mode': 'optimize',
+            'removals': validRemovals,
+            'additions': validAdditions,
+            'deck_analysis': deckAnalysis,
+          },
+          removalsOverride: validRemovals,
+          additionsOverride: validAdditions,
+          blockedByColorIdentityOverride: filteredByColorIdentity,
+          blockedByBracketOverride: blockedByBracket,
+        );
+      }
+
+      // --- VERIFICAÇÃO PÓS-OTIMIZAÇÃO (Virtual Deck Analysis) ---
+      // Simular o deck como ficaria se as mudanças fossem aplicadas e re-analisar
+      Map<String, dynamic>? postAnalysis;
+      List<String> validationWarnings = [];
+
+      // ═══════════════════════════════════════════════════════════
+      // VALIDAÇÃO PÓS-PROCESSAMENTO: Color Identity + EDHREC + Tema
+      // ═══════════════════════════════════════════════════════════
+
+      // 1. Color Identity Warning (se IA sugeriu cartas inválidas)
+      if (filteredByColorIdentity.isNotEmpty) {
+        validationWarnings.add(
+            '⚠️ ${filteredByColorIdentity.length} carta(s) sugerida(s) pela IA foram removidas por violar a identidade de cor do commander: ${filteredByColorIdentity.take(3).join(", ")}${filteredByColorIdentity.length > 3 ? "..." : ""}');
+      }
+
+      // 2. Validação EDHREC: verificar se additions têm sinergia comprovada
+      EdhrecCommanderData? edhrecValidationData;
+      List<String> additionsNotInEdhrec = [];
+      if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
+        try {
+          final edhrecService = optimizer.edhrecService;
+          edhrecValidationData = await edhrecService
+              .fetchCommanderData(commanders.firstOrNull ?? "");
+
+          if (edhrecValidationData != null &&
+              edhrecValidationData.topCards.isNotEmpty) {
+            for (final addition in validAdditions) {
+              final card = edhrecValidationData.findCard(addition);
+              if (card == null) {
+                additionsNotInEdhrec.add(addition);
+              }
+            }
+
+            if (additionsNotInEdhrec.isNotEmpty) {
+              final percent =
+                  (additionsNotInEdhrec.length / validAdditions.length * 100)
+                      .toStringAsFixed(0);
+              if (additionsNotInEdhrec.length > validAdditions.length * 0.5) {
+                validationWarnings.add(
+                    '⚠️ ${additionsNotInEdhrec.length} ($percent%) das cartas sugeridas NÃO aparecem nos dados EDHREC de ${commanders.firstOrNull ?? ""}. Isso pode indicar baixa sinergia: ${additionsNotInEdhrec.take(3).join(", ")}${additionsNotInEdhrec.length > 3 ? "..." : ""}');
+              } else if (additionsNotInEdhrec.length >= 3) {
+                validationWarnings.add(
+                    '💡 ${additionsNotInEdhrec.length} carta(s) sugerida(s) não estão nos dados EDHREC - podem ser inovadoras ou de baixa sinergia.');
+              }
+            }
+          }
+        } catch (e) {
+          Log.w('EDHREC validation failed (non-blocking): $e');
+        }
+      }
+
+      // 3. Comparação de Tema: verificar se tema detectado corresponde aos temas EDHREC
+      if (edhrecValidationData != null &&
+          edhrecValidationData.themes.isNotEmpty) {
+        final detectedThemeLower = targetArchetype.toLowerCase();
+        final edhrecThemesLower =
+            edhrecValidationData.themes.map((t) => t.toLowerCase()).toList();
+
+        // Verificar se o tema detectado tem correspondência nos temas EDHREC
+        bool themeMatch = false;
+        for (final edhrecTheme in edhrecThemesLower) {
+          if (detectedThemeLower.contains(edhrecTheme) ||
+              edhrecTheme.contains(detectedThemeLower)) {
+            themeMatch = true;
+            break;
+          }
+        }
+
+        if (!themeMatch) {
+          validationWarnings.add(
+              '� Tema detectado "$targetArchetype" não corresponde aos temas populares do EDHREC (${edhrecValidationData.themes.take(3).join(", ")}). O sistema está usando abordagem HÍBRIDA: 70% cartas EDHREC + 30% cartas do seu tema para respeitar sua ideia.');
+        }
+      }
+
+      ValidationReport? optimizationValidationReport;
+      final qualityGateWarnings = <String>[];
+
+      if (validAdditions.isNotEmpty) {
+        try {
+          // 1. Buscar dados completos das cartas sugeridas (para análise de mana/tipo)
+          // Usar nomes corretos do DB (via validByNameLower) para evitar problemas de case
+          final correctedAdditionNames = validAdditions.map((n) {
+            final v = validByNameLower[n.toLowerCase()];
+            return (v?['name'] as String?) ?? n;
+          }).toList();
+          final additionsDataResult = await pool.execute(
+            Sql.named('''
+              SELECT DISTINCT ON (LOWER(name))
+                     name, type_line, mana_cost, colors, 
+                     COALESCE(
+                       (SELECT SUM(
+                         CASE 
+                           WHEN m[1] ~ '^[0-9]+\$' THEN m[1]::int
+                           WHEN m[1] IN ('W','U','B','R','G','C') THEN 1
+                           WHEN m[1] = 'X' THEN 0
+                           ELSE 1
+                         END
+                       ) FROM regexp_matches(mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
+                       0
+                     ) as cmc,
+                     oracle_text
+              FROM cards 
+              WHERE LOWER(name) = ANY(@names)
+              ORDER BY LOWER(name), name
+            '''),
+            parameters: {
+              'names':
+                  correctedAdditionNames.map((n) => n.toLowerCase()).toList()
+            },
+          );
+
+          var additionsData = additionsDataResult
+              .map((row) => {
+                    'name': (row[0] as String?) ?? '',
+                    'type_line': (row[1] as String?) ?? '',
+                    'mana_cost': (row[2] as String?) ?? '',
+                    'colors': (row[3] as List?)?.cast<String>() ?? [],
+                    'cmc': (row[4] as num?)?.toDouble() ?? 0.0,
+                    'oracle_text': (row[5] as String?) ?? '',
+                  })
+              .toList();
+
+          if (!isComplete) {
+            final gateResult = filterUnsafeOptimizeSwapsByCardData(
+              removals: validRemovals,
+              additions: validAdditions,
+              originalDeck: allCardData,
+              additionsData: additionsData,
+              archetype: effectiveOptimizeArchetype,
+            );
+
+            if (gateResult.changed) {
+              validRemovals = gateResult.removals;
+              validAdditions = gateResult.additions;
+              qualityGateWarnings.add(
+                '🔒 Gate de qualidade removeu ${gateResult.droppedReasons.length} troca(s) insegura(s) antes da resposta final.',
+              );
+              qualityGateWarnings.addAll(
+                gateResult.droppedReasons.map((reason) => '🔒 $reason'),
+              );
+
+              final safeAdditionNames =
+                  validAdditions.map((name) => name.toLowerCase()).toSet();
+              additionsData = additionsData.where((card) {
+                final name = (card['name'] as String?)?.toLowerCase() ?? '';
+                return safeAdditionNames.contains(name);
+              }).toList();
+            }
+
+            if (validRemovals.isEmpty || validAdditions.isEmpty) {
+              if (shouldRetryOptimizeWithAiFallback(
+                deterministicFirstEnabled: deterministicFirstEnabled,
+                fallbackAlreadyAttempted: optimizeFallbackAttempted,
+                strategySource: jsonResponse['strategy_source']?.toString(),
+                qualityErrorCode: 'OPTIMIZE_NO_SAFE_SWAPS',
+                isComplete: isComplete,
+              )) {
+                optimizeFallbackAttempted = true;
+                final aiFallbackResponse = await runAiOptimizeAttempt(
+                  trigger: 'deterministic_rejected_no_safe_swaps',
+                );
+                if (aiFallbackResponse != null) {
+                  Log.i(
+                    'Deterministic-first caiu em NO_SAFE_SWAPS; reexecutando optimize via IA.',
+                  );
+                  jsonResponse = aiFallbackResponse;
+                  continue optimizeAttemptLoop;
+                }
+              }
+
+              return respondWithOptimizeTelemetry(
+                statusCode: HttpStatus.unprocessableEntity,
+                body: {
+                  'error':
+                      'Nenhuma troca segura restou apos o gate de qualidade da otimizacao.',
+                  'quality_error': {
+                    'code': 'OPTIMIZE_NO_SAFE_SWAPS',
+                    'message':
+                        'As trocas sugeridas pioravam funcao, curva ou consistencia do deck.',
+                    'dropped_swaps': qualityGateWarnings,
+                  },
+                  'mode': 'optimize',
+                  'removals': validRemovals,
+                  'additions': validAdditions,
+                },
+                removalsOverride: validRemovals,
+                additionsOverride: validAdditions,
+                validationWarningsOverride: qualityGateWarnings,
+                blockedByColorIdentityOverride: filteredByColorIdentity,
+                blockedByBracketOverride: blockedByBracket,
+              );
+            }
+          }
+
+          final additionsForAnalysis = buildOptimizeAdditionEntries(
+            requestedAdditions: validAdditions,
+            additionsData: additionsData,
+          );
+          final virtualDeck = buildVirtualDeckForAnalysis(
+            originalDeck: allCardData,
+            removals: validRemovals,
+            additions: additionsForAnalysis,
+          );
+
+          // 3. Rodar Análise no Deck Virtual
+          final postAnalyzer =
+              DeckArchetypeAnalyzer(virtualDeck, deckColors.toList());
+          postAnalysis = postAnalyzer.generateAnalysis();
+
+          // 4. Comparar Antes vs Depois — VALIDAÇÃO QUALITATIVA REAL
+          final preManaAssessment =
+              deckAnalysis['mana_base_assessment'] as String? ?? '';
+          final postManaAssessment =
+              postAnalysis['mana_base_assessment'] as String? ?? '';
+          final preManaIssues = preManaAssessment.contains('Falta mana');
+          final postManaIssues = postManaAssessment.contains('Falta mana');
+
+          if (!preManaIssues && postManaIssues) {
+            validationWarnings.add(
+                '⚠️ ATENÇÃO: As sugestões da IA podem piorar sua base de mana.');
+          }
+
+          final preAvgCmc = deckAnalysis['average_cmc'] as String? ?? '0';
+          final postAvgCmc = postAnalysis['average_cmc'] as String? ?? '0';
+          final preCurve = double.tryParse(preAvgCmc) ?? 0.0;
+          final postCurve = double.tryParse(postAvgCmc) ?? 0.0;
+
+          if (effectiveOptimizeArchetype.toLowerCase() == 'aggro' &&
+              postCurve > preCurve) {
+            validationWarnings.add(
+                '⚠️ ATENÇÃO: O deck está ficando mais lento (CMC aumentou), o que é ruim para Aggro.');
+          }
+
+          // 5. ANÁLISE DE QUALIDADE DAS TROCAS (Power Level Assessment)
+          final preTypes =
+              deckAnalysis['type_distribution'] as Map<String, dynamic>? ?? {};
+          final postTypes =
+              postAnalysis['type_distribution'] as Map<String, dynamic>? ?? {};
+
+          // Verificar se a otimização não desbalanceou a distribuição de tipos
+          final preLands = (preTypes['lands'] as int?) ?? 0;
+          final postLands = (postTypes['lands'] as int?) ?? 0;
+          if (postLands < preLands - 3) {
+            validationWarnings.add(
+                '⚠️ A otimização removeu muitos terrenos ($preLands → $postLands). Isso pode causar problemas de mana.');
+          }
+
+          // Verificar se a curva melhorou para o arquétipo
+          if (effectiveOptimizeArchetype.toLowerCase() == 'control' &&
+              postCurve < preCurve - 0.5) {
+            validationWarnings.add(
+                '💡 O CMC médio diminuiu significativamente ($preAvgCmc → $postAvgCmc). Para Control, isso pode remover respostas de custo alto que são importantes.');
+          }
+
+          // Gerar resumo de melhoria
+          final improvements = <String>[];
+          if (postCurve < preCurve &&
+              effectiveOptimizeArchetype.toLowerCase() != 'control') {
+            improvements.add('CMC médio otimizado: $preAvgCmc → $postAvgCmc');
+          }
+          if (preManaIssues && !postManaIssues) {
+            improvements.add('Base de mana corrigida');
+          }
+          if ((postTypes['instants'] as int? ?? 0) >
+              (preTypes['instants'] as int? ?? 0)) {
+            improvements.add('Mais interação instant-speed adicionada');
+          }
+
+          if (improvements.isNotEmpty) {
+            postAnalysis['improvements'] = improvements;
+          }
+
+          // ═══════════════════════════════════════════════════════════
+          // 6. VALIDAÇÃO AUTOMÁTICA (Monte Carlo + Funcional + Critic IA)
+          // ═══════════════════════════════════════════════════════════
+          try {
+            final validator = OptimizationValidator(openAiKey: apiKey);
+            final validationReport = await validator.validate(
+              originalDeck: allCardData,
+              optimizedDeck: virtualDeck,
+              removals: validRemovals,
+              additions: validAdditions,
+              commanders: commanders,
+              archetype: effectiveOptimizeArchetype,
+            );
+
+            postAnalysis['validation'] = validationReport.toJson();
+            optimizationValidationReport = validationReport;
+
+            // Adicionar warnings do validador
+            for (final w in validationReport.warnings) {
+              validationWarnings.add(w);
+            }
+
+            // Se reprovado, alertar
+            if (validationReport.verdict == 'reprovado') {
+              validationWarnings.insert(0,
+                  '🚫 VALIDAÇÃO: As trocas sugeridas NÃO passaram na validação automática (score: ${validationReport.score}/100).');
+            }
+
+            Log.d(
+                'Validation score: ${validationReport.score}/100 verdict: ${validationReport.verdict}');
+          } catch (validationError) {
+            Log.e('Validation failed: $validationError');
+            return respondWithOptimizeTelemetry(
+              statusCode: HttpStatus.internalServerError,
+              body: {
+                'error':
+                    'Falha interna ao validar a qualidade final da otimizacao.',
+                'quality_error': {
+                  'code': 'OPTIMIZE_VALIDATION_FAILED',
+                  'message':
+                      'A validacao automatica da otimizacao falhou. A resposta foi bloqueada para evitar retornar um resultado nao verificado.',
+                  'details': '$validationError',
+                },
+                'mode': 'optimize',
+                'removals': validRemovals,
+                'additions': validAdditions,
+                'deck_analysis': deckAnalysis,
+                'post_analysis': postAnalysis,
+                'validation_warnings': validationWarnings,
+              },
+              postAnalysisOverride: postAnalysis,
+              removalsOverride: validRemovals,
+              additionsOverride: validAdditions,
+              validationWarningsOverride: validationWarnings,
+              blockedByColorIdentityOverride: filteredByColorIdentity,
+              blockedByBracketOverride: blockedByBracket,
+            );
+          }
+        } catch (e) {
+          Log.e('Erro na verificação pós-otimização: $e');
+          return respondWithOptimizeTelemetry(
+            statusCode: HttpStatus.internalServerError,
+            body: {
+              'error':
+                  'Falha interna durante a verificacao final da otimizacao.',
+              'quality_error': {
+                'code': 'OPTIMIZE_POST_ANALYSIS_FAILED',
+                'message':
+                    'A verificacao final falhou e a resposta foi bloqueada para evitar retornar uma otimizacao sem checagem completa.',
+                'details': '$e',
+              },
+              'mode': 'optimize',
+              'removals': validRemovals,
+              'additions': validAdditions,
+              'deck_analysis': deckAnalysis,
+              'post_analysis': postAnalysis,
+              'validation_warnings': validationWarnings,
+            },
+            postAnalysisOverride: postAnalysis,
+            removalsOverride: validRemovals,
+            additionsOverride: validAdditions,
+            validationWarningsOverride: validationWarnings,
+            blockedByColorIdentityOverride: filteredByColorIdentity,
+            blockedByBracketOverride: blockedByBracket,
+          );
+        }
+      }
+
+      if (qualityGateWarnings.isNotEmpty) {
+        validationWarnings.insertAll(0, qualityGateWarnings);
+      }
+
+      if (!isComplete && optimizationValidationReport != null) {
+        final postAnalysisMap = postAnalysis ?? const <String, dynamic>{};
+        final rejectionReasons = buildOptimizationRejectionReasons(
+          validationReport: optimizationValidationReport,
+          archetype: effectiveOptimizeArchetype,
+          preCurve:
+              double.tryParse('${deckAnalysis['average_cmc'] ?? '0'}') ?? 0.0,
+          postCurve:
+              double.tryParse('${postAnalysisMap['average_cmc'] ?? '0'}') ??
+                  0.0,
+          preManaAssessment:
+              deckAnalysis['mana_base_assessment']?.toString() ?? '',
+          postManaAssessment:
+              postAnalysisMap['mana_base_assessment']?.toString() ?? '',
+        );
+        final hardQualityRejected =
+            optimizationValidationReport.verdict != 'aprovado' ||
+                optimizationValidationReport.score < 70;
+        final effectiveRejectionReasons = rejectionReasons.isNotEmpty
+            ? rejectionReasons
+            : (hardQualityRejected
+                ? <String>[
+                    'A validação final não fechou como "aprovado" (score ${optimizationValidationReport.score}/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.',
+                  ]
+                : const <String>[]);
+
+        if (hardQualityRejected || effectiveRejectionReasons.isNotEmpty) {
+          if (shouldRetryOptimizeWithAiFallback(
+            deterministicFirstEnabled: deterministicFirstEnabled,
+            fallbackAlreadyAttempted: optimizeFallbackAttempted,
+            strategySource: jsonResponse['strategy_source']?.toString(),
+            qualityErrorCode: 'OPTIMIZE_QUALITY_REJECTED',
+            isComplete: isComplete,
+          )) {
+            optimizeFallbackAttempted = true;
+            final aiFallbackResponse = await runAiOptimizeAttempt(
+              trigger: 'deterministic_rejected_quality_gate',
+            );
+            if (aiFallbackResponse != null) {
+              Log.i(
+                'Deterministic-first caiu no gate final de qualidade; reexecutando optimize via IA.',
+              );
+              jsonResponse = aiFallbackResponse;
+              continue optimizeAttemptLoop;
+            }
+          }
+
+          return respondWithOptimizeTelemetry(
+            statusCode: HttpStatus.unprocessableEntity,
+            body: {
+              'error':
+                  'A otimizacao sugerida nao passou no gate final de qualidade.',
+              'quality_error': {
+                'code': 'OPTIMIZE_QUALITY_REJECTED',
+                'message':
+                    'As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.',
+                'reasons': effectiveRejectionReasons,
+                'validation': optimizationValidationReport.toJson(),
+              },
+              'mode': 'optimize',
+              'removals': validRemovals,
+              'additions': validAdditions,
+              'deck_analysis': deckAnalysis,
+              'post_analysis': postAnalysis,
+              'validation_warnings': validationWarnings,
+            },
+            postAnalysisOverride: postAnalysis,
+            validationReport: optimizationValidationReport,
+            removalsOverride: validRemovals,
+            additionsOverride: validAdditions,
+            validationWarningsOverride: validationWarnings,
+            blockedByColorIdentityOverride: filteredByColorIdentity,
+            blockedByBracketOverride: blockedByBracket,
+          );
+        }
+      }
+
+      final responseValidationJson =
+          (postAnalysis?['validation'] as Map?)?.cast<String, dynamic>();
+      if (!isComplete && responseValidationJson != null) {
+        final responseValidationScore =
+            (responseValidationJson['validation_score'] as num?)?.toInt() ?? 0;
+        final responseValidationVerdict =
+            responseValidationJson['verdict']?.toString() ?? '';
+
+        if (responseValidationVerdict != 'aprovado' ||
+            responseValidationScore < 70) {
+          final serializedValidationReasons = optimizationValidationReport !=
+                  null
+              ? buildOptimizationRejectionReasons(
+                  validationReport: optimizationValidationReport,
+                  archetype: effectiveOptimizeArchetype,
+                  preCurve: double.tryParse(
+                        '${deckAnalysis['average_cmc'] ?? '0'}',
+                      ) ??
+                      0.0,
+                  postCurve: double.tryParse(
+                          '${postAnalysis?['average_cmc'] ?? '0'}') ??
+                      0.0,
+                  preManaAssessment:
+                      deckAnalysis['mana_base_assessment']?.toString() ?? '',
+                  postManaAssessment:
+                      postAnalysis?['mana_base_assessment']?.toString() ?? '',
+                )
+              : <String>[
+                  'A validação final não fechou como "aprovado" (score $responseValidationScore/100). Optimize só retorna sucesso quando a melhoria é aprovada sem ressalvas.',
+                ];
+
+          return respondWithOptimizeTelemetry(
+            statusCode: HttpStatus.unprocessableEntity,
+            body: {
+              'error':
+                  'A otimizacao sugerida nao passou no gate final de qualidade.',
+              'quality_error': {
+                'code': 'OPTIMIZE_QUALITY_REJECTED',
+                'message':
+                    'As trocas foram recusadas porque degradam funcoes criticas ou nao atingem qualidade minima.',
+                'reasons': serializedValidationReasons,
+                'validation': responseValidationJson,
+              },
+              'mode': 'optimize',
+              'removals': validRemovals,
+              'additions': validAdditions,
+              'deck_analysis': deckAnalysis,
+              'post_analysis': postAnalysis,
+              'validation_warnings': validationWarnings,
+            },
+            postAnalysisOverride: postAnalysis,
+            validationReport: optimizationValidationReport,
+            removalsOverride: validRemovals,
+            additionsOverride: validAdditions,
+            validationWarningsOverride: validationWarnings,
+            blockedByColorIdentityOverride: filteredByColorIdentity,
+            blockedByBracketOverride: blockedByBracket,
+          );
+        }
+      }
+
+      // Preparar resposta com avisos sobre cartas inválidas
+      final invalidCards = validation['invalid'] as List<String>;
+      final suggestions =
+          validation['suggestions'] as Map<String, List<String>>;
+
+      Map<String, dynamic>? persistedFallbackAggregate;
+      try {
+        await _recordOptimizeFallbackTelemetry(
+          pool: pool,
+          userId: userId,
+          deckId: deckId,
+          mode: jsonResponse['mode']?.toString() ?? 'optimize',
+          recognizedFormat: recognizedSuggestionFormat,
+          triggered: emptySuggestionFallbackTriggered,
+          applied: emptySuggestionFallbackApplied,
+          noCandidate: emptySuggestionFallbackTriggered &&
+              emptySuggestionFallbackCandidateCount == 0,
+          noReplacement: emptySuggestionFallbackTriggered &&
+              emptySuggestionFallbackCandidateCount > 0 &&
+              emptySuggestionFallbackReplacementCount == 0,
+          candidateCount: emptySuggestionFallbackCandidateCount,
+          replacementCount: emptySuggestionFallbackReplacementCount,
+          pairCount: emptySuggestionFallbackPairCount,
+        );
+        persistedFallbackAggregate =
+            await _loadPersistedEmptyFallbackAggregate(pool);
+      } catch (e) {
+        Log.w('Persisted fallback telemetry unavailable: $e');
+      }
+
+      final preCmc =
+          double.tryParse('${deckAnalysis['average_cmc'] ?? '0'}') ?? 0.0;
+      final postCmc = postAnalysis == null
+          ? preCmc
+          : (double.tryParse('${postAnalysis['average_cmc'] ?? preCmc}') ??
+              preCmc);
+
+      final responseBody = {
+        'mode': jsonResponse['mode'],
+        'strategy_source': jsonResponse['strategy_source'] ??
+            (deterministicFirstEnabled ? 'deterministic_first' : 'ai_primary'),
+        if (jsonResponse['fallback_trigger'] != null)
+          'fallback_trigger': jsonResponse['fallback_trigger'],
+        'constraints': {
+          'keep_theme': keepTheme,
+        },
+        'cache': {
+          'hit': false,
+          'cache_key': cacheKey,
+        },
+        'preferences': {
+          'memory_applied': !hasBracketOverride || !hasKeepThemeOverride,
+          'keep_theme': keepTheme,
+          'preferred_bracket': userPreferences['preferred_bracket'],
+        },
+        'theme': themeProfile.toJson(),
+        'removals': validRemovals,
+        'additions': validAdditions,
+        'reasoning': _normalizeReasoning(jsonResponse['reasoning']),
+        'deck_analysis': deckAnalysis,
+        'post_analysis':
+            postAnalysis, // Retorna a análise futura para o front mostrar
+        'validation_warnings': validationWarnings,
+        'bracket': bracket,
+        'target_additions': jsonResponse['target_additions'],
+        'optimize_diagnostics': {
+          'empty_suggestions_fallback': {
+            'triggered': emptySuggestionFallbackTriggered,
+            'applied': emptySuggestionFallbackApplied,
+            'candidate_count': emptySuggestionFallbackCandidateCount,
+            'replacement_count': emptySuggestionFallbackReplacementCount,
+            'pair_count': emptySuggestionFallbackPairCount,
+          },
+          'empty_suggestions_fallback_aggregate':
+              _buildEmptyFallbackAggregate(),
+          if (persistedFallbackAggregate != null)
+            'empty_suggestions_fallback_aggregate_persisted':
+                persistedFallbackAggregate,
+        },
+        // Validação EDHREC
+        if (edhrecValidationData != null)
+          'edhrec_validation': {
+            'commander': commanders.firstOrNull ?? "",
+            'deck_count': edhrecValidationData.deckCount,
+            'themes': edhrecValidationData.themes,
+            'additions_validated':
+                validAdditions.length - additionsNotInEdhrec.length,
+            'additions_not_in_edhrec': additionsNotInEdhrec,
+          },
+      };
+
+      // Gerar additions_detailed apenas para cartas com card_id válido
+      responseBody['additions_detailed'] = isComplete
+          ? additionsDetailed
+              .whereType<Map<String, dynamic>>()
+              .map((entry) {
+                final name = entry['name']?.toString() ?? '';
+                final cardId = entry['card_id']?.toString() ?? '';
+                if (name.isEmpty || cardId.isEmpty) return null;
+                return _buildRecommendationDetail(
+                  type: 'add',
+                  name: name,
+                  cardId: cardId,
+                  quantity: (entry['quantity'] as int?) ?? 1,
+                  targetArchetype: targetArchetype,
+                  confidenceLevel: themeProfile.confidence,
+                  cmcBefore: preCmc,
+                  cmcAfter: postCmc,
+                  keepTheme: keepTheme,
+                );
+              })
+              .where((e) => e != null)
+              .toList()
+          : validAdditions
+              .map((name) {
+                final v = validByNameLower[name.toLowerCase()];
+                if (v == null || v['id'] == null) return null;
+                return _buildRecommendationDetail(
+                  type: 'add',
+                  name: '${v['name']}',
+                  cardId: '${v['id']}',
+                  quantity: 1,
+                  targetArchetype: targetArchetype,
+                  confidenceLevel: themeProfile.confidence,
+                  cmcBefore: preCmc,
+                  cmcAfter: postCmc,
+                  keepTheme: keepTheme,
+                );
+              })
+              .where((e) => e != null)
+              .toList();
+
+      // Gerar removals_detailed apenas para cartas com card_id válido
+      responseBody['removals_detailed'] = validRemovals
+          .map((name) {
+            final v = validByNameLower[name.toLowerCase()];
+            if (v == null || v['id'] == null) return null;
+            return _buildRecommendationDetail(
+              type: 'remove',
+              name: '${v['name']}',
+              cardId: '${v['id']}',
+              quantity: 1,
+              targetArchetype: targetArchetype,
+              confidenceLevel: themeProfile.confidence,
+              cmcBefore: preCmc,
+              cmcAfter: postCmc,
+              keepTheme: keepTheme,
+            );
+          })
+          .where((e) => e != null)
+          .toList();
+
+      responseBody['recommendations'] = [
+        ...(responseBody['removals_detailed'] as List),
+        ...(responseBody['additions_detailed'] as List),
+      ];
+
+      // CRÍTICO: Balancear additions/removals detailed para manter contagem igual
+      final addDet = responseBody['additions_detailed'] as List;
+      final remDet = responseBody['removals_detailed'] as List;
+
+      // DEBUG: Log detalhado para rastrear desbalanceamentos
+      Log.d('Balanceamento final:');
+      Log.d('  validAdditions.length = ${validAdditions.length}');
+      Log.d('  validRemovals.length = ${validRemovals.length}');
+      Log.d('  additions_detailed.length = ${addDet.length}');
+      Log.d('  removals_detailed.length = ${remDet.length}');
+      Log.d('  mode = ${jsonResponse['mode']}');
+
+      // Verificar cartas que NÃO foram mapeadas para card_id
+      if (addDet.length != validAdditions.length) {
+        Log.w('Algumas adições não foram mapeadas para card_id!');
+        for (final name in validAdditions) {
+          final v = validByNameLower[name.toLowerCase()];
+          if (v == null || v['id'] == null) {
+            Log.w(
+                '  Carta sem card_id: "$name" (key: "${name.toLowerCase()}")');
+          }
+        }
+      }
+
+      // BALANCEAMENTO FINAL (detailed) - Agora as listas já devem estar equilibradas
+      // pós re-chamada à IA. Este bloco só age se o detailed ainda tiver gap.
+      if (addDet.length < remDet.length && !isComplete) {
+        final missingDetailed = remDet.length - addDet.length;
+        Log.d(
+            '  Gap em detailed: faltam $missingDetailed - construindo de validAdditions');
+
+        // Tentar construir detailed para adições que ainda não estão nele
+        final existingNames = addDet
+            .map((e) => (e as Map)['name']?.toString().toLowerCase() ?? '')
+            .toSet();
+        final newDetailed = <Map<String, dynamic>>[];
+        for (final name in validAdditions) {
+          if (existingNames.contains(name.toLowerCase())) continue;
+          final v = validByNameLower[name.toLowerCase()];
+          if (v != null && v['id'] != null) {
+            newDetailed.add({
+              'name': v['name'] ?? name,
+              'card_id': v['id'],
+              'quantity': 1,
+            });
+            existingNames.add(name.toLowerCase());
+          }
+        }
+        if (newDetailed.isNotEmpty) {
+          responseBody['additions_detailed'] = [...addDet, ...newDetailed];
+        }
+
+        // Se AINDA faltar, truncar remoções como último recurso
+        final finalAddDet2 = responseBody['additions_detailed'] as List;
+        if (finalAddDet2.length < remDet.length) {
+          responseBody['removals_detailed'] =
+              remDet.take(finalAddDet2.length).toList();
+          responseBody['removals'] =
+              validRemovals.take(finalAddDet2.length).toList();
+        }
+      } else if (addDet.length > remDet.length && !isComplete) {
+        Log.d('  Truncando adições extras');
+        responseBody['additions_detailed'] =
+            addDet.take(remDet.length).toList();
+        responseBody['additions'] = validAdditions.take(remDet.length).toList();
+      }
+
+      // Log final
+      final finalAddDet = responseBody['additions_detailed'] as List;
+      final finalRemDet = responseBody['removals_detailed'] as List;
+      Log.d(
+          '  Final: additions_detailed=${finalAddDet.length}, removals_detailed=${finalRemDet.length}');
+
+      // ═══════════════════════════════════════════════════════════
+      // VALIDAÇÃO FINAL: Garantir integridade do deck resultante
+      // ═══════════════════════════════════════════════════════════
+      if (!isComplete) {
+        // 1. Verificar que nenhuma adição é de carta que já existe no deck (exceto basics em formatos não-Commander)
+        final additionsDetailedFinal =
+            responseBody['additions_detailed'] as List;
+        final removalsDetailedFinal = responseBody['removals_detailed'] as List;
+        final removalNamesFinal = removalsDetailedFinal
+            .whereType<Map>()
+            .map((e) => (e['name']?.toString() ?? '').toLowerCase())
+            .where((n) => n.isNotEmpty)
+            .toSet();
+
+        final filteredAdditions = <dynamic>[];
+        final filteredAdditionNames = <String>[];
+        final filteredRemovalsToKeep = <dynamic>[];
+        final filteredRemovalNames = <String>[];
+
+        for (final add in additionsDetailedFinal) {
+          if (add is! Map) continue;
+          final name = (add['name']?.toString() ?? '').toLowerCase();
+          if (name.isEmpty) continue;
+
+          final isBasic = _isBasicLandName(name);
+          final alreadyInDeck = deckNamesLower.contains(name);
+          final beingRemoved = removalNamesFinal.contains(name);
+
+          // Em Commander/Brawl, não-básicos só podem ter 1 cópia.
+          // Se a carta já está no deck e não está sendo removida, é inválida.
+          if (alreadyInDeck &&
+              !beingRemoved &&
+              !isBasic &&
+              (deckFormat == 'commander' || deckFormat == 'brawl')) {
+            Log.w(
+                '  Validação final: removendo adição duplicada "$name" (já existe no deck)');
+            continue;
+          }
+
+          filteredAdditions.add(add);
+          filteredAdditionNames.add(add['name']?.toString() ?? name);
+        }
+
+        // 2. Rebalancear após filtrar adições inválidas
+        if (filteredAdditions.length < additionsDetailedFinal.length) {
+          Log.d(
+              '  Validação final: ${additionsDetailedFinal.length - filteredAdditions.length} adições removidas por duplicidade');
+
+          // Truncar remoções para manter equilíbrio
+          for (var i = 0;
+              i < removalsDetailedFinal.length &&
+                  filteredRemovalsToKeep.length < filteredAdditions.length;
+              i++) {
+            filteredRemovalsToKeep.add(removalsDetailedFinal[i]);
+            final rem = removalsDetailedFinal[i];
+            if (rem is Map) {
+              filteredRemovalNames.add(rem['name']?.toString() ?? '');
+            }
+          }
+
+          responseBody['additions_detailed'] = filteredAdditions;
+          responseBody['additions'] = filteredAdditionNames;
+          responseBody['removals_detailed'] = filteredRemovalsToKeep;
+          responseBody['removals'] = filteredRemovalNames;
+
+          // Rebuild recommendations
+          responseBody['recommendations'] = [
+            ...filteredRemovalsToKeep,
+            ...filteredAdditions,
+          ];
+
+          Log.d(
+              '  Validação final pós-rebalanceamento: ${filteredAdditions.length} adições, ${filteredRemovalsToKeep.length} remoções');
+        }
+
+        // 3. Safety net: ensure additions and removals are exactly balanced
+        {
+          final finalAdditions = responseBody['additions_detailed'] as List;
+          final finalRemovals = responseBody['removals_detailed'] as List;
+          if (finalAdditions.length != finalRemovals.length) {
+            Log.w(
+                '  Safety net: additions(${finalAdditions.length}) != removals(${finalRemovals.length}), rebalancing');
+            final minLen = finalAdditions.length < finalRemovals.length
+                ? finalAdditions.length
+                : finalRemovals.length;
+            responseBody['additions_detailed'] =
+                finalAdditions.take(minLen).toList();
+            responseBody['additions'] =
+                (responseBody['additions'] as List).take(minLen).toList();
+            responseBody['removals_detailed'] =
+                finalRemovals.take(minLen).toList();
+            responseBody['removals'] =
+                (responseBody['removals'] as List).take(minLen).toList();
+          }
+        }
+      }
+
+      final warnings = <String, dynamic>{};
+
+      // Adicionar avisos se houver cartas inválidas
+      if (invalidCards.isNotEmpty) {
+        warnings.addAll({
+          'invalid_cards': invalidCards,
+          'message':
+              'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
+          'suggestions': suggestions,
+        });
+      }
+
+      // Adicionar avisos se houver cartas filtradas por identidade de cor
+      if (filteredByColorIdentity.isNotEmpty) {
+        warnings['filtered_by_color_identity'] = {
+          'commander_identity': commanderColorIdentity.toList(),
+          'removed_additions': filteredByColorIdentity,
+          'message':
+              'Algumas adições sugeridas pela IA foram removidas por estarem fora da identidade de cor do comandante.',
+        };
+      }
+
+      if (blockedByBracket.isNotEmpty) {
+        warnings['blocked_by_bracket'] = {
+          'bracket': bracket,
+          'blocked_additions': blockedByBracket,
+          'message':
+              'Algumas adições sugeridas foram bloqueadas por exceder limites do bracket.',
+        };
+      }
+
+      if (blockedByTheme.isNotEmpty) {
+        warnings['blocked_by_theme'] = {
+          'keep_theme': keepTheme,
+          'blocked_removals': blockedByTheme,
+          'message':
+              'Algumas remoções sugeridas foram bloqueadas para preservar o tema do deck.',
+        };
+      }
+
+      if (emptySuggestionFallbackReason != null) {
+        warnings['empty_suggestions_handling'] = {
+          'recognized_format': recognizedSuggestionFormat,
+          'fallback_applied': emptySuggestionFallbackApplied,
+          'message': emptySuggestionFallbackReason,
+        };
+      }
+
+      if (warnings.isNotEmpty) {
+        responseBody['warnings'] = warnings;
+      }
+
+      try {
+        await _saveOptimizeCache(
+          pool: pool,
+          cacheKey: cacheKey,
+          userId: userId,
+          deckId: deckId,
+          deckSignature: deckSignature,
+          payload: responseBody,
+        );
+        await _saveUserAiPreferences(
+          pool: pool,
+          userId: userId,
+          preferredArchetype: targetArchetype,
+          preferredBracket: bracket,
+          keepThemeDefault: keepTheme,
+          preferredColors: commanderColorIdentity.toList(),
+        );
+      } catch (e) {
+        Log.w('Falha ao persistir cache/preferências de optimize: $e');
+      }
+
+      return respondWithOptimizeTelemetry(
+        statusCode: HttpStatus.ok,
+        body: responseBody,
+        postAnalysisOverride: postAnalysis,
+        validationReport: optimizationValidationReport,
+        removalsOverride:
+            (responseBody['removals'] as List).map((e) => '$e').toList(),
+        additionsOverride:
+            (responseBody['additions'] as List).map((e) => '$e').toList(),
+        validationWarningsOverride: validationWarnings,
+        blockedByColorIdentityOverride: filteredByColorIdentity,
+        blockedByBracketOverride: blockedByBracket,
+      );
+    }
+  } catch (e, stackTrace) {
+    Log.e('handler: $e\nStack trace:\n$stackTrace');
+    return internalServerError('Failed to optimize deck', details: e);
+  }
+}
+
+Map<String, dynamic> buildOptimizationAnalysisLogEntry({
+  required String deckId,
+  required String? userId,
+  required String commanderName,
+  required List<String> commanderColors,
+  required String operationMode,
+  required String requestedMode,
+  required String targetArchetype,
+  required String? detectedTheme,
+  required Map<String, dynamic> deckAnalysis,
+  required Map<String, dynamic>? postAnalysis,
+  required List<String> removals,
+  required List<String> additions,
+  required int statusCode,
+  required Map<String, dynamic>? qualityError,
+  required ValidationReport? validationReport,
+  required List<String> validationWarnings,
+  required List<String> blockedByColorIdentity,
+  required List<Map<String, dynamic>> blockedByBracket,
+  required List<String> commanderPriorityNames,
+  required String commanderPrioritySource,
+  required List<Map<String, dynamic>> deterministicSwapCandidates,
+  required String cacheKey,
+  required int executionTimeMs,
+}) {
+  final beforeTypes =
+      (deckAnalysis['type_distribution'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+  final afterTypes =
+      (postAnalysis?['type_distribution'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+  final validationJson = validationReport?.toJson();
+  final validationFromQualityError = qualityError?['validation'];
+  final validationScoreCandidate = validationJson?['validation_score'] ??
+      validationJson?['score'] ??
+      (validationFromQualityError is Map
+          ? validationFromQualityError['validation_score'] ??
+              validationFromQualityError['score']
+          : null);
+  final validationScore =
+      validationReport?.score ?? _toNullableInt(validationScoreCandidate);
+  final validationVerdict = validationReport?.verdict ??
+      validationJson?['validation_verdict']?.toString() ??
+      validationJson?['verdict']?.toString() ??
+      (validationFromQualityError is Map
+          ? validationFromQualityError['validation_verdict']?.toString() ??
+              validationFromQualityError['verdict']?.toString()
+          : null) ??
+      (statusCode == HttpStatus.ok ? 'aprovado' : 'rejeitado');
+  final qualityReasons = qualityError?['reasons'] is List
+      ? (qualityError?['reasons'] as List).map((e) => '$e').toList()
+      : const <String>[];
+
+  final acceptedPairs = <Map<String, dynamic>>[];
+  final pairCount =
+      removals.length < additions.length ? removals.length : additions.length;
+  for (var i = 0; i < pairCount; i++) {
+    acceptedPairs.add({
+      'remove': removals[i],
+      'add': additions[i],
+    });
+  }
+
+  return {
+    'deck_id': deckId,
+    'user_id': userId,
+    'commander_name': commanderName,
+    'commander_colors': commanderColors,
+    'initial_card_count': _extractDeckCardCount(deckAnalysis),
+    'final_card_count': _extractDeckCardCount(postAnalysis) ??
+        _extractDeckCardCount(deckAnalysis),
+    'operation_mode': operationMode,
+    'target_archetype': targetArchetype,
+    'detected_theme': detectedTheme,
+    'before_avg_cmc': _toNullableDouble(deckAnalysis['average_cmc']),
+    'before_land_count': _toNullableInt(beforeTypes['lands']) ?? 0,
+    'before_creature_count': _toNullableInt(beforeTypes['creatures']) ?? 0,
+    'after_avg_cmc': _toNullableDouble(postAnalysis?['average_cmc']),
+    'after_land_count': _toNullableInt(afterTypes['lands']) ?? 0,
+    'after_creature_count': _toNullableInt(afterTypes['creatures']) ?? 0,
+    'removals_count': removals.length,
+    'additions_count': additions.length,
+    'removals_list': removals,
+    'additions_list': additions,
+    'validation_score': validationScore,
+    'validation_verdict': validationVerdict,
+    'color_identity_violations': blockedByColorIdentity.length,
+    'edhrec_validated_count': 0,
+    'edhrec_not_validated_count': 0,
+    'validation_warnings': validationWarnings,
+    'decisions_reasoning': {
+      'status_code': statusCode,
+      'requested_mode': requestedMode,
+      'response_mode': operationMode,
+      'cache_key': cacheKey,
+      'quality_error_code': qualityError?['code'],
+      'quality_error_message': qualityError?['message'],
+      'quality_error_reasons': qualityReasons,
+      'commander_priority_source': commanderPrioritySource,
+      'commander_priority_pool_size': commanderPriorityNames.length,
+      'commander_priority_pool_sample':
+          commanderPriorityNames.take(25).toList(),
+      'deterministic_swap_candidate_count': deterministicSwapCandidates.length,
+      'deterministic_swap_candidate_sample':
+          deterministicSwapCandidates.take(10).toList(),
+    },
+    'swap_analysis': {
+      'accepted_pairs': acceptedPairs,
+      'blocked_by_color_identity': blockedByColorIdentity,
+      'blocked_by_bracket': blockedByBracket,
+      'status_code': statusCode,
+    },
+    'role_delta': {
+      'before': beforeTypes,
+      'after': afterTypes,
+    },
+    'execution_time_ms': executionTimeMs,
+    'effectiveness_score': validationScore?.toDouble(),
+    'improvements_achieved':
+        (postAnalysis?['improvements'] as List?)?.map((e) => '$e').toList() ??
+            const <String>[],
+    'potential_issues': [
+      if (qualityError != null) qualityError,
+      if (blockedByColorIdentity.isNotEmpty)
+        {
+          'type': 'color_identity_blocks',
+          'count': blockedByColorIdentity.length,
+          'cards': blockedByColorIdentity,
+        },
+      if (blockedByBracket.isNotEmpty)
+        {
+          'type': 'bracket_blocks',
+          'count': blockedByBracket.length,
+          'cards': blockedByBracket,
+        },
+    ],
+    'alternative_approaches': const <Map<String, dynamic>>[],
+    'lessons_learned':
+        'status=$statusCode source=$commanderPrioritySource pairs=$pairCount commander=$commanderName',
+  };
+}
+
+Future<void> _recordOptimizeAnalysisOutcome({
+  required Pool pool,
+  required String deckId,
+  required String? userId,
+  required String commanderName,
+  required List<String> commanderColors,
+  required String operationMode,
+  required String requestedMode,
+  required String targetArchetype,
+  required String? detectedTheme,
+  required Map<String, dynamic> deckAnalysis,
+  required Map<String, dynamic>? postAnalysis,
+  required List<String> removals,
+  required List<String> additions,
+  required int statusCode,
+  required Map<String, dynamic>? qualityError,
+  required ValidationReport? validationReport,
+  required List<String> validationWarnings,
+  required List<String> blockedByColorIdentity,
+  required List<Map<String, dynamic>> blockedByBracket,
+  required List<String> commanderPriorityNames,
+  required String commanderPrioritySource,
+  required List<Map<String, dynamic>> deterministicSwapCandidates,
+  required String cacheKey,
+  required int executionTimeMs,
+}) async {
+  try {
+    final entry = buildOptimizationAnalysisLogEntry(
+      deckId: deckId,
+      userId: userId,
+      commanderName: commanderName,
+      commanderColors: commanderColors,
+      operationMode: operationMode,
+      requestedMode: requestedMode,
+      targetArchetype: targetArchetype,
+      detectedTheme: detectedTheme,
+      deckAnalysis: deckAnalysis,
+      postAnalysis: postAnalysis,
+      removals: removals,
+      additions: additions,
+      statusCode: statusCode,
+      qualityError: qualityError,
+      validationReport: validationReport,
+      validationWarnings: validationWarnings,
+      blockedByColorIdentity: blockedByColorIdentity,
+      blockedByBracket: blockedByBracket,
+      commanderPriorityNames: commanderPriorityNames,
+      commanderPrioritySource: commanderPrioritySource,
+      deterministicSwapCandidates: deterministicSwapCandidates,
+      cacheKey: cacheKey,
+      executionTimeMs: executionTimeMs,
+    );
+
+    await pool.execute(
+      Sql.named('''
+        INSERT INTO optimization_analysis_logs (
+          test_run_id, test_number, commander_name, commander_colors,
+          initial_card_count, final_card_count, operation_mode, target_archetype,
+          detected_theme, before_avg_cmc, before_land_count, before_creature_count,
+          after_avg_cmc, after_land_count, after_creature_count,
+          removals_count, additions_count, removals_list, additions_list,
+          validation_score, validation_verdict, color_identity_violations,
+          edhrec_validated_count, edhrec_not_validated_count, validation_warnings,
+          decisions_reasoning, swap_analysis, role_delta, execution_time_ms,
+          effectiveness_score, improvements_achieved, potential_issues,
+          alternative_approaches, lessons_learned
+        ) VALUES (
+          gen_random_uuid(), 1, @commander_name, @commander_colors,
+          @initial_card_count, @final_card_count, @operation_mode, @target_archetype,
+          @detected_theme, @before_avg_cmc, @before_land_count, @before_creature_count,
+          @after_avg_cmc, @after_land_count, @after_creature_count,
+          @removals_count, @additions_count, @removals_list::jsonb, @additions_list::jsonb,
+          @validation_score, @validation_verdict, @color_identity_violations,
+          @edhrec_validated_count, @edhrec_not_validated_count, @validation_warnings::jsonb,
+          @decisions_reasoning::jsonb, @swap_analysis::jsonb, @role_delta::jsonb,
+          @execution_time_ms, @effectiveness_score, @improvements_achieved::jsonb,
+          @potential_issues::jsonb, @alternative_approaches::jsonb, @lessons_learned
+        )
+      '''),
+      parameters: {
+        'commander_name': entry['commander_name'],
+        'commander_colors': entry['commander_colors'],
+        'initial_card_count': entry['initial_card_count'],
+        'final_card_count': entry['final_card_count'],
+        'operation_mode': entry['operation_mode'],
+        'target_archetype': entry['target_archetype'],
+        'detected_theme': entry['detected_theme'],
+        'before_avg_cmc': entry['before_avg_cmc'],
+        'before_land_count': entry['before_land_count'],
+        'before_creature_count': entry['before_creature_count'],
+        'after_avg_cmc': entry['after_avg_cmc'],
+        'after_land_count': entry['after_land_count'],
+        'after_creature_count': entry['after_creature_count'],
+        'removals_count': entry['removals_count'],
+        'additions_count': entry['additions_count'],
+        'removals_list': jsonEncode(entry['removals_list']),
+        'additions_list': jsonEncode(entry['additions_list']),
+        'validation_score': entry['validation_score'],
+        'validation_verdict': entry['validation_verdict'],
+        'color_identity_violations': entry['color_identity_violations'],
+        'edhrec_validated_count': entry['edhrec_validated_count'],
+        'edhrec_not_validated_count': entry['edhrec_not_validated_count'],
+        'validation_warnings': jsonEncode(entry['validation_warnings']),
+        'decisions_reasoning': jsonEncode(entry['decisions_reasoning']),
+        'swap_analysis': jsonEncode(entry['swap_analysis']),
+        'role_delta': jsonEncode(entry['role_delta']),
+        'execution_time_ms': entry['execution_time_ms'],
+        'effectiveness_score': entry['effectiveness_score'],
+        'improvements_achieved': jsonEncode(entry['improvements_achieved']),
+        'potential_issues': jsonEncode(entry['potential_issues']),
+        'alternative_approaches': jsonEncode(entry['alternative_approaches']),
+        'lessons_learned': entry['lessons_learned'],
+      },
+    );
+  } catch (e) {
+    Log.w('Falha ao persistir optimization_analysis_logs: $e');
+  }
+}
+
+int? _extractDeckCardCount(Map<String, dynamic>? analysis) {
+  if (analysis == null) return null;
+  final typeDistribution =
+      (analysis['type_distribution'] as Map?)?.cast<String, dynamic>();
+  if (typeDistribution != null && typeDistribution.isNotEmpty) {
+    return typeDistribution.values
+        .map(_toNullableInt)
+        .whereType<int>()
+        .fold<int>(0, (sum, value) => sum + value);
+  }
+  return null;
+}
+
+double? _toNullableDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
+}
+
+int? _toNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+/// Processa o modo complete em background (async job).
+/// Chamada via `unawaited()` — NÃO bloqueia a resposta HTTP.
+Future<void> _processCompleteModeAsync({
+  required String jobId,
+  required Pool pool,
+  required String deckId,
+  required String deckFormat,
+  required int maxTotal,
+  required int currentTotalCards,
+  required List<String> commanders,
+  required List<Map<String, dynamic>> allCardData,
+  required Set<String> deckColors,
+  required Set<String> commanderColorIdentity,
+  required Map<String, int> originalCountsById,
+  required DeckOptimizerService optimizer,
+  required DeckThemeProfile themeProfile,
+  required String targetArchetype,
+  required int? bracket,
+  required bool keepTheme,
+  required Map<String, dynamic> deckAnalysis,
+  required String? userId,
+  required String? cacheKey,
+  required Map<String, dynamic> userPreferences,
+  required bool hasBracketOverride,
+  required bool hasKeepThemeOverride,
+}) async {
+  try {
+    await OptimizeJobStore.progress(pool, jobId,
+        stage: 'Preparando referências do commander...', stageNumber: 1);
+
+    Map<String, dynamic> jsonResponse;
+
+    // Loop seguro: simula adições em um deck virtual e re-chama a IA até fechar.
+    final maxIterations = 4;
+    final virtualDeck = List<Map<String, dynamic>>.from(allCardData);
+    final virtualCountsById = Map<String, int>.from(originalCountsById);
+    final virtualCountsByName = <String, int>{};
+    for (final card in virtualDeck) {
+      final name = ((card['name'] as String?) ?? '').trim().toLowerCase();
+      if (name.isEmpty) continue;
+      final quantity = (card['quantity'] as int?) ?? 1;
+      virtualCountsByName[name] = (virtualCountsByName[name] ?? 0) + quantity;
+    }
+
+    final addedCountsById = <String, int>{};
+    final blockedByBracketAll = <Map<String, dynamic>>[];
+    final filteredByIdentityAll = <String>[];
+    final invalidAll = <String>[];
+    final aiSuggestedNames = <String>{};
+    final commanderMetaPriorityNames = <String>{};
+    final targetAdditionsForComplete = maxTotal - currentTotalCards;
+    var maxBasicAdditions = 999;
+    Map<String, dynamic>? commanderReferenceProfile;
+    int? commanderRecommendedLands;
+
+    var aiStageUsed = false;
+    var deterministicStageUsed = false;
+    var guaranteedBasicsStageUsed = false;
+    var competitiveModelStageUsed = false;
+    var averageDeckSeedStageUsed = false;
+    var basicAddedDuringBuild = 0;
+
+    if (commanders.isNotEmpty) {
+      final commanderName = commanders.first.trim();
+      if (commanderName.isNotEmpty) {
+        commanderReferenceProfile =
+            await _loadCommanderReferenceProfileFromCache(
+          pool: pool,
+          commanderName: commanderName,
+        );
+        commanderRecommendedLands =
+            _extractRecommendedLandsFromProfile(commanderReferenceProfile);
+
+        if (targetAdditionsForComplete >= 40) {
+          final recommended = (commanderRecommendedLands ?? 38).clamp(28, 42);
+          maxBasicAdditions = recommended + 6;
+        }
+
+        final averageDeckSeedNames = _extractAverageDeckSeedNamesFromProfile(
+          commanderReferenceProfile,
+          limit: 140,
+        );
+        if (averageDeckSeedNames.isNotEmpty) {
+          averageDeckSeedStageUsed = true;
+          aiSuggestedNames
+              .addAll(averageDeckSeedNames.map((e) => e.toLowerCase()));
+        }
+
+        final priorityNames = await _loadCommanderCompetitivePriorities(
+          pool: pool,
+          commanderName: commanderName,
+          limit: 120,
+        );
+        if (priorityNames.isNotEmpty) {
+          competitiveModelStageUsed = true;
+          commanderMetaPriorityNames.addAll(priorityNames);
+          aiSuggestedNames.addAll(priorityNames.map((e) => e.toLowerCase()));
+        } else {
+          final profileTopNames = _extractTopCardNamesFromProfile(
+            commanderReferenceProfile,
+            limit: 80,
+          );
+          if (profileTopNames.isNotEmpty) {
+            aiSuggestedNames
+                .addAll(profileTopNames.map((e) => e.toLowerCase()));
+            competitiveModelStageUsed = true;
+          }
+        }
+
+        if (aiSuggestedNames.isEmpty) {
+          try {
+            final liveEdhrec =
+                await EdhrecService().fetchCommanderData(commanderName);
+            if (liveEdhrec != null && liveEdhrec.topCards.isNotEmpty) {
+              final liveNames = liveEdhrec.topCards
+                  .map((card) => card.name.trim().toLowerCase())
+                  .where((name) => name.isNotEmpty)
+                  .take(180)
+                  .toList();
+              if (liveNames.isNotEmpty) {
+                aiSuggestedNames.addAll(liveNames);
+                averageDeckSeedStageUsed = true;
+                Log.d(
+                    'Complete fallback: aiSuggestedNames alimentado via EDHREC live (${liveNames.length} cartas).');
+              }
+            }
+          } catch (e) {
+            Log.w('Falha ao carregar EDHREC live para fallback complete: $e');
+          }
+        }
+      }
+    }
+
+    await OptimizeJobStore.progress(pool, jobId,
+        stage: 'Consultando IA para sugestões...', stageNumber: 2);
+
+    var iterations = 0;
+    var virtualTotal = currentTotalCards;
+    while (iterations < maxIterations && virtualTotal < maxTotal) {
+      iterations++;
+      final missingNow = maxTotal - virtualTotal;
+
+      Map<String, dynamic> iterResponse;
+      try {
+        iterResponse = await optimizer.completeDeck(
+          deckData: {
+            'cards': virtualDeck,
+            'colors': deckColors.toList(),
+          },
+          commanders: commanders,
+          targetArchetype: targetArchetype,
+          targetAdditions: missingNow,
+          bracket: bracket,
+          keepTheme: keepTheme,
+          detectedTheme: themeProfile.theme,
+          coreCards: themeProfile.coreCards,
+        );
+      } catch (e) {
+        Log.w(
+          'Falha no completeDeck da IA; aplicando fallback determinístico. '
+          'iteration=$iterations missing=$missingNow error=$e',
+        );
+        break;
+      }
+
+      final rawAdditions =
+          (iterResponse['additions'] as List?)?.cast<String>() ?? const [];
+      if (rawAdditions.isEmpty) break;
+      aiStageUsed = true;
+
+      // Sanitiza
+      final sanitized =
+          rawAdditions.map(CardValidationService.sanitizeCardName).toList();
+      aiSuggestedNames.addAll(
+        sanitized
+            .where((name) => name.trim().isNotEmpty)
+            .map((name) => name.trim().toLowerCase()),
+      );
+
+      // Valida existência no DB
+      final validationService = CardValidationService(pool);
+      final validation = await validationService.validateCardNames(sanitized);
+      invalidAll
+          .addAll((validation['invalid'] as List?)?.cast<String>() ?? const []);
+
+      final validList =
+          (validation['valid'] as List).cast<Map<String, dynamic>>();
+      final validNames = validList.map((v) => (v['name'] as String)).toList();
+      if (validNames.isEmpty) break;
+
+      // Carrega dados completos para filtro (type/oracle/colors/identity/id)
+      final additionsInfoResult = await pool.execute(
+        Sql.named('''
+          SELECT id::text, name, type_line, oracle_text, colors, color_identity
+          FROM cards
+          WHERE name = ANY(@names)
+        '''),
+        parameters: {'names': validNames},
+      );
+      if (additionsInfoResult.isEmpty) break;
+
+      final candidates = additionsInfoResult.map((r) {
+        final id = r[0] as String;
+        final name = r[1] as String;
+        final typeLine = r[2] as String? ?? '';
+        final oracle = r[3] as String? ?? '';
+        final colors = (r[4] as List?)?.cast<String>() ?? const <String>[];
+        final identity = (r[5] as List?)?.cast<String>() ?? const <String>[];
+        return {
+          'card_id': id,
+          'name': name,
+          'type_line': typeLine,
+          'oracle_text': oracle,
+          'colors': colors,
+          'color_identity': identity,
+        };
+      }).toList();
+
+      // Filtro por identidade do comandante
+      final identityAllowed = <Map<String, dynamic>>[];
+      for (final c in candidates) {
+        final identity = ((c['color_identity'] as List).cast<String>());
+        final colors = ((c['colors'] as List).cast<String>());
+        final ok = isWithinCommanderIdentity(
+          cardIdentity: identity.isNotEmpty ? identity : colors,
+          commanderIdentity: commanderColorIdentity,
+        );
+        if (!ok) {
+          filteredByIdentityAll.add(c['name'] as String);
+          continue;
+        }
+        identityAllowed.add(c);
+      }
+      if (identityAllowed.isEmpty) break;
+
+      // Filtro de bracket (intermediário)
+      final bracketAllowed = <Map<String, dynamic>>[];
+      if (bracket != null) {
+        final decision = applyBracketPolicyToAdditions(
+          bracket: bracket,
+          currentDeckCards: virtualDeck,
+          additionsCardsData: identityAllowed.map((c) {
+            return {
+              'name': c['name'],
+              'type_line': c['type_line'],
+              'oracle_text': c['oracle_text'],
+              'quantity': 1,
+            };
+          }),
+        );
+        blockedByBracketAll.addAll(decision.blocked);
+        final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
+        for (final c in identityAllowed) {
+          final n = (c['name'] as String).toLowerCase();
+          if (allowedSet.contains(n)) bracketAllowed.add(c);
+        }
+      } else {
+        bracketAllowed.addAll(identityAllowed);
+      }
+      if (bracketAllowed.isEmpty) break;
+
+      // Aplica no deck virtual respeitando regras de cópias:
+      // - non-basic: 1 cópia (não adiciona se já existe)
+      // - basic: pode repetir
+      var addedThisIter = 0;
+      for (final c in bracketAllowed) {
+        if (virtualTotal >= maxTotal) break;
+        final id = c['card_id'] as String;
+        final name = c['name'] as String;
+        final typeLine = (c['type_line'] as String).toLowerCase();
+        final isBasic = _isBasicLandTypeLine(typeLine);
+        final nameLower = name.toLowerCase();
+        final maxCopies = _maxCopiesForFormat(
+          deckFormat: deckFormat,
+          typeLine: typeLine,
+          name: name,
+        );
+
+        if (!isBasic && (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+          continue;
+        }
+
+        if ((virtualCountsById[id] ?? 0) > 0 &&
+            (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+          continue;
+        }
+
+        virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+        virtualCountsByName[nameLower] =
+            (virtualCountsByName[nameLower] ?? 0) + 1;
+        addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+        virtualTotal += 1;
+        addedThisIter += 1;
+
+        // FIX #3: Rastrear basics adicionados pelo AI loop para que o fallback
+        // não re-adicione além do budget.
+        if (isBasic) {
+          basicAddedDuringBuild += 1;
+        }
+
+        final existingIndex = virtualDeck.indexWhere(
+          (e) => (e['card_id'] as String?) == id,
+        );
+        if (existingIndex == -1) {
+          virtualDeck.add({
+            'card_id': id,
+            'name': name,
+            'type_line': c['type_line'],
+            'oracle_text': c['oracle_text'],
+            'colors': c['colors'],
+            'color_identity': c['color_identity'],
+            'quantity': 1,
+            'is_commander': false,
+            'mana_cost': '',
+            'cmc': 0.0,
+          });
+        } else {
+          final existing = virtualDeck[existingIndex];
+          virtualDeck[existingIndex] = {
+            ...existing,
+            'quantity': (existing['quantity'] as int? ?? 1) + 1,
+          };
+        }
+      }
+
+      // Sem progresso => para e deixa fallback completar (básicos)
+      if (addedThisIter == 0) break;
+    }
+
+    // === FIX #2: LAND REBALANCING ===
+    // Após AI loop, verificar se o deck tem lands suficientes.
+    // Se não, remover spells excedentes (os últimos adicionados pela AI)
+    // para abrir espaço para lands no fallback.
+    {
+      // Contar lands atuais no virtualDeck
+      var rebalLands = 0;
+      for (final c in virtualDeck) {
+        final t = ((c['type_line'] as String?) ?? '').toLowerCase();
+        if (t.contains('land')) {
+          rebalLands += (c['quantity'] as int?) ?? 1;
+        }
+      }
+
+      // Calcular ideal de lands
+      final rebalNonLandCards = virtualDeck.where((c) {
+        final t = ((c['type_line'] as String?) ?? '').toLowerCase();
+        return !t.contains('land');
+      }).toList();
+      double rebalAvgCmc = 0;
+      if (rebalNonLandCards.isNotEmpty) {
+        rebalAvgCmc = rebalNonLandCards.fold<double>(0, (sum, c) {
+              return sum + ((c['cmc'] as num?)?.toDouble() ?? 0.0);
+            }) /
+            rebalNonLandCards.length;
+      }
+      final rebalIdeal = (commanderRecommendedLands ??
+              (rebalAvgCmc < 2.0
+                  ? 32
+                  : (rebalAvgCmc < 3.0 ? 35 : (rebalAvgCmc < 4.0 ? 37 : 39))))
+          .clamp(28, 42);
+
+      final landDeficit = rebalIdeal - rebalLands;
+      final slotsAvailable = maxTotal - virtualTotal;
+
+      // Se déficit de lands > slots disponíveis, precisamos liberar slots
+      // removendo spells adicionados pela AI (não do deck original)
+      if (landDeficit > slotsAvailable && landDeficit > 0) {
+        final slotsToFree = landDeficit - slotsAvailable;
+        Log.d(
+            'Land rebalancing: deficit=$landDeficit, available=$slotsAvailable, freeing=$slotsToFree slots');
+
+        // Remover spells não-terreno adicionados pela AI (últimos primeiro)
+        var freed = 0;
+        for (var i = virtualDeck.length - 1;
+            i >= 0 && freed < slotsToFree;
+            i--) {
+          final card = virtualDeck[i];
+          final cardId = card['card_id'] as String?;
+          if (cardId == null) continue;
+
+          // Só remover cartas que foram ADICIONADAS (estão em addedCountsById)
+          if (!addedCountsById.containsKey(cardId)) continue;
+
+          // Não remover lands
+          final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+          if (typeLine.contains('land')) continue;
+
+          // Não remover cartas is_commander
+          if (card['is_commander'] == true) continue;
+
+          final qty = (card['quantity'] as int?) ?? 1;
+          final addedQty = addedCountsById[cardId] ?? 0;
+          if (addedQty <= 0) continue;
+
+          // Remover 1 cópia
+          final removeQty = 1;
+          addedCountsById[cardId] = addedQty - removeQty;
+          if (addedCountsById[cardId]! <= 0) addedCountsById.remove(cardId);
+
+          virtualCountsById[cardId] =
+              (virtualCountsById[cardId] ?? 1) - removeQty;
+          final nameLower = ((card['name'] as String?) ?? '').toLowerCase();
+          virtualCountsByName[nameLower] =
+              (virtualCountsByName[nameLower] ?? 1) - removeQty;
+          virtualTotal -= removeQty;
+
+          if (qty <= removeQty) {
+            virtualDeck.removeAt(i);
+          } else {
+            virtualDeck[i] = {...card, 'quantity': qty - removeQty};
+          }
+          freed += removeQty;
+        }
+        Log.d('Land rebalancing: freed $freed slots for lands');
+      }
+    }
+
+    // Fallback final: INTELIGENTE — calcula quantos terrenos vs spells faltam
+    // Em vez de simplesmente jogar lands, analisa a proporção ideal
+    if (virtualTotal < maxTotal) {
+      var missing = maxTotal - virtualTotal;
+
+      // Calcular terrenos atuais no deck virtual
+      var currentLands = 0;
+      for (final c in virtualDeck) {
+        final typeLine = ((c['type_line'] as String?) ?? '').toLowerCase();
+        if (typeLine.contains('land')) {
+          currentLands += (c['quantity'] as int?) ?? 1;
+        }
+      }
+
+      // Proporção ideal de terrenos: ~36-38 para Commander
+      // Ajustar por CMC médio do deck
+      final nonLandCards = virtualDeck.where((c) {
+        final t = ((c['type_line'] as String?) ?? '').toLowerCase();
+        return !t.contains('land');
+      }).toList();
+
+      double avgCmc = 0;
+      if (nonLandCards.isNotEmpty) {
+        avgCmc = nonLandCards.fold<double>(0, (sum, c) {
+              return sum + ((c['cmc'] as num?)?.toDouble() ?? 0.0);
+            }) /
+            nonLandCards.length;
+      }
+
+      // Terrenos ideais baseados no CMC médio:
+      // CMC < 2.0 → 32 lands | CMC 2.0-3.0 → 35 | CMC 3.0-4.0 → 37 | CMC > 4.0 → 39
+      final idealLands = (commanderRecommendedLands ??
+              (avgCmc < 2.0
+                  ? 32
+                  : (avgCmc < 3.0 ? 35 : (avgCmc < 4.0 ? 37 : 39))))
+          .clamp(28, 42);
+      final landsNeeded = (idealLands - currentLands).clamp(0, missing);
+      final spellsNeeded = missing - landsNeeded;
+
+      Log.d('Complete fallback inteligente:');
+      Log.d(
+          '  Cartas faltando: $missing | Lands atuais: $currentLands | Ideal: $idealLands');
+      Log.d(
+          '  Lands a adicionar: $landsNeeded | Spells a adicionar: $spellsNeeded');
+
+      // Adicionar spells primeiro (via busca no DB por cartas sinérgicas)
+      if (spellsNeeded > 0) {
+        try {
+          final existingNames = virtualDeck
+              .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+              .toSet();
+
+          final synergySpells = await _findSynergyReplacements(
+            pool: pool,
+            commanders: commanders,
+            commanderColorIdentity: commanderColorIdentity,
+            targetArchetype: targetArchetype,
+            bracket: bracket,
+            keepTheme: keepTheme,
+            detectedTheme: themeProfile.theme,
+            coreCards: themeProfile.coreCards,
+            missingCount: spellsNeeded,
+            removedCards: const [], // não estamos substituindo, estamos adicionando
+            excludeNames: existingNames,
+            allCardData: virtualDeck,
+            preferredNames: aiSuggestedNames,
+          );
+
+          var selectedSpells = synergySpells;
+          if (selectedSpells.isEmpty) {
+            final universalFallback = await _loadUniversalCommanderFallbacks(
+              pool: pool,
+              excludeNames: existingNames,
+              limit: spellsNeeded,
+            );
+            if (universalFallback.isNotEmpty) {
+              Log.d(
+                  '  Synergy replacements vazios; aplicando fallback universal (${universalFallback.length} cartas).');
+              selectedSpells = universalFallback;
+            }
+          }
+
+          if (selectedSpells.length < spellsNeeded) {
+            Log.d(
+                '  Expansão de spells ativada: selected=${selectedSpells.length}, spellsNeeded=$spellsNeeded, identity=${commanderColorIdentity.join(',')}');
+            final alreadySelectedNames = selectedSpells
+                .map((e) => ((e['name'] as String?) ?? '').toLowerCase())
+                .where((name) => name.isNotEmpty)
+                .toSet();
+
+            final preferredPool = await _loadPreferredNameFillers(
+              pool: pool,
+              preferredNames: aiSuggestedNames,
+              commanderColorIdentity: commanderColorIdentity,
+              excludeNames: existingNames.union(alreadySelectedNames),
+              limit: spellsNeeded - selectedSpells.length,
+            );
+
+            if (preferredPool.isNotEmpty) {
+              Log.d(
+                  '  Fallback preferred-name aplicado (+${preferredPool.length} cartas).');
+              selectedSpells = [...selectedSpells, ...preferredPool];
+            }
+
+            if (selectedSpells.length < spellsNeeded) {
+              final broadPool = await _loadBroadCommanderNonLandFillers(
+                pool: pool,
+                commanderColorIdentity: commanderColorIdentity,
+                excludeNames: existingNames.union(alreadySelectedNames),
+                bracket: bracket,
+                limit: spellsNeeded - selectedSpells.length,
+              );
+
+              Log.d('  Broad pool retornou: ${broadPool.length} cartas.');
+
+              if (broadPool.isNotEmpty) {
+                Log.d(
+                    '  Fallback broad pool aplicado (+${broadPool.length} cartas).');
+                selectedSpells = [...selectedSpells, ...broadPool];
+              }
+            }
+
+            if (selectedSpells.length < spellsNeeded) {
+              final emergencyIdentityPool =
+                  await _loadIdentitySafeNonLandFillers(
+                pool: pool,
+                commanderColorIdentity: commanderColorIdentity,
+                excludeNames: existingNames.union(alreadySelectedNames),
+                limit: spellsNeeded - selectedSpells.length,
+              );
+
+              if (emergencyIdentityPool.isNotEmpty) {
+                Log.d(
+                    '  Fallback identity-safe aplicado (+${emergencyIdentityPool.length} cartas).');
+                selectedSpells = [
+                  ...selectedSpells,
+                  ...emergencyIdentityPool,
+                ];
+              }
+            }
+          }
+
+          for (final spell in selectedSpells) {
+            if (virtualTotal >= maxTotal) break;
+            final id = spell['id'] as String;
+            final name = spell['name'] as String;
+            final nameLower = name.toLowerCase();
+            final spellColors =
+                (spell['colors'] as List?)?.cast<String>() ?? const <String>[];
+            final spellIdentity =
+                (spell['color_identity'] as List?)?.cast<String>() ??
+                    const <String>[];
+
+            final withinIdentity = isWithinCommanderIdentity(
+              cardIdentity:
+                  spellIdentity.isNotEmpty ? spellIdentity : spellColors,
+              commanderIdentity: commanderColorIdentity,
+            );
+            if (!withinIdentity) {
               continue;
             }
 
-            if ((virtualCountsById[id] ?? 0) > 0 && (virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+            final maxCopies = _maxCopiesForFormat(
+              deckFormat: deckFormat,
+              typeLine: '',
+              name: name,
+            );
+
+            if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
               continue;
             }
 
             virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-            virtualCountsByName[nameLower] = (virtualCountsByName[nameLower] ?? 0) + 1;
+            virtualCountsByName[nameLower] =
+                (virtualCountsByName[nameLower] ?? 0) + 1;
             addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
             virtualTotal += 1;
-            addedThisIter += 1;
+
+            virtualDeck.add({
+              'card_id': id,
+              'name': name,
+              'type_line': '',
+              'oracle_text': '',
+              'colors': <String>[],
+              'color_identity': <String>[],
+              'quantity': 1,
+              'is_commander': false,
+              'mana_cost': '',
+              'cmc': 0.0,
+            });
+          }
+          Log.d('  Spells não-terreno adicionadas: ${selectedSpells.length}');
+        } catch (e) {
+          Log.w('Falha ao buscar spells sinérgicas: $e');
+        }
+      }
+
+      // Depois adicionar lands para o restante
+      if (virtualTotal < maxTotal) {
+        final currentLandsAfterSpells = virtualDeck.fold<int>(0, (sum, c) {
+          final t = ((c['type_line'] as String?) ?? '').toLowerCase();
+          if (t.contains('land')) {
+            return sum + ((c['quantity'] as int?) ?? 1);
+          }
+          return sum;
+        });
+
+        var landsToAdd = (idealLands - currentLandsAfterSpells)
+            .clamp(0, maxTotal - virtualTotal);
+        final remainingBasicBudget =
+            (maxBasicAdditions - basicAddedDuringBuild).clamp(0, 999);
+        landsToAdd = landsToAdd.clamp(0, remainingBasicBudget);
+        final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+        final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+        if (basicsWithIds.isNotEmpty) {
+          final keys = basicsWithIds.keys.toList();
+          var i = 0;
+          while (landsToAdd > 0) {
+            final name = keys[i % keys.length];
+            final id = basicsWithIds[name]!;
+            virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+            virtualCountsByName[name.toLowerCase()] =
+                (virtualCountsByName[name.toLowerCase()] ?? 0) + 1;
+            addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+            virtualTotal += 1;
+            landsToAdd--;
+            basicAddedDuringBuild += 1;
+
+            // FIX #4a: Adicionar ao virtualDeck para manter consistência
+            final existIdx =
+                virtualDeck.indexWhere((e) => (e['card_id'] as String?) == id);
+            if (existIdx == -1) {
+              virtualDeck.add({
+                'card_id': id,
+                'name': name,
+                'type_line': 'Basic Land',
+                'oracle_text': '',
+                'colors': <String>[],
+                'color_identity': <String>[],
+                'quantity': 1,
+                'is_commander': false,
+                'mana_cost': '',
+                'cmc': 0.0,
+              });
+            } else {
+              final existing = virtualDeck[existIdx];
+              virtualDeck[existIdx] = {
+                ...existing,
+                'quantity': (existing['quantity'] as int? ?? 1) + 1,
+              };
+            }
+            i++;
+          }
+        }
+      }
+
+      // Se ainda faltar após atingir alvo de lands, preencher com cartas não-terreno
+
+      await OptimizeJobStore.progress(pool, jobId,
+          stage: 'Preenchendo com cartas sinérgicas...', stageNumber: 3);
+
+      // competitivas do banco (evita deck degenerado de básicos).
+      if (virtualTotal < maxTotal) {
+        final remaining = maxTotal - virtualTotal;
+        final existingNames = virtualDeck
+            .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+            .toSet();
+
+        final fillers = await _loadGuaranteedNonBasicFillers(
+          pool: pool,
+          currentDeckCards: virtualDeck,
+          targetArchetype: targetArchetype,
+          commanderColorIdentity: commanderColorIdentity,
+          bracket: bracket,
+          excludeNames: existingNames,
+          preferredNames: aiSuggestedNames,
+          limit: remaining,
+        );
+        if (fillers.isNotEmpty) deterministicStageUsed = true;
+
+        for (final filler in fillers) {
+          if (virtualTotal >= maxTotal) break;
+          final id = filler['id'] as String;
+          final name = filler['name'] as String;
+          final nameLower = name.toLowerCase();
+          final maxCopies = _maxCopiesForFormat(
+            deckFormat: deckFormat,
+            typeLine: filler['type_line'] as String? ?? '',
+            name: name,
+          );
+
+          if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+            continue;
+          }
+
+          virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+          virtualCountsByName[nameLower] =
+              (virtualCountsByName[nameLower] ?? 0) + 1;
+          addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+          virtualTotal += 1;
+
+          final existingIndex = virtualDeck.indexWhere(
+            (e) => (e['card_id'] as String?) == id,
+          );
+
+          if (existingIndex == -1) {
+            virtualDeck.add({
+              'card_id': id,
+              'name': name,
+              'type_line': filler['type_line'] ?? '',
+              'oracle_text': filler['oracle_text'] ?? '',
+              'colors': filler['colors'] ?? <String>[],
+              'color_identity': filler['color_identity'] ?? <String>[],
+              'quantity': 1,
+              'is_commander': false,
+              'mana_cost': '',
+              'cmc': 0.0,
+            });
+          } else {
+            final existing = virtualDeck[existingIndex];
+            virtualDeck[existingIndex] = {
+              ...existing,
+              'quantity': (existing['quantity'] as int? ?? 1) + 1,
+            };
+          }
+        }
+
+        if (virtualTotal < maxTotal) {
+          final emergencyRemaining = maxTotal - virtualTotal;
+          final emergencyFillers = await _loadEmergencyNonBasicFillers(
+            pool: pool,
+            excludeNames: virtualDeck
+                .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+                .where((n) => n.isNotEmpty)
+                .toSet(),
+            bracket: bracket,
+            limit: emergencyRemaining,
+          );
+          if (emergencyFillers.isNotEmpty) deterministicStageUsed = true;
+
+          for (final filler in emergencyFillers) {
+            if (virtualTotal >= maxTotal) break;
+            final id = filler['id'] as String;
+            final name = filler['name'] as String;
+            final nameLower = name.toLowerCase();
+            final maxCopies = _maxCopiesForFormat(
+              deckFormat: deckFormat,
+              typeLine: filler['type_line'] as String? ?? '',
+              name: name,
+            );
+
+            if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
+              continue;
+            }
+
+            virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+            virtualCountsByName[nameLower] =
+                (virtualCountsByName[nameLower] ?? 0) + 1;
+            addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+            virtualTotal += 1;
 
             final existingIndex = virtualDeck.indexWhere(
               (e) => (e['card_id'] as String?) == id,
             );
+
             if (existingIndex == -1) {
               virtualDeck.add({
                 'card_id': id,
                 'name': name,
-                'type_line': c['type_line'],
-                'oracle_text': c['oracle_text'],
-                'colors': c['colors'],
-                'color_identity': c['color_identity'],
+                'type_line': filler['type_line'] ?? '',
+                'oracle_text': filler['oracle_text'] ?? '',
+                'colors': filler['colors'] ?? <String>[],
+                'color_identity': filler['color_identity'] ?? <String>[],
                 'quantity': 1,
                 'is_commander': false,
                 'mana_cost': '',
@@ -1320,538 +4274,191 @@ Future<Response> onRequest(RequestContext context) async {
               };
             }
           }
-
-          // Sem progresso => para e deixa fallback completar (básicos)
-          if (addedThisIter == 0) break;
         }
-
-        // Fallback final: INTELIGENTE — calcula quantos terrenos vs spells faltam
-        // Em vez de simplesmente jogar lands, analisa a proporção ideal
-        if (virtualTotal < maxTotal) {
-          var missing = maxTotal - virtualTotal;
-          
-          // Calcular terrenos atuais no deck virtual
-          var currentLands = 0;
-          for (final c in virtualDeck) {
-            final typeLine = ((c['type_line'] as String?) ?? '').toLowerCase();
-            if (typeLine.contains('land')) {
-              currentLands += (c['quantity'] as int?) ?? 1;
-            }
-          }
-          
-          // Proporção ideal de terrenos: ~36-38 para Commander
-          // Ajustar por CMC médio do deck
-          final nonLandCards = virtualDeck.where((c) {
-            final t = ((c['type_line'] as String?) ?? '').toLowerCase();
-            return !t.contains('land');
-          }).toList();
-          
-          double avgCmc = 0;
-          if (nonLandCards.isNotEmpty) {
-            avgCmc = nonLandCards.fold<double>(0, (sum, c) {
-              return sum + ((c['cmc'] as num?)?.toDouble() ?? 0.0);
-            }) / nonLandCards.length;
-          }
-          
-          // Terrenos ideais baseados no CMC médio:
-          // CMC < 2.0 → 32 lands | CMC 2.0-3.0 → 35 | CMC 3.0-4.0 → 37 | CMC > 4.0 → 39
-            final idealLands = (commanderRecommendedLands ??
-                (avgCmc < 2.0
-                  ? 32
-                  : (avgCmc < 3.0 ? 35 : (avgCmc < 4.0 ? 37 : 39))))
-              .clamp(28, 42);
-          final landsNeeded = (idealLands - currentLands).clamp(0, missing);
-          final spellsNeeded = missing - landsNeeded;
-          
-          Log.d('Complete fallback inteligente:');
-          Log.d('  Cartas faltando: $missing | Lands atuais: $currentLands | Ideal: $idealLands');
-          Log.d('  Lands a adicionar: $landsNeeded | Spells a adicionar: $spellsNeeded');
-          
-          // Adicionar spells primeiro (via busca no DB por cartas sinérgicas)
-          if (spellsNeeded > 0) {
-            try {
-              final existingNames = virtualDeck
-                  .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
-                  .toSet();
-              
-              final synergySpells = await _findSynergyReplacements(
-                pool: pool,
-                optimizer: optimizer,
-                commanders: commanders,
-                commanderColorIdentity: commanderColorIdentity,
-                targetArchetype: targetArchetype,
-                bracket: bracket,
-                keepTheme: keepTheme,
-                detectedTheme: themeProfile.theme,
-                coreCards: themeProfile.coreCards,
-                missingCount: spellsNeeded,
-                removedCards: const [], // não estamos substituindo, estamos adicionando
-                excludeNames: existingNames,
-                allCardData: virtualDeck,
-              );
-
-              var selectedSpells = synergySpells;
-              if (selectedSpells.isEmpty) {
-                final universalFallback = await _loadUniversalCommanderFallbacks(
-                  pool: pool,
-                  excludeNames: existingNames,
-                  limit: spellsNeeded,
-                );
-                if (universalFallback.isNotEmpty) {
-                  Log.d(
-                      '  Synergy replacements vazios; aplicando fallback universal (${universalFallback.length} cartas).');
-                  selectedSpells = universalFallback;
-                }
-              }
-
-              if (selectedSpells.length < spellsNeeded) {
-                Log.d(
-                    '  Expansão de spells ativada: selected=${selectedSpells.length}, spellsNeeded=$spellsNeeded, identity=${commanderColorIdentity.join(',')}');
-                final alreadySelectedNames = selectedSpells
-                    .map((e) => ((e['name'] as String?) ?? '').toLowerCase())
-                    .where((name) => name.isNotEmpty)
-                    .toSet();
-
-                final preferredPool = await _loadPreferredNameFillers(
-                  pool: pool,
-                  preferredNames: aiSuggestedNames,
-                  commanderColorIdentity: commanderColorIdentity,
-                  excludeNames: existingNames.union(alreadySelectedNames),
-                  limit: spellsNeeded - selectedSpells.length,
-                );
-
-                if (preferredPool.isNotEmpty) {
-                  Log.d(
-                      '  Fallback preferred-name aplicado (+${preferredPool.length} cartas).');
-                  selectedSpells = [...selectedSpells, ...preferredPool];
-                }
-
-                if (selectedSpells.length < spellsNeeded) {
-                  final broadPool = await _loadBroadCommanderNonLandFillers(
-                    pool: pool,
-                    commanderColorIdentity: commanderColorIdentity,
-                    excludeNames: existingNames.union(alreadySelectedNames),
-                    bracket: bracket,
-                    limit: spellsNeeded - selectedSpells.length,
-                  );
-
-                  Log.d('  Broad pool retornou: ${broadPool.length} cartas.');
-
-                  if (broadPool.isNotEmpty) {
-                    Log.d(
-                        '  Fallback broad pool aplicado (+${broadPool.length} cartas).');
-                    selectedSpells = [...selectedSpells, ...broadPool];
-                  }
-                }
-
-                if (selectedSpells.length < spellsNeeded) {
-                  final emergencyIdentityPool =
-                      await _loadIdentitySafeNonLandFillers(
-                    pool: pool,
-                    commanderColorIdentity: commanderColorIdentity,
-                    excludeNames: existingNames.union(alreadySelectedNames),
-                    limit: spellsNeeded - selectedSpells.length,
-                  );
-
-                  if (emergencyIdentityPool.isNotEmpty) {
-                    Log.d(
-                        '  Fallback identity-safe aplicado (+${emergencyIdentityPool.length} cartas).');
-                    selectedSpells = [
-                      ...selectedSpells,
-                      ...emergencyIdentityPool,
-                    ];
-                  }
-                }
-              }
-              
-              for (final spell in selectedSpells) {
-                if (virtualTotal >= maxTotal) break;
-                final id = spell['id'] as String;
-                final name = spell['name'] as String;
-                final nameLower = name.toLowerCase();
-                final spellColors =
-                    (spell['colors'] as List?)?.cast<String>() ?? const <String>[];
-                final spellIdentity =
-                    (spell['color_identity'] as List?)?.cast<String>() ??
-                        const <String>[];
-
-                final withinIdentity = isWithinCommanderIdentity(
-                  cardIdentity:
-                      spellIdentity.isNotEmpty ? spellIdentity : spellColors,
-                  commanderIdentity: commanderColorIdentity,
-                );
-                if (!withinIdentity) {
-                  continue;
-                }
-
-                final maxCopies = _maxCopiesForFormat(
-                  deckFormat: deckFormat,
-                  typeLine: '',
-                  name: name,
-                );
-                
-                if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
-                  continue;
-                }
-                
-                virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-                virtualCountsByName[nameLower] =
-                    (virtualCountsByName[nameLower] ?? 0) + 1;
-                addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
-                virtualTotal += 1;
-                
-                virtualDeck.add({
-                  'card_id': id,
-                  'name': name,
-                  'type_line': '',
-                  'oracle_text': '',
-                  'colors': <String>[],
-                  'color_identity': <String>[],
-                  'quantity': 1,
-                  'is_commander': false,
-                  'mana_cost': '',
-                  'cmc': 0.0,
-                });
-              }
-              Log.d('  Spells não-terreno adicionadas: ${selectedSpells.length}');
-            } catch (e) {
-              Log.w('Falha ao buscar spells sinérgicas: $e');
-            }
-          }
-          
-          // Depois adicionar lands para o restante
-          if (virtualTotal < maxTotal) {
-            final currentLandsAfterSpells = virtualDeck.fold<int>(0, (sum, c) {
-              final t = ((c['type_line'] as String?) ?? '').toLowerCase();
-              if (t.contains('land')) {
-                return sum + ((c['quantity'] as int?) ?? 1);
-              }
-              return sum;
-            });
-
-            var landsToAdd = (idealLands - currentLandsAfterSpells).clamp(0, maxTotal - virtualTotal);
-            final remainingBasicBudget = (maxBasicAdditions - basicAddedDuringBuild).clamp(0, 999);
-            landsToAdd = landsToAdd.clamp(0, remainingBasicBudget);
-            final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
-            final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
-            if (basicsWithIds.isNotEmpty) {
-              final keys = basicsWithIds.keys.toList();
-              var i = 0;
-              while (landsToAdd > 0) {
-                final name = keys[i % keys.length];
-                final id = basicsWithIds[name]!;
-                virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-                addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
-                virtualTotal += 1;
-                landsToAdd--;
-                basicAddedDuringBuild += 1;
-                i++;
-              }
-            }
-          }
-
-          // Se ainda faltar após atingir alvo de lands, preencher com cartas não-terreno
-          // competitivas do banco (evita deck degenerado de básicos).
-          if (virtualTotal < maxTotal) {
-            final remaining = maxTotal - virtualTotal;
-            final existingNames = virtualDeck
-                .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
-                .toSet();
-
-            final fillers = await _loadGuaranteedNonBasicFillers(
-              pool: pool,
-              currentDeckCards: virtualDeck,
-              targetArchetype: targetArchetype,
-              commanderColorIdentity: commanderColorIdentity,
-              bracket: bracket,
-              excludeNames: existingNames,
-              preferredNames: aiSuggestedNames,
-              limit: remaining,
-            );
-            if (fillers.isNotEmpty) deterministicStageUsed = true;
-
-            for (final filler in fillers) {
-              if (virtualTotal >= maxTotal) break;
-              final id = filler['id'] as String;
-              final name = filler['name'] as String;
-              final nameLower = name.toLowerCase();
-              final maxCopies = _maxCopiesForFormat(
-                deckFormat: deckFormat,
-                typeLine: filler['type_line'] as String? ?? '',
-                name: name,
-              );
-
-              if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
-                continue;
-              }
-
-              virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-              virtualCountsByName[nameLower] = (virtualCountsByName[nameLower] ?? 0) + 1;
-              addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
-              virtualTotal += 1;
-
-              final existingIndex = virtualDeck.indexWhere(
-                (e) => (e['card_id'] as String?) == id,
-              );
-
-              if (existingIndex == -1) {
-                virtualDeck.add({
-                  'card_id': id,
-                  'name': name,
-                  'type_line': filler['type_line'] ?? '',
-                  'oracle_text': filler['oracle_text'] ?? '',
-                  'colors': filler['colors'] ?? <String>[],
-                  'color_identity': filler['color_identity'] ?? <String>[],
-                  'quantity': 1,
-                  'is_commander': false,
-                  'mana_cost': '',
-                  'cmc': 0.0,
-                });
-              } else {
-                final existing = virtualDeck[existingIndex];
-                virtualDeck[existingIndex] = {
-                  ...existing,
-                  'quantity': (existing['quantity'] as int? ?? 1) + 1,
-                };
-              }
-            }
-
-            if (virtualTotal < maxTotal) {
-              final emergencyRemaining = maxTotal - virtualTotal;
-              final emergencyFillers = await _loadEmergencyNonBasicFillers(
-                pool: pool,
-                excludeNames: virtualDeck
-                    .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
-                    .where((n) => n.isNotEmpty)
-                    .toSet(),
-                bracket: bracket,
-                limit: emergencyRemaining,
-              );
-              if (emergencyFillers.isNotEmpty) deterministicStageUsed = true;
-
-              for (final filler in emergencyFillers) {
-                if (virtualTotal >= maxTotal) break;
-                final id = filler['id'] as String;
-                final name = filler['name'] as String;
-                final nameLower = name.toLowerCase();
-                final maxCopies = _maxCopiesForFormat(
-                  deckFormat: deckFormat,
-                  typeLine: filler['type_line'] as String? ?? '',
-                  name: name,
-                );
-
-                if ((virtualCountsByName[nameLower] ?? 0) >= maxCopies) {
-                  continue;
-                }
-
-                virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-                virtualCountsByName[nameLower] =
-                    (virtualCountsByName[nameLower] ?? 0) + 1;
-                addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
-                virtualTotal += 1;
-
-                final existingIndex = virtualDeck.indexWhere(
-                  (e) => (e['card_id'] as String?) == id,
-                );
-
-                if (existingIndex == -1) {
-                  virtualDeck.add({
-                    'card_id': id,
-                    'name': name,
-                    'type_line': filler['type_line'] ?? '',
-                    'oracle_text': filler['oracle_text'] ?? '',
-                    'colors': filler['colors'] ?? <String>[],
-                    'color_identity': filler['color_identity'] ?? <String>[],
-                    'quantity': 1,
-                    'is_commander': false,
-                    'mana_cost': '',
-                    'cmc': 0.0,
-                  });
-                } else {
-                  final existing = virtualDeck[existingIndex];
-                  virtualDeck[existingIndex] = {
-                    ...existing,
-                    'quantity': (existing['quantity'] as int? ?? 1) + 1,
-                  };
-                }
-              }
-            }
-          }
-
-          // Garantia local de fechamento do tamanho do deck.
-          // Se ainda faltar, completa com básicos dentro da identidade.
-          if (virtualTotal < maxTotal) {
-            final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
-            final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
-            if (basicsWithIds.isNotEmpty) {
-              guaranteedBasicsStageUsed = true;
-              final keys = basicsWithIds.keys.toList();
-              var i = 0;
-              while (virtualTotal < maxTotal && basicAddedDuringBuild < maxBasicAdditions) {
-                final name = keys[i % keys.length];
-                final id = basicsWithIds[name]!;
-
-                virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
-                virtualCountsByName[name.toLowerCase()] =
-                    (virtualCountsByName[name.toLowerCase()] ?? 0) + 1;
-                addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
-                virtualTotal += 1;
-                basicAddedDuringBuild += 1;
-                i++;
-              }
-            }
-          }
-        }
-
-        // Constrói resposta "complete" final (aggregated)
-        final additionsDetailed = <Map<String, dynamic>>[];
-        for (final entry in addedCountsById.entries) {
-          additionsDetailed.add({
-            'card_id': entry.key,
-            'quantity': entry.value,
-          });
-        }
-
-        final addedTotal = additionsDetailed.fold<int>(
-          0,
-          (sum, item) => sum + ((item['quantity'] as int?) ?? 0),
-        );
-
-        final targetTotal = maxTotal - currentTotalCards;
-        final addedNameById = <String, String>{};
-        if (additionsDetailed.isNotEmpty) {
-          final addIds = additionsDetailed
-              .map((e) => e['card_id']?.toString() ?? '')
-              .where((id) => id.isNotEmpty)
-              .toList();
-          final addRows = await pool.execute(
-            Sql.named('SELECT id::text, name FROM cards WHERE id = ANY(@ids)'),
-            parameters: {'ids': addIds},
-          );
-          for (final row in addRows) {
-            addedNameById[row[0] as String] = row[1] as String;
-          }
-        }
-
-        final basicAdded = additionsDetailed.fold<int>(0, (sum, item) {
-          final id = item['card_id']?.toString() ?? '';
-          final name = (addedNameById[id] ?? '').trim().toLowerCase();
-          final qty = (item['quantity'] as int?) ?? 0;
-          if (_isBasicLandName(name)) return sum + qty;
-          return sum;
-        });
-
-        final nonBasicAdded = addedTotal - basicAdded;
-
-        Map<String, dynamic>? qualityError;
-        if (addedTotal < targetTotal) {
-          qualityError = {
-            'code': 'COMPLETE_QUALITY_PARTIAL',
-            'message':
-                'Não foi possível completar o deck com qualidade mínima: adições insuficientes.',
-            'target_additions': targetTotal,
-            'added_total': addedTotal,
-            'basic_added': basicAdded,
-            'non_basic_added': nonBasicAdded,
-          };
-        } else if (targetTotal >= 40 &&
-            basicAdded > ((commanderRecommendedLands ?? 38).clamp(28, 42) + 6)) {
-          qualityError = {
-            'code': 'COMPLETE_QUALITY_BASIC_OVERFLOW',
-            'message':
-                'Complete com excesso de terrenos básicos para montagem competitiva.',
-            'target_additions': targetTotal,
-            'added_total': addedTotal,
-            'basic_added': basicAdded,
-            'non_basic_added': nonBasicAdded,
-          };
-        } else if (targetTotal >= 40 && nonBasicAdded == 0) {
-          qualityError = {
-            'code': 'COMPLETE_QUALITY_DEGENERATE',
-            'message':
-                'Complete degenerado: apenas terrenos básicos foram sugeridos para preencher o deck.',
-            'target_additions': targetTotal,
-            'added_total': addedTotal,
-            'basic_added': basicAdded,
-            'non_basic_added': nonBasicAdded,
-          };
-        }
-
-        jsonResponse = {
-          'mode': 'complete',
-          'target_additions': maxTotal - currentTotalCards,
-          'iterations': iterations,
-          'additions_detailed': additionsDetailed,
-          'reasoning': (virtualTotal >= maxTotal)
-              ? 'Deck completado com cartas sinérgicas ao arquétipo $targetArchetype, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.'
-              : 'Deck parcialmente completado; algumas sugestões foram bloqueadas/filtradas.',
-          'warnings': {
-            if (invalidAll.isNotEmpty) 'invalid_cards': invalidAll,
-            if (filteredByIdentityAll.isNotEmpty)
-              'filtered_by_color_identity': {
-                'removed_additions': filteredByIdentityAll,
-              },
-            if (blockedByBracketAll.isNotEmpty)
-              'blocked_by_bracket': {
-                'blocked_additions': blockedByBracketAll,
-              },
-          },
-          'consistency_slo': {
-            'completed_target': addedTotal >= targetTotal,
-            'ai_stage_used': aiStageUsed,
-            'competitive_model_stage_used': competitiveModelStageUsed,
-            'average_deck_seed_stage_used': averageDeckSeedStageUsed,
-            'deterministic_stage_used': deterministicStageUsed,
-            'guaranteed_basics_stage_used': guaranteedBasicsStageUsed,
-            'added_total': addedTotal,
-            'target_total': targetTotal,
-            'non_basic_added': nonBasicAdded,
-            'basic_added': basicAdded,
-          },
-          if (qualityError != null) 'quality_error': qualityError,
-        };
-      } else {
-        jsonResponse = await optimizer.optimizeDeck(
-          deckData: deckData,
-          commanders: commanders,
-          targetArchetype: targetArchetype,
-          bracket: bracket,
-          keepTheme: keepTheme,
-          detectedTheme: themeProfile.theme,
-          coreCards: themeProfile.coreCards,
-        );
-        jsonResponse['mode'] ??= 'optimize';
       }
-    } catch (e, stackTrace) {
-      Log.e('Optimization failed: $e\nStack trace:\n$stackTrace');
-      final message = e.toString();
-      if (message.contains('Bad state: No element')) {
-        return internalServerError('Optimization failed');
+
+      // Garantia local de fechamento do tamanho do deck.
+
+      await OptimizeJobStore.progress(pool, jobId,
+          stage: 'Ajustando base de mana...', stageNumber: 4);
+
+      // Se ainda faltar, completa com básicos dentro da identidade.
+      if (virtualTotal < maxTotal) {
+        final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
+        final basicsWithIds = await _loadBasicLandIds(pool, basicNames);
+        if (basicsWithIds.isNotEmpty) {
+          guaranteedBasicsStageUsed = true;
+          final keys = basicsWithIds.keys.toList();
+          var i = 0;
+          while (virtualTotal < maxTotal &&
+              basicAddedDuringBuild < maxBasicAdditions) {
+            final name = keys[i % keys.length];
+            final id = basicsWithIds[name]!;
+
+            virtualCountsById[id] = (virtualCountsById[id] ?? 0) + 1;
+            virtualCountsByName[name.toLowerCase()] =
+                (virtualCountsByName[name.toLowerCase()] ?? 0) + 1;
+            addedCountsById[id] = (addedCountsById[id] ?? 0) + 1;
+            virtualTotal += 1;
+            basicAddedDuringBuild += 1;
+
+            // FIX #4b: Adicionar ao virtualDeck para manter consistência
+            final existIdx =
+                virtualDeck.indexWhere((e) => (e['card_id'] as String?) == id);
+            if (existIdx == -1) {
+              virtualDeck.add({
+                'card_id': id,
+                'name': name,
+                'type_line': 'Basic Land',
+                'oracle_text': '',
+                'colors': <String>[],
+                'color_identity': <String>[],
+                'quantity': 1,
+                'is_commander': false,
+                'mana_cost': '',
+                'cmc': 0.0,
+              });
+            } else {
+              final existing = virtualDeck[existIdx];
+              virtualDeck[existIdx] = {
+                ...existing,
+                'quantity': (existing['quantity'] as int? ?? 1) + 1,
+              };
+            }
+            i++;
+          }
+        }
       }
-      return internalServerError('Optimization failed', details: e);
     }
+
+    // Constrói resposta "complete" final (aggregated)
+    final additionsDetailed = <Map<String, dynamic>>[];
+    for (final entry in addedCountsById.entries) {
+      additionsDetailed.add({
+        'card_id': entry.key,
+        'quantity': entry.value,
+      });
+    }
+
+    final addedTotal = additionsDetailed.fold<int>(
+      0,
+      (sum, item) => sum + ((item['quantity'] as int?) ?? 0),
+    );
+
+    final targetTotal = maxTotal - currentTotalCards;
+    final addedNameById = <String, String>{};
+    if (additionsDetailed.isNotEmpty) {
+      final addIds = additionsDetailed
+          .map((e) => e['card_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+      final addRows = await pool.execute(
+        Sql.named('SELECT id::text, name FROM cards WHERE id = ANY(@ids)'),
+        parameters: {'ids': addIds},
+      );
+      for (final row in addRows) {
+        addedNameById[row[0] as String] = row[1] as String;
+      }
+    }
+
+    final basicAdded = additionsDetailed.fold<int>(0, (sum, item) {
+      final id = item['card_id']?.toString() ?? '';
+      final name = (addedNameById[id] ?? '').trim().toLowerCase();
+      final qty = (item['quantity'] as int?) ?? 0;
+      if (_isBasicLandName(name)) return sum + qty;
+      return sum;
+    });
+
+    final nonBasicAdded = addedTotal - basicAdded;
+
+    Map<String, dynamic>? qualityError;
+    if (addedTotal < targetTotal) {
+      qualityError = {
+        'code': 'COMPLETE_QUALITY_PARTIAL',
+        'message':
+            'Não foi possível completar o deck com qualidade mínima: adições insuficientes.',
+        'target_additions': targetTotal,
+        'added_total': addedTotal,
+        'basic_added': basicAdded,
+        'non_basic_added': nonBasicAdded,
+      };
+    } else if (targetTotal >= 40 &&
+        basicAdded > ((commanderRecommendedLands ?? 38).clamp(28, 42) + 6)) {
+      qualityError = {
+        'code': 'COMPLETE_QUALITY_BASIC_OVERFLOW',
+        'message':
+            'Complete com excesso de terrenos básicos para montagem competitiva.',
+        'target_additions': targetTotal,
+        'added_total': addedTotal,
+        'basic_added': basicAdded,
+        'non_basic_added': nonBasicAdded,
+      };
+    } else if (targetTotal >= 40 && nonBasicAdded == 0) {
+      qualityError = {
+        'code': 'COMPLETE_QUALITY_DEGENERATE',
+        'message':
+            'Complete degenerado: apenas terrenos básicos foram sugeridos para preencher o deck.',
+        'target_additions': targetTotal,
+        'added_total': addedTotal,
+        'basic_added': basicAdded,
+        'non_basic_added': nonBasicAdded,
+      };
+    }
+
+    jsonResponse = {
+      'mode': 'complete',
+      'target_additions': maxTotal - currentTotalCards,
+      'iterations': iterations,
+      'additions_detailed': additionsDetailed,
+      'reasoning': (virtualTotal >= maxTotal)
+          ? 'Deck completado com cartas sinérgicas ao arquétipo $targetArchetype, priorizando sinergia com o Commander e a proporção ideal de terrenos/spells.'
+          : 'Deck parcialmente completado; algumas sugestões foram bloqueadas/filtradas.',
+      'warnings': {
+        if (invalidAll.isNotEmpty) 'invalid_cards': invalidAll,
+        if (filteredByIdentityAll.isNotEmpty)
+          'filtered_by_color_identity': {
+            'removed_additions': filteredByIdentityAll,
+          },
+        if (blockedByBracketAll.isNotEmpty)
+          'blocked_by_bracket': {
+            'blocked_additions': blockedByBracketAll,
+          },
+      },
+      'consistency_slo': {
+        'completed_target': addedTotal >= targetTotal,
+        'ai_stage_used': aiStageUsed,
+        'competitive_model_stage_used': competitiveModelStageUsed,
+        'average_deck_seed_stage_used': averageDeckSeedStageUsed,
+        'deterministic_stage_used': deterministicStageUsed,
+        'guaranteed_basics_stage_used': guaranteedBasicsStageUsed,
+        'added_total': addedTotal,
+        'target_total': targetTotal,
+        'non_basic_added': nonBasicAdded,
+        'basic_added': basicAdded,
+      },
+      if (qualityError != null) 'quality_error': qualityError,
+    };
 
     jsonResponse = _normalizeOptimizePayload(
       jsonResponse,
       defaultMode: 'optimize',
     );
 
-    // Se o modo complete já veio “determinístico” (com card_id/quantity),
-    // devolve diretamente sem passar pelo fluxo antigo de validação por nomes.
+    await OptimizeJobStore.progress(pool, jobId,
+        stage: 'Processando resultado final...', stageNumber: 6);
+
+    // Post-processing: validar qualidade e construir resposta
     if (jsonResponse['mode'] == 'complete' &&
         jsonResponse['additions_detailed'] is List) {
       final qualityError = jsonResponse['quality_error'];
       if (qualityError is Map) {
-        return Response.json(
-          statusCode: HttpStatus.unprocessableEntity,
-          body: {
-            'error':
-                'Complete mode não atingiu qualidade mínima para montagem competitiva.',
-            'quality_error': qualityError,
-            'mode': 'complete',
-            'target_additions': jsonResponse['target_additions'],
-          },
+        await OptimizeJobStore.fail(
+          pool,
+          jobId,
+          error: 'Complete mode não atingiu qualidade mínima.',
+          qualityError: qualityError.cast<String, dynamic>(),
         );
+        return;
       }
 
       final rawAdditionsDetailed = (jsonResponse['additions_detailed'] as List)
@@ -1866,14 +4473,16 @@ Future<Response> onRequest(RequestContext context) async {
           .where((m) => (m['card_id'] as String?)?.isNotEmpty ?? false)
           .toList();
 
-      final ids = rawAdditionsDetailed.map((e) => e['card_id'] as String).toList();
+      final ids =
+          rawAdditionsDetailed.map((e) => e['card_id'] as String).toList();
       final cardInfoById = <String, Map<String, String>>{};
       var additionsDetailed = <Map<String, dynamic>>[];
       Map<String, dynamic>? postAnalysisComplete;
-      
+
       if (ids.isNotEmpty) {
         final r = await pool.execute(
-          Sql.named('SELECT id::text, name, type_line FROM cards WHERE id = ANY(@ids)'),
+          Sql.named(
+              'SELECT id::text, name, type_line FROM cards WHERE id = ANY(@ids)'),
           parameters: {'ids': ids},
         );
         for (final row in r) {
@@ -1926,35 +4535,35 @@ Future<Response> onRequest(RequestContext context) async {
                   'card_id': e['card_id'],
                   'quantity': e['quantity'],
                   'name': e['name'],
-                  'is_basic_land': _isBasicLandName(
-                      ((e['name'] as String?) ?? '').trim()),
+                  'is_basic_land':
+                      _isBasicLandName(((e['name'] as String?) ?? '').trim()),
                 })
             .toList();
-        
+
         // === Gerar post_analysis para modo complete ===
         try {
           // 1. Buscar dados completos das cartas adicionadas
           final additionsDataResult = await pool.execute(
             Sql.named('''
-              SELECT name, type_line, mana_cost, colors, 
-                     COALESCE(
-                       (SELECT SUM(
-                         CASE 
-                           WHEN m[1] ~ '^[0-9]+\$' THEN m[1]::int
-                           WHEN m[1] IN ('W','U','B','R','G','C') THEN 1
-                           WHEN m[1] = 'X' THEN 0
-                           ELSE 1
-                         END
-                       ) FROM regexp_matches(mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
-                       0
-                     ) as cmc,
-                     oracle_text
-              FROM cards 
-              WHERE id = ANY(@ids)
-            '''),
+            SELECT name, type_line, mana_cost, colors, 
+                   COALESCE(
+                     (SELECT SUM(
+                       CASE 
+                         WHEN m[1] ~ '^[0-9]+\$' THEN m[1]::int
+                         WHEN m[1] IN ('W','U','B','R','G','C') THEN 1
+                         WHEN m[1] = 'X' THEN 0
+                         ELSE 1
+                       END
+                     ) FROM regexp_matches(mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
+                     0
+                   ) as cmc,
+                   oracle_text
+            FROM cards 
+            WHERE id = ANY(@ids)
+          '''),
             parameters: {'ids': ids},
           );
-          
+
           final additionsData = additionsDataResult
               .map((row) => {
                     'name': (row[0] as String?) ?? '',
@@ -1965,15 +4574,11 @@ Future<Response> onRequest(RequestContext context) async {
                     'oracle_text': (row[5] as String?) ?? '',
                   })
               .toList();
-          
-          // 2. Criar deck virtual (original + adições)
-          final virtualDeck = List<Map<String, dynamic>>.from(allCardData);
-          
-          // Expandir adições pelo quantity
-          for (final add in additionsDetailed) {
-            final qty = add['quantity'] as int;
+
+          final additionsForAnalysis = additionsDetailed.map((add) {
             final data = additionsData.firstWhere(
-              (d) => (d['name'] as String).toLowerCase() ==
+              (d) =>
+                  (d['name'] as String).toLowerCase() ==
                   ((add['name'] as String?) ?? '').toLowerCase(),
               orElse: () => {
                 'name': add['name'] ?? '',
@@ -1981,16 +4586,22 @@ Future<Response> onRequest(RequestContext context) async {
                 'mana_cost': '',
                 'colors': <String>[],
                 'cmc': 0.0,
-                'oracle_text': ''
+                'oracle_text': '',
               },
             );
-            for (var i = 0; i < qty; i++) {
-              virtualDeck.add(data);
-            }
-          }
-          
+            return {
+              ...data,
+              'quantity': (add['quantity'] as int?) ?? 1,
+            };
+          }).toList();
+          final virtualDeck = buildVirtualDeckForAnalysis(
+            originalDeck: allCardData,
+            additions: additionsForAnalysis,
+          );
+
           // 3. Rodar análise no deck virtual
-          final postAnalyzer = DeckArchetypeAnalyzer(virtualDeck, deckColors.toList());
+          final postAnalyzer =
+              DeckArchetypeAnalyzer(virtualDeck, deckColors.toList());
           postAnalysisComplete = postAnalyzer.generateAnalysis();
         } catch (e) {
           Log.w('Falha ao gerar post_analysis para modo complete: $e');
@@ -2006,17 +4617,15 @@ Future<Response> onRequest(RequestContext context) async {
         'bracket': bracket,
         'target_additions': jsonResponse['target_additions'],
         'iterations': jsonResponse['iterations'],
-        'additions': additionsDetailed
-          .map((e) => e['name'] ?? e['card_id'])
-            .toList(),
+        'additions':
+            additionsDetailed.map((e) => e['name'] ?? e['card_id']).toList(),
         'additions_detailed': additionsDetailed
             .map((e) => {
                   'card_id': e['card_id'],
                   'quantity': e['quantity'],
                   'name': e['name'],
                   'is_basic_land': e['is_basic_land'] ??
-                      _isBasicLandName(
-                          ((e['name'] as String?) ?? '').trim()),
+                      _isBasicLandName(((e['name'] as String?) ?? '').trim()),
                 })
             .toList(),
         'removals': const <String>[],
@@ -2034,1063 +4643,14 @@ Future<Response> onRequest(RequestContext context) async {
         responseBody['warnings'] = warnings;
       }
 
-      return Response.json(body: responseBody);
+      await OptimizeJobStore.complete(pool, jobId, result: responseBody);
+    } else {
+      // Fallback: se por algum motivo não veio como complete
+      await OptimizeJobStore.complete(pool, jobId, result: jsonResponse);
     }
-
-    // Validar cartas sugeridas pela IA
-
-    // Validar cartas sugeridas pela IA
-    final validationService = CardValidationService(pool);
-
-    List<String> removals = [];
-    List<String> additions = [];
-    var emptySuggestionFallbackTriggered = false;
-    var emptySuggestionFallbackApplied = false;
-    String? emptySuggestionFallbackReason;
-    var emptySuggestionFallbackCandidateCount = 0;
-    var emptySuggestionFallbackReplacementCount = 0;
-    var emptySuggestionFallbackPairCount = 0;
-
-    final parsedSuggestions = parseOptimizeSuggestions(jsonResponse);
-    removals = parsedSuggestions['removals'] as List<String>;
-    additions = parsedSuggestions['additions'] as List<String>;
-    final recognizedSuggestionFormat =
-      parsedSuggestions['recognized_format'] as bool? ?? false;
-
-    final deckNamesLower = allCardData
-      .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
-      .where((n) => n.isNotEmpty)
-      .toSet();
-    final commanderLower = commanders.map((c) => c.toLowerCase()).toSet();
-    final coreLower =
-      themeProfile.coreCards.map((c) => c.toLowerCase()).toSet();
-    final blockedByTheme = <String>[];
-
-    final isComplete = jsonResponse['mode'] == 'complete';
-
-    if (removals.isEmpty && additions.isEmpty && !isComplete) {
-      emptySuggestionFallbackTriggered = true;
-      _emptySuggestionFallbackTriggeredCount++;
-      final fallbackRemovalCandidates = <String>[];
-      final seenLower = <String>{};
-
-      void collectCandidates({required bool preferNonLand}) {
-        for (final card in allCardData) {
-          final name = ((card['name'] as String?) ?? '').trim();
-          if (name.isEmpty) continue;
-
-          final lower = name.toLowerCase();
-          if (seenLower.contains(lower)) continue;
-          if (commanderLower.contains(lower)) continue;
-          if (coreLower.contains(lower)) continue;
-
-          final typeLine =
-              ((card['type_line'] as String?) ?? '').toLowerCase();
-          final isLand = typeLine.contains('land');
-          if (preferNonLand && isLand) continue;
-
-          seenLower.add(lower);
-          fallbackRemovalCandidates.add(name);
-          if (fallbackRemovalCandidates.length >= 2) break;
-        }
-      }
-
-      collectCandidates(preferNonLand: true);
-      if (fallbackRemovalCandidates.isEmpty) {
-        collectCandidates(preferNonLand: false);
-      }
-      emptySuggestionFallbackCandidateCount = fallbackRemovalCandidates.length;
-
-      if (fallbackRemovalCandidates.isNotEmpty) {
-        final replacements = await _findSynergyReplacements(
-          pool: pool,
-          optimizer: optimizer,
-          commanders: commanders,
-          commanderColorIdentity: commanderColorIdentity,
-          targetArchetype: targetArchetype,
-          bracket: bracket,
-          keepTheme: keepTheme,
-          detectedTheme: themeProfile.theme,
-          coreCards: themeProfile.coreCards,
-          missingCount: fallbackRemovalCandidates.length,
-          removedCards: fallbackRemovalCandidates,
-          excludeNames: deckNamesLower,
-          allCardData: allCardData,
-        );
-        emptySuggestionFallbackReplacementCount = replacements.length;
-
-        if (replacements.isNotEmpty) {
-          final fallbackAdditions = replacements
-              .map((r) => (r['name'] as String?)?.trim() ?? '')
-              .where((n) => n.isNotEmpty)
-              .toList();
-
-          final pairCount = fallbackRemovalCandidates.length < fallbackAdditions.length
-              ? fallbackRemovalCandidates.length
-              : fallbackAdditions.length;
-          emptySuggestionFallbackPairCount = pairCount;
-
-          if (pairCount > 0) {
-            removals = fallbackRemovalCandidates.take(pairCount).toList();
-            additions = fallbackAdditions.take(pairCount).toList();
-            emptySuggestionFallbackApplied = true;
-            _emptySuggestionFallbackAppliedCount++;
-            emptySuggestionFallbackReason =
-                'IA retornou sugestões vazias; aplicado fallback heurístico orientado a sinergia.';
-            Log.i(
-                '✅ [AI Optimize] Fallback aplicado com $pairCount swap(s) após retorno vazio da IA.');
-          }
-        }
-      }
-
-      if (!emptySuggestionFallbackApplied) {
-        if (fallbackRemovalCandidates.isEmpty) {
-          _emptySuggestionFallbackNoCandidateCount++;
-          emptySuggestionFallbackReason =
-              'IA retornou sugestões vazias e o deck não possui candidatas seguras para remoção.';
-        } else if (emptySuggestionFallbackReplacementCount == 0) {
-          _emptySuggestionFallbackNoReplacementCount++;
-          emptySuggestionFallbackReason =
-              'IA retornou sugestões vazias e não foi possível encontrar substitutas válidas no fallback.';
-        } else {
-        emptySuggestionFallbackReason =
-            'IA retornou sugestões vazias e não foi possível gerar fallback seguro.';
-        }
-      }
-    }
-
-    // WARN: Se parsing resultou em listas vazias, logar para diagnóstico
-    if (removals.isEmpty && additions.isEmpty && !isComplete) {
-      if (recognizedSuggestionFormat) {
-        Log.d(
-            'ℹ️ [AI Optimize] Payload reconhecido, mas sem sugestões úteis (provável filtro/retorno vazio). Keys: ${jsonResponse.keys.toList()}');
-      } else {
-        Log.w(
-            '⚠️ [AI Optimize] IA retornou formato não reconhecido. Keys: ${jsonResponse.keys.toList()}');
-      }
-    }
-
-    // Suporte ao modo "complete"
-    if (isComplete) {
-      removals = [];
-      // Quando veio do loop, preferimos additions_detailed.
-      final fromDetailed = (jsonResponse['additions_detailed'] as List?)
-          ?.whereType<Map>()
-          .toList();
-      if (fromDetailed != null && fromDetailed.isNotEmpty) {
-        additions = fromDetailed
-            .map((m) => (m['name'] ?? '').toString())
-            .where((s) => s.trim().isNotEmpty)
-            .toList();
-      } else {
-        additions = (jsonResponse['additions'] as List?)?.cast<String>() ?? [];
-      }
-    }
-
-    // GARANTIR EQUILÍBRIO NUMÉRICO (Regra de Ouro)
-    if (!isComplete) {
-      final minCount = removals.length < additions.length
-          ? removals.length
-          : additions.length;
-
-      if (removals.length != additions.length) {
-        Log.w(
-          '⚠️ [AI Optimize] Ajustando desequilíbrio: -${removals.length} / +${additions.length} -> $minCount',
-        );
-        removals = removals.take(minCount).toList();
-        additions = additions.take(minCount).toList();
-      }
-    }
-
-    var sanitizedRemovals =
-        removals.map(CardValidationService.sanitizeCardName).toList();
-    var sanitizedAdditions =
-        additions.map(CardValidationService.sanitizeCardName).toList();
-
-    // Remoções devem existir no deck (evita no-ops e contagem final errada).
-    sanitizedRemovals = sanitizedRemovals
-        .where((n) => deckNamesLower.contains(n.toLowerCase()))
-        .toList();
-
-    // Nunca remover comandantes.
-    sanitizedRemovals = sanitizedRemovals
-        .where((n) => !commanderLower.contains(n.toLowerCase()))
-        .toList();
-
-    // Se o usuário pediu "otimizar", mas mantendo o tema, bloqueia remoções de core.
-    if (keepTheme) {
-      sanitizedRemovals = sanitizedRemovals.where((n) {
-        final isCore = coreLower.contains(n.toLowerCase());
-        if (isCore) blockedByTheme.add(n);
-        return !isCore;
-      }).toList();
-    }
-
-    // Em modo optimize (swaps), evita sugerir adicionar algo que já existe (no-op).
-    if (!isComplete) {
-      sanitizedAdditions = sanitizedAdditions
-          .where((n) => !deckNamesLower.contains(n.toLowerCase()))
-          .toList();
-    }
-
-    // Re-balancear após filtros.
-    if (!isComplete) {
-      final minCount = sanitizedRemovals.length < sanitizedAdditions.length
-          ? sanitizedRemovals.length
-          : sanitizedAdditions.length;
-      sanitizedRemovals = sanitizedRemovals.take(minCount).toList();
-      sanitizedAdditions = sanitizedAdditions.take(minCount).toList();
-    }
-
-    // Validar todas as cartas sugeridas
-    final allSuggestions = [...sanitizedRemovals, ...sanitizedAdditions];
-    final validation =
-        await validationService.validateCardNames(allSuggestions);
-    final validList =
-        (validation['valid'] as List).cast<Map<String, dynamic>>();
-    final validByNameLower = <String, Map<String, dynamic>>{};
-    for (final v in validList) {
-      final n = (v['name'] as String).toLowerCase();
-      validByNameLower[n] = v;
-    }
-
-    // Filtrar apenas cartas válidas e remover duplicatas
-    var validRemovals = sanitizedRemovals
-        .where((name) {
-          return (validation['valid'] as List).any((card) =>
-              (card['name'] as String).toLowerCase() == name.toLowerCase());
-        })
-        .toSet()
-        .toList();
-
-    // No modo complete, preservamos repetição (para básicos) e ordem.
-    // No modo optimize (swaps), mantemos set para evitar duplicatas.
-    var validAdditions = sanitizedAdditions.where((name) {
-      return (validation['valid'] as List).any((card) =>
-          (card['name'] as String).toLowerCase() == name.toLowerCase());
-    }).toList();
-    if (!isComplete) {
-      validAdditions = validAdditions.toSet().toList();
-    }
-
-    // DEBUG: Log quantidades antes dos filtros avançados
-    Log.d('Antes dos filtros de cor/bracket:');
-    Log.d('  validRemovals.length = ${validRemovals.length}');
-    Log.d('  validAdditions.length = ${validAdditions.length}');
-    
-    // Filtrar adições ilegais para Commander/Brawl (identidade de cor do comandante).
-    // Observação: para colorless commander (identity vazia), apenas cartas colorless passam.
-    final filteredByColorIdentity = <String>[];
-    if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
-      final additionsIdentityResult = await pool.execute(
-        Sql.named('''
-            SELECT name, color_identity, colors
-            FROM cards
-            WHERE name = ANY(@names)
-          '''),
-        parameters: {'names': validAdditions},
-      );
-
-      final identityByName = <String, List<String>>{};
-      for (final row in additionsIdentityResult) {
-        final name = (row[0] as String).toLowerCase();
-        final colorIdentity =
-            (row[1] as List?)?.cast<String>() ?? const <String>[];
-        final colors = (row[2] as List?)?.cast<String>() ?? const <String>[];
-        final identity = (colorIdentity.isNotEmpty ? colorIdentity : colors);
-        identityByName[name] = identity;
-      }
-
-      validAdditions = validAdditions.where((name) {
-        final identity = identityByName[name.toLowerCase()] ?? const <String>[];
-        final ok = isWithinCommanderIdentity(
-          cardIdentity: identity,
-          commanderIdentity: commanderColorIdentity,
-        );
-        if (!ok) filteredByColorIdentity.add(name);
-        return ok;
-      }).toList();
-    }
-
-    // Bracket policy (intermediário): bloqueia cartas "acima do bracket" baseado no deck atual.
-    // Aplica somente em Commander/Brawl, quando bracket foi enviado.
-    final blockedByBracket = <Map<String, dynamic>>[];
-    if (bracket != null && commanders.isNotEmpty && validAdditions.isNotEmpty) {
-      // Dados atuais do deck (já temos oracle/type em allCardData + quantity)
-      final additionsInfoResult = await pool.execute(
-        Sql.named('''
-            SELECT name, type_line, oracle_text
-            FROM cards
-            WHERE name = ANY(@names)
-          '''),
-        parameters: {'names': validAdditions},
-      );
-      final additionsInfo = additionsInfoResult
-          .map((r) => {
-                'name': r[0] as String,
-                'type_line': r[1] as String? ?? '',
-                'oracle_text': r[2] as String? ?? '',
-                'quantity': 1,
-              })
-          .toList();
-
-      final decision = applyBracketPolicyToAdditions(
-        bracket: bracket,
-        currentDeckCards: allCardData,
-        additionsCardsData: additionsInfo,
-      );
-
-      blockedByBracket.addAll(decision.blocked);
-      // Modo complete pode conter repetição; para a decisão, usamos os nomes únicos do "allowed"
-      // e depois re-aplicamos mantendo repetição quando possível.
-      final allowedSet = decision.allowed.map((e) => e.toLowerCase()).toSet();
-      validAdditions = validAdditions
-          .where((n) => allowedSet.contains(n.toLowerCase()))
-          .toList();
-    }
-
-    // Top-up determinístico no modo complete:
-    // se depois de validações/filtros ainda faltarem cartas para atingir o target, completa com básicos.
-    final additionsDetailed = <Map<String, dynamic>>[];
-    if (isComplete) {
-      final targetAdditions = (jsonResponse['target_additions'] as int?) ?? 0;
-      final desired =
-          targetAdditions > 0 ? targetAdditions : validAdditions.length;
-
-      // Agrega as adições atuais por nome (quantidade 1 por ocorrência)
-      final countsByName = <String, int>{};
-      final basicNamesLower = _basicLandNamesForIdentity(commanderColorIdentity)
-          .map((e) => e.toLowerCase())
-          .toSet();
-      for (final n in validAdditions) {
-        final lower = n.toLowerCase();
-        final current = countsByName[n] ?? 0;
-        final isBasic = basicNamesLower.contains(lower) || lower == 'wastes';
-        if (!isBasic &&
-            (deckFormat.toLowerCase() == 'commander' ||
-                deckFormat.toLowerCase() == 'brawl') &&
-            current >= 1) {
-          continue;
-        }
-        countsByName[n] = current + 1;
-      }
-
-      // Se faltar, adiciona básicos para preencher
-      var missing = desired - countsByName.values.fold<int>(0, (a, b) => a + b);
-      Map<String, String> basicsWithIds = const {};
-      if (missing > 0) {
-        final basicNames = _basicLandNamesForIdentity(commanderColorIdentity);
-        basicsWithIds = await _loadBasicLandIds(pool, basicNames);
-
-        if (basicsWithIds.isNotEmpty) {
-          final keys = basicsWithIds.keys.toList();
-          var i = 0;
-          while (missing > 0) {
-            final name = keys[i % keys.length];
-            countsByName[name] = (countsByName[name] ?? 0) + 1;
-            missing--;
-            i++;
-          }
-        }
-      }
-
-      // Converte para additions_detailed com card_id/quantity
-      for (final entry in countsByName.entries) {
-        final v = validByNameLower[entry.key.toLowerCase()];
-        final id = v?['id']?.toString() ?? basicsWithIds[entry.key]?.toString();
-        final name = v?['name']?.toString() ?? entry.key;
-        if (id == null || id.isEmpty) continue;
-        additionsDetailed.add({
-          'name': name,
-          'card_id': id,
-          'quantity': entry.value,
-        });
-      }
-
-      // Mantém additions como lista simples (única) para UI; o app aplica via additions_detailed.
-      validAdditions =
-          additionsDetailed.map((e) => e['name'] as String).toList();
-    }
-
-    // Re-aplicar equilíbrio após validação
-    // FILOSOFIA: Quando additions < removals, a IA deve SUGERIR NOVAS CARTAS
-    // de sinergia — NÃO preencher com lands genéricos. O propósito é OTIMIZAR.
-    if (!isComplete && validRemovals.length != validAdditions.length) {
-      Log.d('Re-balanceamento pós-filtros:');
-      Log.d('  Antes: removals=${validRemovals.length}, additions=${validAdditions.length}');
-      
-      if (validAdditions.length < validRemovals.length) {
-        // CORREÇÃO REAL: Re-consultar a IA para cartas substitutas
-        final missingCount = validRemovals.length - validAdditions.length;
-        Log.d('  Faltam $missingCount adições - consultando IA para substitutas sinérgicas');
-        
-        // Montar lista de cartas a excluir (já existentes + já sugeridas + filtradas)
-        final excludeNames = <String>{
-          ...deckNamesLower,
-          ...validAdditions.map((n) => n.toLowerCase()),
-          ...filteredByColorIdentity.map((n) => n.toLowerCase()),
-        };
-        
-        // Categorias das cartas removidas para pedir substitutas do mesmo tipo funcional
-        final removedButUnmatched = validRemovals.sublist(validAdditions.length);
-        
-        try {
-          final replacementResult = await _findSynergyReplacements(
-            pool: pool,
-            optimizer: optimizer,
-            commanders: commanders,
-            commanderColorIdentity: commanderColorIdentity,
-            targetArchetype: targetArchetype,
-            bracket: bracket,
-            keepTheme: keepTheme,
-            detectedTheme: themeProfile.theme,
-            coreCards: themeProfile.coreCards,
-            missingCount: missingCount,
-            removedCards: removedButUnmatched,
-            excludeNames: excludeNames,
-            allCardData: allCardData,
-          );
-          
-          if (replacementResult.isNotEmpty) {
-            for (final replacement in replacementResult) {
-              final name = replacement['name'] as String;
-              final id = replacement['id'] as String;
-              validAdditions.add(name);
-              validByNameLower[name.toLowerCase()] = {
-                'id': id,
-                'name': name,
-              };
-            }
-            Log.d('  IA sugeriu ${replacementResult.length} substitutas sinérgicas');
-          }
-          
-          // Se AINDA faltar (IA não conseguiu preencher tudo), TRUNCAR remoções
-          // para manter equilíbrio. NÃO preencher com básicos em modo optimize —
-          // trocar spells por lands é degradação, não otimização.
-          if (validAdditions.length < validRemovals.length) {
-            final stillMissing = validRemovals.length - validAdditions.length;
-            Log.d('  Ainda faltam $stillMissing - truncando remoções (não preencher com básicos em optimize)');
-            validRemovals = validRemovals.take(validAdditions.length).toList();
-          }
-        } catch (e) {
-          Log.w('Falha ao buscar substitutas IA: $e - usando fallback');
-          // Fallback: truncar remoções para não perder cartas
-          validRemovals = validRemovals.take(validAdditions.length).toList();
-        }
-      } else {
-        // Mais adições que remoções: truncar adições
-        validAdditions = validAdditions.take(validRemovals.length).toList();
-      }
-      
-      Log.d('  Depois: removals=${validRemovals.length}, additions=${validAdditions.length}');
-    }
-
-    // --- VERIFICAÇÃO PÓS-OTIMIZAÇÃO (Virtual Deck Analysis) ---
-    // Simular o deck como ficaria se as mudanças fossem aplicadas e re-analisar
-    Map<String, dynamic>? postAnalysis;
-    List<String> validationWarnings = [];
-
-    // ═══════════════════════════════════════════════════════════
-    // VALIDAÇÃO PÓS-PROCESSAMENTO: Color Identity + EDHREC + Tema
-    // ═══════════════════════════════════════════════════════════
-
-    // 1. Color Identity Warning (se IA sugeriu cartas inválidas)
-    if (filteredByColorIdentity.isNotEmpty) {
-      validationWarnings.add(
-        '⚠️ ${filteredByColorIdentity.length} carta(s) sugerida(s) pela IA foram removidas por violar a identidade de cor do commander: ${filteredByColorIdentity.take(3).join(", ")}${filteredByColorIdentity.length > 3 ? "..." : ""}');
-    }
-
-    // 2. Validação EDHREC: verificar se additions têm sinergia comprovada
-    EdhrecCommanderData? edhrecValidationData;
-    List<String> additionsNotInEdhrec = [];
-    if (commanders.isNotEmpty && validAdditions.isNotEmpty) {
-      try {
-        final edhrecService = optimizer.edhrecService;
-        edhrecValidationData = await edhrecService.fetchCommanderData(commanders.firstOrNull ?? "");
-        
-        if (edhrecValidationData != null && edhrecValidationData.topCards.isNotEmpty) {
-          for (final addition in validAdditions) {
-            final card = edhrecValidationData.findCard(addition);
-            if (card == null) {
-              additionsNotInEdhrec.add(addition);
-            }
-          }
-          
-          if (additionsNotInEdhrec.isNotEmpty) {
-            final percent = (additionsNotInEdhrec.length / validAdditions.length * 100).toStringAsFixed(0);
-            if (additionsNotInEdhrec.length > validAdditions.length * 0.5) {
-              validationWarnings.add(
-                '⚠️ ${additionsNotInEdhrec.length} ($percent%) das cartas sugeridas NÃO aparecem nos dados EDHREC de ${commanders.firstOrNull ?? ""}. Isso pode indicar baixa sinergia: ${additionsNotInEdhrec.take(3).join(", ")}${additionsNotInEdhrec.length > 3 ? "..." : ""}');
-            } else if (additionsNotInEdhrec.length >= 3) {
-              validationWarnings.add(
-                '💡 ${additionsNotInEdhrec.length} carta(s) sugerida(s) não estão nos dados EDHREC - podem ser inovadoras ou de baixa sinergia.');
-            }
-          }
-        }
-      } catch (e) {
-        Log.w('EDHREC validation failed (non-blocking): $e');
-      }
-    }
-
-    // 3. Comparação de Tema: verificar se tema detectado corresponde aos temas EDHREC
-    if (edhrecValidationData != null && edhrecValidationData.themes.isNotEmpty) {
-      final detectedThemeLower = targetArchetype.toLowerCase();
-      final edhrecThemesLower = edhrecValidationData.themes.map((t) => t.toLowerCase()).toList();
-      
-      // Verificar se o tema detectado tem correspondência nos temas EDHREC
-      bool themeMatch = false;
-      for (final edhrecTheme in edhrecThemesLower) {
-        if (detectedThemeLower.contains(edhrecTheme) || 
-            edhrecTheme.contains(detectedThemeLower)) {
-          themeMatch = true;
-          break;
-        }
-      }
-      
-      if (!themeMatch) {
-        validationWarnings.add(
-          '� Tema detectado "$targetArchetype" não corresponde aos temas populares do EDHREC (${edhrecValidationData.themes.take(3).join(", ")}). O sistema está usando abordagem HÍBRIDA: 70% cartas EDHREC + 30% cartas do seu tema para respeitar sua ideia.');
-      }
-    }
-
-    if (validAdditions.isNotEmpty) {
-      try {
-        // 1. Buscar dados completos das cartas sugeridas (para análise de mana/tipo)
-        // Usar nomes corretos do DB (via validByNameLower) para evitar problemas de case
-        final correctedAdditionNames = validAdditions
-            .map((n) {
-              final v = validByNameLower[n.toLowerCase()];
-              return (v?['name'] as String?) ?? n;
-            })
-            .toList();
-        final additionsDataResult = await pool.execute(
-          Sql.named('''
-              SELECT name, type_line, mana_cost, colors, 
-                     COALESCE(
-                       (SELECT SUM(
-                         CASE 
-                           WHEN m[1] ~ '^[0-9]+\$' THEN m[1]::int
-                           WHEN m[1] IN ('W','U','B','R','G','C') THEN 1
-                           WHEN m[1] = 'X' THEN 0
-                           ELSE 1
-                         END
-                       ) FROM regexp_matches(mana_cost, '\\{([^}]+)\\}', 'g') AS m(m)),
-                       0
-                     ) as cmc,
-                     oracle_text
-              FROM cards 
-              WHERE LOWER(name) = ANY(@names)
-            '''),
-          parameters: {'names': correctedAdditionNames.map((n) => n.toLowerCase()).toList()},
-        );
-
-        final additionsData = additionsDataResult
-            .map((row) => {
-                  'name': (row[0] as String?) ?? '',
-                  'type_line': (row[1] as String?) ?? '',
-                  'mana_cost': (row[2] as String?) ?? '',
-                  'colors': (row[3] as List?)?.cast<String>() ?? [],
-                  'cmc': (row[4] as num?)?.toDouble() ?? 0.0,
-                  'oracle_text': (row[5] as String?) ?? '',
-                })
-            .toList();
-
-        // 2. Criar Deck Virtual (Clone do atual - Remoções + Adições)
-        final virtualDeck = List<Map<String, dynamic>>.from(
-          allCardData.map((c) => Map<String, dynamic>.from(c)),
-        );
-
-        // Remover cartas sugeridas (pelo nome, case-insensitive)
-        // Usar contagem precisa: cada nome na lista de remoções remove exatamente 1 cópia
-        final removalCountsByName = <String, int>{};
-        for (final name in validRemovals) {
-          final lower = name.toLowerCase();
-          removalCountsByName[lower] = (removalCountsByName[lower] ?? 0) + 1;
-        }
-        virtualDeck.removeWhere((c) {
-          final name = ((c['name'] as String?) ?? '').toLowerCase();
-          final remaining = removalCountsByName[name] ?? 0;
-          if (remaining > 0) {
-            removalCountsByName[name] = remaining - 1;
-            return true;
-          }
-          return false;
-        });
-
-        // Adicionar novas cartas
-        virtualDeck.addAll(additionsData);
-
-        // 3. Rodar Análise no Deck Virtual
-        final postAnalyzer =
-            DeckArchetypeAnalyzer(virtualDeck, deckColors.toList());
-        postAnalysis = postAnalyzer.generateAnalysis();
-
-        // 4. Comparar Antes vs Depois — VALIDAÇÃO QUALITATIVA REAL
-        final preManaAssessment = deckAnalysis['mana_base_assessment'] as String? ?? '';
-        final postManaAssessment = postAnalysis['mana_base_assessment'] as String? ?? '';
-        final preManaIssues = preManaAssessment.contains('Falta mana');
-        final postManaIssues = postManaAssessment.contains('Falta mana');
-
-        if (!preManaIssues && postManaIssues) {
-          validationWarnings.add(
-              '⚠️ ATENÇÃO: As sugestões da IA podem piorar sua base de mana.');
-        }
-
-        final preAvgCmc = deckAnalysis['average_cmc'] as String? ?? '0';
-        final postAvgCmc = postAnalysis['average_cmc'] as String? ?? '0';
-        final preCurve = double.tryParse(preAvgCmc) ?? 0.0;
-        final postCurve = double.tryParse(postAvgCmc) ?? 0.0;
-
-        if (targetArchetype.toLowerCase() == 'aggro' && postCurve > preCurve) {
-          validationWarnings.add(
-              '⚠️ ATENÇÃO: O deck está ficando mais lento (CMC aumentou), o que é ruim para Aggro.');
-        }
-
-        // 5. ANÁLISE DE QUALIDADE DAS TROCAS (Power Level Assessment)
-        final preTypes = deckAnalysis['type_distribution'] as Map<String, dynamic>? ?? {};
-        final postTypes = postAnalysis['type_distribution'] as Map<String, dynamic>? ?? {};
-        
-        // Verificar se a otimização não desbalanceou a distribuição de tipos
-        final preLands = (preTypes['lands'] as int?) ?? 0;
-        final postLands = (postTypes['lands'] as int?) ?? 0;
-        if (postLands < preLands - 3) {
-          validationWarnings.add(
-            '⚠️ A otimização removeu muitos terrenos ($preLands → $postLands). Isso pode causar problemas de mana.');
-        }
-        
-        // Verificar se a curva melhorou para o arquétipo
-        if (targetArchetype.toLowerCase() == 'control' && postCurve < preCurve - 0.5) {
-          validationWarnings.add(
-            '💡 O CMC médio diminuiu significativamente ($preAvgCmc → $postAvgCmc). Para Control, isso pode remover respostas de custo alto que são importantes.');
-        }
-        
-        // Gerar resumo de melhoria
-        final improvements = <String>[];
-        if (postCurve < preCurve && targetArchetype.toLowerCase() != 'control') {
-          improvements.add('CMC médio otimizado: $preAvgCmc → $postAvgCmc');
-        }
-        if (preManaIssues && !postManaIssues) {
-          improvements.add('Base de mana corrigida');
-        }
-        if ((postTypes['instants'] as int? ?? 0) > (preTypes['instants'] as int? ?? 0)) {
-          improvements.add('Mais interação instant-speed adicionada');
-        }
-        
-        if (improvements.isNotEmpty) {
-          postAnalysis['improvements'] = improvements;
-        }
-
-        // ═══════════════════════════════════════════════════════════
-        // 6. VALIDAÇÃO AUTOMÁTICA (Monte Carlo + Funcional + Critic IA)
-        // ═══════════════════════════════════════════════════════════
-        try {
-          final validator = OptimizationValidator(openAiKey: apiKey);
-          final validationReport = await validator.validate(
-            originalDeck: allCardData,
-            optimizedDeck: virtualDeck,
-            removals: validRemovals,
-            additions: validAdditions,
-            commanders: commanders,
-            archetype: targetArchetype,
-          );
-
-          postAnalysis['validation'] = validationReport.toJson();
-
-          // Adicionar warnings do validador
-          for (final w in validationReport.warnings) {
-            validationWarnings.add(w);
-          }
-
-          // Se reprovado, alertar
-          if (validationReport.verdict == 'reprovado') {
-            validationWarnings.insert(0,
-                '🚫 VALIDAÇÃO: As trocas sugeridas NÃO passaram na validação automática (score: ${validationReport.score}/100).');
-          }
-
-          Log.d('Validation score: ${validationReport.score}/100 verdict: ${validationReport.verdict}');
-        } catch (validationError) {
-          Log.w('Validation failed (non-blocking): $validationError');
-          // Validação é enhancement, não deve bloquear a resposta
-        }
-      } catch (e) {
-        Log.e('Erro na verificação pós-otimização: $e');
-      }
-    }
-
-    // Preparar resposta com avisos sobre cartas inválidas
-    final invalidCards = validation['invalid'] as List<String>;
-    final suggestions = validation['suggestions'] as Map<String, List<String>>;
-
-    Map<String, dynamic>? persistedFallbackAggregate;
-    try {
-      await _recordOptimizeFallbackTelemetry(
-        pool: pool,
-        userId: userId,
-        deckId: deckId,
-        mode: jsonResponse['mode']?.toString() ?? 'optimize',
-        recognizedFormat: recognizedSuggestionFormat,
-        triggered: emptySuggestionFallbackTriggered,
-        applied: emptySuggestionFallbackApplied,
-        noCandidate: emptySuggestionFallbackTriggered &&
-            emptySuggestionFallbackCandidateCount == 0,
-        noReplacement: emptySuggestionFallbackTriggered &&
-            emptySuggestionFallbackCandidateCount > 0 &&
-            emptySuggestionFallbackReplacementCount == 0,
-        candidateCount: emptySuggestionFallbackCandidateCount,
-        replacementCount: emptySuggestionFallbackReplacementCount,
-        pairCount: emptySuggestionFallbackPairCount,
-      );
-      persistedFallbackAggregate =
-          await _loadPersistedEmptyFallbackAggregate(pool);
-    } catch (e) {
-      Log.w('Persisted fallback telemetry unavailable: $e');
-    }
-
-    final preCmc =
-        double.tryParse('${deckAnalysis['average_cmc'] ?? '0'}') ?? 0.0;
-    final postCmc = postAnalysis == null
-        ? preCmc
-        : (double.tryParse('${postAnalysis['average_cmc'] ?? preCmc}') ??
-            preCmc);
-
-    final responseBody = {
-      'mode': jsonResponse['mode'],
-      'constraints': {
-        'keep_theme': keepTheme,
-      },
-      'cache': {
-        'hit': false,
-        'cache_key': cacheKey,
-      },
-      'preferences': {
-        'memory_applied': !hasBracketOverride || !hasKeepThemeOverride,
-        'keep_theme': keepTheme,
-        'preferred_bracket': userPreferences['preferred_bracket'],
-      },
-      'theme': themeProfile.toJson(),
-      'removals': validRemovals,
-      'additions': validAdditions,
-      'reasoning': _normalizeReasoning(jsonResponse['reasoning']),
-      'deck_analysis': deckAnalysis,
-      'post_analysis':
-          postAnalysis, // Retorna a análise futura para o front mostrar
-      'validation_warnings': validationWarnings,
-      'bracket': bracket,
-      'target_additions': jsonResponse['target_additions'],
-      'optimize_diagnostics': {
-        'empty_suggestions_fallback': {
-          'triggered': emptySuggestionFallbackTriggered,
-          'applied': emptySuggestionFallbackApplied,
-          'candidate_count': emptySuggestionFallbackCandidateCount,
-          'replacement_count': emptySuggestionFallbackReplacementCount,
-          'pair_count': emptySuggestionFallbackPairCount,
-        },
-        'empty_suggestions_fallback_aggregate': _buildEmptyFallbackAggregate(),
-        if (persistedFallbackAggregate != null)
-          'empty_suggestions_fallback_aggregate_persisted':
-              persistedFallbackAggregate,
-      },
-      // Validação EDHREC
-      if (edhrecValidationData != null) 'edhrec_validation': {
-        'commander': commanders.firstOrNull ?? "",
-        'deck_count': edhrecValidationData.deckCount,
-        'themes': edhrecValidationData.themes,
-        'additions_validated': validAdditions.length - additionsNotInEdhrec.length,
-        'additions_not_in_edhrec': additionsNotInEdhrec,
-      },
-    };
-
-    // Gerar additions_detailed apenas para cartas com card_id válido
-    responseBody['additions_detailed'] = isComplete
-        ? additionsDetailed
-            .whereType<Map<String, dynamic>>()
-            .map((entry) {
-              final name = entry['name']?.toString() ?? '';
-              final cardId = entry['card_id']?.toString() ?? '';
-              if (name.isEmpty || cardId.isEmpty) return null;
-              return _buildRecommendationDetail(
-                type: 'add',
-                name: name,
-                cardId: cardId,
-                quantity: (entry['quantity'] as int?) ?? 1,
-                targetArchetype: targetArchetype,
-                confidenceLevel: themeProfile.confidence,
-                cmcBefore: preCmc,
-                cmcAfter: postCmc,
-                keepTheme: keepTheme,
-              );
-            })
-            .where((e) => e != null)
-            .toList()
-        : validAdditions
-            .map((name) {
-              final v = validByNameLower[name.toLowerCase()];
-              if (v == null || v['id'] == null) return null;
-              return _buildRecommendationDetail(
-                type: 'add',
-                name: '${v['name']}',
-                cardId: '${v['id']}',
-                quantity: 1,
-                targetArchetype: targetArchetype,
-                confidenceLevel: themeProfile.confidence,
-                cmcBefore: preCmc,
-                cmcAfter: postCmc,
-                keepTheme: keepTheme,
-              );
-            })
-            .where((e) => e != null)
-            .toList();
-
-    // Gerar removals_detailed apenas para cartas com card_id válido
-    responseBody['removals_detailed'] = validRemovals
-        .map((name) {
-          final v = validByNameLower[name.toLowerCase()];
-          if (v == null || v['id'] == null) return null;
-          return _buildRecommendationDetail(
-            type: 'remove',
-            name: '${v['name']}',
-            cardId: '${v['id']}',
-            quantity: 1,
-            targetArchetype: targetArchetype,
-            confidenceLevel: themeProfile.confidence,
-            cmcBefore: preCmc,
-            cmcAfter: postCmc,
-            keepTheme: keepTheme,
-          );
-        })
-        .where((e) => e != null)
-        .toList();
-
-    responseBody['recommendations'] = [
-      ...(responseBody['removals_detailed'] as List),
-      ...(responseBody['additions_detailed'] as List),
-    ];
-
-    // CRÍTICO: Balancear additions/removals detailed para manter contagem igual
-    final addDet = responseBody['additions_detailed'] as List;
-    final remDet = responseBody['removals_detailed'] as List;
-    
-    // DEBUG: Log detalhado para rastrear desbalanceamentos
-    Log.d('Balanceamento final:');
-    Log.d('  validAdditions.length = ${validAdditions.length}');
-    Log.d('  validRemovals.length = ${validRemovals.length}');
-    Log.d('  additions_detailed.length = ${addDet.length}');
-    Log.d('  removals_detailed.length = ${remDet.length}');
-    Log.d('  mode = ${jsonResponse['mode']}');
-    
-    // Verificar cartas que NÃO foram mapeadas para card_id
-    if (addDet.length != validAdditions.length) {
-      Log.w('Algumas adições não foram mapeadas para card_id!');
-      for (final name in validAdditions) {
-        final v = validByNameLower[name.toLowerCase()];
-        if (v == null || v['id'] == null) {
-          Log.w('  Carta sem card_id: "$name" (key: "${name.toLowerCase()}")');
-        }
-      }
-    }
-    
-    // BALANCEAMENTO FINAL (detailed) - Agora as listas já devem estar equilibradas
-    // pós re-chamada à IA. Este bloco só age se o detailed ainda tiver gap.
-    if (addDet.length < remDet.length && !isComplete) {
-      final missingDetailed = remDet.length - addDet.length;
-      Log.d('  Gap em detailed: faltam $missingDetailed - construindo de validAdditions');
-      
-      // Tentar construir detailed para adições que ainda não estão nele
-      final existingNames = addDet.map((e) => (e as Map)['name']?.toString().toLowerCase() ?? '').toSet();
-      final newDetailed = <Map<String, dynamic>>[];
-      for (final name in validAdditions) {
-        if (existingNames.contains(name.toLowerCase())) continue;
-        final v = validByNameLower[name.toLowerCase()];
-        if (v != null && v['id'] != null) {
-          newDetailed.add({
-            'name': v['name'] ?? name,
-            'card_id': v['id'],
-            'quantity': 1,
-          });
-          existingNames.add(name.toLowerCase());
-        }
-      }
-      if (newDetailed.isNotEmpty) {
-        responseBody['additions_detailed'] = [...addDet, ...newDetailed];
-      }
-      
-      // Se AINDA faltar, truncar remoções como último recurso
-      final finalAddDet2 = responseBody['additions_detailed'] as List;
-      if (finalAddDet2.length < remDet.length) {
-        responseBody['removals_detailed'] = remDet.take(finalAddDet2.length).toList();
-        responseBody['removals'] = validRemovals.take(finalAddDet2.length).toList();
-      }
-    } else if (addDet.length > remDet.length && !isComplete) {
-      Log.d('  Truncando adições extras');
-      responseBody['additions_detailed'] = addDet.take(remDet.length).toList();
-      responseBody['additions'] = validAdditions.take(remDet.length).toList();
-    }
-    
-    // Log final
-    final finalAddDet = responseBody['additions_detailed'] as List;
-    final finalRemDet = responseBody['removals_detailed'] as List;
-    Log.d('  Final: additions_detailed=${finalAddDet.length}, removals_detailed=${finalRemDet.length}');
-
-    // ═══════════════════════════════════════════════════════════
-    // VALIDAÇÃO FINAL: Garantir integridade do deck resultante
-    // ═══════════════════════════════════════════════════════════
-    if (!isComplete) {
-      // 1. Verificar que nenhuma adição é de carta que já existe no deck (exceto basics em formatos não-Commander)
-      final additionsDetailedFinal = responseBody['additions_detailed'] as List;
-      final removalsDetailedFinal = responseBody['removals_detailed'] as List;
-      final removalNamesFinal = removalsDetailedFinal
-          .whereType<Map>()
-          .map((e) => (e['name']?.toString() ?? '').toLowerCase())
-          .where((n) => n.isNotEmpty)
-          .toSet();
-
-      final filteredAdditions = <dynamic>[];
-      final filteredAdditionNames = <String>[];
-      final filteredRemovalsToKeep = <dynamic>[];
-      final filteredRemovalNames = <String>[];
-
-      for (final add in additionsDetailedFinal) {
-        if (add is! Map) continue;
-        final name = (add['name']?.toString() ?? '').toLowerCase();
-        if (name.isEmpty) continue;
-
-        final isBasic = _isBasicLandName(name);
-        final alreadyInDeck = deckNamesLower.contains(name);
-        final beingRemoved = removalNamesFinal.contains(name);
-
-        // Em Commander/Brawl, não-básicos só podem ter 1 cópia.
-        // Se a carta já está no deck e não está sendo removida, é inválida.
-        if (alreadyInDeck && !beingRemoved && !isBasic &&
-            (deckFormat == 'commander' || deckFormat == 'brawl')) {
-          Log.w('  Validação final: removendo adição duplicada "$name" (já existe no deck)');
-          continue;
-        }
-
-        filteredAdditions.add(add);
-        filteredAdditionNames.add(add['name']?.toString() ?? name);
-      }
-
-      // 2. Rebalancear após filtrar adições inválidas
-      if (filteredAdditions.length < additionsDetailedFinal.length) {
-        Log.d('  Validação final: ${additionsDetailedFinal.length - filteredAdditions.length} adições removidas por duplicidade');
-
-        // Truncar remoções para manter equilíbrio
-        for (var i = 0; i < removalsDetailedFinal.length && filteredRemovalsToKeep.length < filteredAdditions.length; i++) {
-          filteredRemovalsToKeep.add(removalsDetailedFinal[i]);
-          final rem = removalsDetailedFinal[i];
-          if (rem is Map) {
-            filteredRemovalNames.add(rem['name']?.toString() ?? '');
-          }
-        }
-
-        responseBody['additions_detailed'] = filteredAdditions;
-        responseBody['additions'] = filteredAdditionNames;
-        responseBody['removals_detailed'] = filteredRemovalsToKeep;
-        responseBody['removals'] = filteredRemovalNames;
-
-        // Rebuild recommendations
-        responseBody['recommendations'] = [
-          ...filteredRemovalsToKeep,
-          ...filteredAdditions,
-        ];
-
-        Log.d('  Validação final pós-rebalanceamento: ${filteredAdditions.length} adições, ${filteredRemovalsToKeep.length} remoções');
-      }
-
-      // 3. Safety net: ensure additions and removals are exactly balanced
-      {
-        final finalAdditions = responseBody['additions_detailed'] as List;
-        final finalRemovals = responseBody['removals_detailed'] as List;
-        if (finalAdditions.length != finalRemovals.length) {
-          Log.w('  Safety net: additions(${finalAdditions.length}) != removals(${finalRemovals.length}), rebalancing');
-          final minLen = finalAdditions.length < finalRemovals.length
-              ? finalAdditions.length
-              : finalRemovals.length;
-          responseBody['additions_detailed'] = finalAdditions.take(minLen).toList();
-          responseBody['additions'] = (responseBody['additions'] as List).take(minLen).toList();
-          responseBody['removals_detailed'] = finalRemovals.take(minLen).toList();
-          responseBody['removals'] = (responseBody['removals'] as List).take(minLen).toList();
-        }
-      }
-    }
-
-    final warnings = <String, dynamic>{};
-
-    // Adicionar avisos se houver cartas inválidas
-    if (invalidCards.isNotEmpty) {
-      warnings.addAll({
-        'invalid_cards': invalidCards,
-        'message':
-            'Algumas cartas sugeridas pela IA não foram encontradas e foram removidas',
-        'suggestions': suggestions,
-      });
-    }
-
-    // Adicionar avisos se houver cartas filtradas por identidade de cor
-    if (filteredByColorIdentity.isNotEmpty) {
-      warnings['filtered_by_color_identity'] = {
-        'commander_identity': commanderColorIdentity.toList(),
-        'removed_additions': filteredByColorIdentity,
-        'message':
-            'Algumas adições sugeridas pela IA foram removidas por estarem fora da identidade de cor do comandante.',
-      };
-    }
-
-    if (blockedByBracket.isNotEmpty) {
-      warnings['blocked_by_bracket'] = {
-        'bracket': bracket,
-        'blocked_additions': blockedByBracket,
-        'message':
-            'Algumas adições sugeridas foram bloqueadas por exceder limites do bracket.',
-      };
-    }
-
-    if (blockedByTheme.isNotEmpty) {
-      warnings['blocked_by_theme'] = {
-        'keep_theme': keepTheme,
-        'blocked_removals': blockedByTheme,
-        'message':
-            'Algumas remoções sugeridas foram bloqueadas para preservar o tema do deck.',
-      };
-    }
-
-    if (emptySuggestionFallbackReason != null) {
-      warnings['empty_suggestions_handling'] = {
-        'recognized_format': recognizedSuggestionFormat,
-        'fallback_applied': emptySuggestionFallbackApplied,
-        'message': emptySuggestionFallbackReason,
-      };
-    }
-
-    if (warnings.isNotEmpty) {
-      responseBody['warnings'] = warnings;
-    }
-
-    try {
-      await _saveOptimizeCache(
-        pool: pool,
-        cacheKey: cacheKey,
-        userId: userId,
-        deckId: deckId,
-        deckSignature: deckSignature,
-        payload: responseBody,
-      );
-      await _saveUserAiPreferences(
-        pool: pool,
-        userId: userId,
-        preferredArchetype: targetArchetype,
-        preferredBracket: bracket,
-        keepThemeDefault: keepTheme,
-        preferredColors: commanderColorIdentity.toList(),
-      );
-    } catch (e) {
-      Log.w('Falha ao persistir cache/preferências de optimize: $e');
-    }
-
-    return Response.json(body: responseBody);
   } catch (e, stackTrace) {
-    Log.e('handler: $e\nStack trace:\n$stackTrace');
-    return internalServerError('Failed to optimize deck', details: e);
+    Log.e('Background optimize job $jobId failed: $e\n$stackTrace');
+    await OptimizeJobStore.fail(pool, jobId, error: e.toString());
   }
 }
 
@@ -3205,9 +4765,8 @@ Map<String, dynamic> parseOptimizeSuggestions(Map<String, dynamic> payload) {
 
   if (rawRemovals is List) {
     recognizedFormat = true;
-    removals.addAll(rawRemovals
-        .map((e) => e.toString().trim())
-        .where((e) => e.isNotEmpty));
+    removals.addAll(
+        rawRemovals.map((e) => e.toString().trim()).where((e) => e.isNotEmpty));
   } else if (rawRemovals is String && rawRemovals.trim().isNotEmpty) {
     recognizedFormat = true;
     removals.add(rawRemovals.trim());
@@ -3240,6 +4799,70 @@ String _normalizeReasoning(dynamic value) {
   return value.toString();
 }
 
+Map<String, dynamic> buildDeterministicOptimizeResponse({
+  required List<Map<String, dynamic>> deterministicSwapCandidates,
+  required String targetArchetype,
+}) {
+  final swaps = deterministicSwapCandidates
+      .where((candidate) =>
+          (candidate['remove']?.toString().trim().isNotEmpty ?? false) &&
+          (candidate['add']?.toString().trim().isNotEmpty ?? false))
+      .map((candidate) => {
+            'out': candidate['remove'],
+            'in': candidate['add'],
+            if (candidate['reason'] != null) 'reason': candidate['reason'],
+            'priority': 'High',
+          })
+      .toList();
+
+  return {
+    'mode': 'optimize',
+    'strategy_source': 'deterministic_first',
+    'reasoning':
+        'O backend priorizou swaps determinísticos para $targetArchetype antes da IA, usando função das cartas, prioridade competitiva do comandante e histórico de rejeição.',
+    'swaps': swaps,
+  };
+}
+
+String resolveOptimizeArchetype({
+  required String requestedArchetype,
+  required String? detectedArchetype,
+}) {
+  final requested = requestedArchetype.trim().toLowerCase();
+  final detected = detectedArchetype?.trim().toLowerCase() ?? '';
+
+  if (requested.isEmpty) return detected.isNotEmpty ? detected : 'midrange';
+  if (detected.isEmpty || detected == 'unknown') return requested;
+  if (requested == detected) return requested;
+
+  const genericRequested = {'midrange', 'value', 'goodstuff'};
+  const specificDetected = {'aggro', 'control', 'combo', 'stax', 'tribal'};
+
+  if (genericRequested.contains(requested) &&
+      specificDetected.contains(detected)) {
+    return detected;
+  }
+
+  return requested;
+}
+
+bool shouldRetryOptimizeWithAiFallback({
+  required bool deterministicFirstEnabled,
+  required bool fallbackAlreadyAttempted,
+  required String? strategySource,
+  required String? qualityErrorCode,
+  required bool isComplete,
+}) {
+  if (!deterministicFirstEnabled || fallbackAlreadyAttempted || isComplete) {
+    return false;
+  }
+
+  if (strategySource != 'deterministic_first') return false;
+
+  return qualityErrorCode == 'OPTIMIZE_NO_SAFE_SWAPS' ||
+      qualityErrorCode == 'OPTIMIZE_QUALITY_REJECTED';
+}
+
 String _buildDeckSignature(List<ResultRow> cardsResult) {
   final entries = <String>[];
   for (final row in cardsResult) {
@@ -3268,7 +4891,7 @@ String _buildOptimizeCacheKey({
     keepTheme ? 'keep' : 'free',
     deckSignature,
   ].join('::');
-  return 'v4:${_stableHash(base)}';
+  return 'v6:${_stableHash(base)}';
 }
 
 String _stableHash(String value) {
@@ -3300,7 +4923,8 @@ Future<Map<String, dynamic>?> _loadOptimizeCache({
 
   if (result.isEmpty) return null;
   final payload = result.first[0];
-  if (payload is Map<String, dynamic>) return Map<String, dynamic>.from(payload);
+  if (payload is Map<String, dynamic>)
+    return Map<String, dynamic>.from(payload);
   if (payload is Map) return payload.cast<String, dynamic>();
   return null;
 }
@@ -3677,8 +5301,8 @@ int _maxCopiesForFormat({
 
   // Check both type_line AND name for basic land detection.
   // This handles cases where type_line is empty (e.g., from fallback pools).
-  final isBasicLand = _isBasicLandTypeLine(normalizedType) ||
-      _isBasicLandName(normalizedName);
+  final isBasicLand =
+      _isBasicLandTypeLine(normalizedType) || _isBasicLandName(normalizedName);
   if (isBasicLand) return 999;
 
   if (normalizedFormat == 'commander' || normalizedFormat == 'brawl') {
@@ -3776,11 +5400,11 @@ Future<List<Map<String, dynamic>>> _loadUniversalCommanderFallbacks({
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
-        'type_line': (row[2] as String?) ?? '',
-        'oracle_text': (row[3] as String?) ?? '',
-        'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
-        'color_identity':
-          (row[5] as List?)?.cast<String>() ?? const <String>[],
+            'type_line': (row[2] as String?) ?? '',
+            'oracle_text': (row[3] as String?) ?? '',
+            'colors': (row[4] as List?)?.cast<String>() ?? const <String>[],
+            'color_identity':
+                (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
 
@@ -3920,7 +5544,8 @@ Future<Map<String, dynamic>?> _loadCommanderReferenceProfileFromCache({
 
     if (result.isEmpty) return null;
     final payload = result.first[0];
-    if (payload is Map<String, dynamic>) return Map<String, dynamic>.from(payload);
+    if (payload is Map<String, dynamic>)
+      return Map<String, dynamic>.from(payload);
     if (payload is Map) return payload.cast<String, dynamic>();
     return null;
   } catch (_) {
@@ -3980,8 +5605,7 @@ String _inferFunctionalRole({
   final t = typeLine.toLowerCase();
   final o = oracleText.toLowerCase();
 
-  final isRampByText =
-      o.contains('add {') ||
+  final isRampByText = o.contains('add {') ||
       o.contains('add one mana') ||
       o.contains('search your library for a basic land') ||
       o.contains('search your library for a land');
@@ -3989,7 +5613,9 @@ String _inferFunctionalRole({
       n.contains('signet') || n.contains('talisman') || n.contains('sol ring');
   if (isRampByText || isRampByName) return 'ramp';
 
-  if (o.contains('draw a card') || o.contains('draw two cards') || o.contains('draw three cards')) {
+  if (o.contains('draw a card') ||
+      o.contains('draw two cards') ||
+      o.contains('draw three cards')) {
     return 'draw';
   }
 
@@ -4009,7 +5635,9 @@ String _inferFunctionalRole({
     return 'wincon';
   }
 
-  if (o.contains('whenever') || o.contains('at the beginning of') || o.contains('sacrifice')) {
+  if (o.contains('whenever') ||
+      o.contains('at the beginning of') ||
+      o.contains('sacrifice')) {
     return 'engine';
   }
 
@@ -4017,10 +5645,508 @@ String _inferFunctionalRole({
   return 'utility';
 }
 
-Map<String, int> _buildSlotNeedsForDeck({
-  required List<Map<String, dynamic>> currentDeckCards,
+bool _looksLikeBoardWipe(String oracleText) {
+  final oracle = oracleText.toLowerCase();
+  return oracle.contains('destroy all') ||
+      oracle.contains('exile all') ||
+      oracle.contains('each creature') ||
+      oracle.contains('each player sacrifices') ||
+      oracle.contains('all colored permanents') ||
+      oracle.contains('all creatures get');
+}
+
+bool _looksLikeProtectionEffect({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedName = name.toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+
+  return normalizedName.contains('greaves') ||
+      normalizedName.contains('boots') ||
+      oracle.contains('hexproof') ||
+      oracle.contains('indestructible') ||
+      oracle.contains('ward') ||
+      oracle.contains('phase out') ||
+      oracle.contains('phases out') ||
+      oracle.contains('gains shroud') ||
+      (normalizedType.contains('equipment') &&
+          (oracle.contains('equipped creature has') ||
+              oracle.contains('equip')));
+}
+
+bool _looksLikeTemporaryManaBurst({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedName = name.toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+  final generatesMana =
+      oracle.contains('add {') || oracle.contains('add one mana');
+
+  if (!generatesMana) return false;
+  if (!(normalizedType.contains('instant') ||
+      normalizedType.contains('sorcery'))) {
+    return false;
+  }
+
+  return normalizedName.contains('ritual') ||
+      oracle.contains('until end of turn') ||
+      oracle.contains('for each');
+}
+
+String _inferOptimizeFunctionalNeed({
+  required String name,
+  required String typeLine,
+  required String oracleText,
+}) {
+  final normalizedType = typeLine.toLowerCase();
+  final oracle = oracleText.toLowerCase();
+
+  if (_looksLikeProtectionEffect(
+    name: name,
+    typeLine: typeLine,
+    oracleText: oracleText,
+  )) {
+    return 'protection';
+  }
+
+  if (_looksLikeBoardWipe(oracleText)) {
+    return 'wipe';
+  }
+
+  if (oracle.contains('destroy target') ||
+      oracle.contains('exile target') ||
+      oracle.contains('counter target')) {
+    return 'removal';
+  }
+
+  if (oracle.contains('draw') || oracle.contains('cards')) {
+    return 'draw';
+  }
+
+  if (oracle.contains('search your library') &&
+      !normalizedType.contains('land')) {
+    return oracle.contains('land') ? 'ramp' : 'tutor';
+  }
+
+  if ((_looksLikeTemporaryManaBurst(
+            name: name,
+            typeLine: typeLine,
+            oracleText: oracleText,
+          ) ||
+          oracle.contains('add {') ||
+          oracle.contains('add one mana')) &&
+      !normalizedType.contains('land')) {
+    return 'ramp';
+  }
+
+  if (normalizedType.contains('artifact')) return 'artifact';
+  if (normalizedType.contains('creature')) return 'creature';
+  return 'utility';
+}
+
+int _recommendedLandCountForOptimizeArchetype(String targetArchetype) {
+  final archetype = targetArchetype.toLowerCase();
+  if (archetype.contains('aggro')) return 34;
+  if (archetype.contains('combo')) return 33;
+  if (archetype.contains('control')) return 37;
+  return 35;
+}
+
+bool _landProducesCommanderColors({
+  required Map<String, dynamic> card,
+  required Set<String> commanderColorIdentity,
+}) {
+  if (commanderColorIdentity.isEmpty) return false;
+
+  final oracleText = ((card['oracle_text'] as String?) ?? '').toLowerCase();
+  final colors = (card['colors'] as List?)?.cast<String>() ?? const <String>[];
+  final colorIdentity =
+      (card['color_identity'] as List?)?.cast<String>() ?? const <String>[];
+  final detectedColors = <String>{
+    ...colors.map((c) => c.toUpperCase()),
+    ...colorIdentity.map((c) => c.toUpperCase()),
+  };
+
+  for (final color in commanderColorIdentity) {
+    if (detectedColors.contains(color.toUpperCase())) return true;
+    if (oracleText.contains('{${color.toLowerCase()}}')) return true;
+  }
+
+  if (oracleText.contains('mana of any color') ||
+      oracleText.contains('mana of any type')) {
+    return true;
+  }
+
+  return false;
+}
+
+bool isOptimizeStructuralRecoveryScenario({
+  required List<Map<String, dynamic>> allCardData,
+  required Set<String> commanderColorIdentity,
+}) {
+  var totalCards = 0;
+  var landCount = 0;
+  var nonLandCount = 0;
+  var colorProducingLandCount = 0;
+
+  for (final card in allCardData) {
+    final qty = (card['quantity'] as int?) ?? 1;
+    final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+    totalCards += qty;
+
+    if (typeLine.contains('land')) {
+      landCount += qty;
+      if (_landProducesCommanderColors(
+        card: card,
+        commanderColorIdentity: commanderColorIdentity,
+      )) {
+        colorProducingLandCount += qty;
+      }
+    } else {
+      nonLandCount += qty;
+    }
+  }
+
+  if (totalCards == 0) return false;
+
+  final landRatio = landCount / totalCards;
+  return landRatio >= 0.65 ||
+      landCount >= 50 ||
+      nonLandCount <= 20 ||
+      (landCount >= 40 && colorProducingLandCount <= 8);
+}
+
+int computeOptimizeStructuralRecoverySwapTarget({
+  required List<Map<String, dynamic>> allCardData,
+  required Set<String> commanderColorIdentity,
   required String targetArchetype,
 }) {
+  if (!isOptimizeStructuralRecoveryScenario(
+    allCardData: allCardData,
+    commanderColorIdentity: commanderColorIdentity,
+  )) {
+    return 6;
+  }
+
+  var landCount = 0;
+  var nonLandCount = 0;
+  for (final card in allCardData) {
+    final qty = (card['quantity'] as int?) ?? 1;
+    final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+    if (typeLine.contains('land')) {
+      landCount += qty;
+    } else {
+      nonLandCount += qty;
+    }
+  }
+
+  final recommendedLandCount =
+      _recommendedLandCountForOptimizeArchetype(targetArchetype);
+  final excessLands = (landCount - recommendedLandCount).clamp(0, 99);
+  final missingNonLands = (58 - nonLandCount).clamp(0, 99);
+
+  return [12, excessLands, missingNonLands]
+      .reduce((a, b) => a < b ? a : b)
+      .clamp(6, 12);
+}
+
+List<String> buildStructuralRecoveryFunctionalNeeds({
+  required List<Map<String, dynamic>> allCardData,
+  required String targetArchetype,
+  required int limit,
+}) {
+  if (limit <= 0) return const [];
+
+  final archetype = targetArchetype.trim().toLowerCase();
+  final targetProfile = switch (archetype) {
+    'control' => const <String, int>{
+        'draw': 14,
+        'ramp': 12,
+        'removal': 10,
+        'wipe': 4,
+        'protection': 4,
+        'utility': 14,
+      },
+    'combo' => const <String, int>{
+        'draw': 14,
+        'ramp': 12,
+        'tutor': 8,
+        'protection': 6,
+        'utility': 18,
+      },
+    'aggro' => const <String, int>{
+        'creature': 18,
+        'ramp': 8,
+        'draw': 8,
+        'removal': 8,
+        'protection': 4,
+        'utility': 14,
+      },
+    _ => const <String, int>{
+        'draw': 12,
+        'ramp': 10,
+        'removal': 8,
+        'creature': 8,
+        'protection': 4,
+        'utility': 16,
+      },
+  };
+
+  final currentCounts = <String, int>{};
+  for (final card in allCardData) {
+    final qty = (card['quantity'] as int?) ?? 1;
+    final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+    if (typeLine.contains('land')) continue;
+
+    final role = _inferOptimizeFunctionalNeed(
+      name: (card['name'] as String?) ?? '',
+      typeLine: (card['type_line'] as String?) ?? '',
+      oracleText: (card['oracle_text'] as String?) ?? '',
+    );
+    currentCounts[role] = (currentCounts[role] ?? 0) + qty;
+  }
+
+  final deficits = <MapEntry<String, int>>[];
+  for (final entry in targetProfile.entries) {
+    final deficit = entry.value - (currentCounts[entry.key] ?? 0);
+    if (deficit > 0) {
+      deficits.add(MapEntry(entry.key, deficit));
+    }
+  }
+
+  deficits.sort((a, b) {
+    final byDeficit = b.value.compareTo(a.value);
+    if (byDeficit != 0) return byDeficit;
+    return a.key.compareTo(b.key);
+  });
+
+  final sequence = <String>[];
+  while (sequence.length < limit && deficits.isNotEmpty) {
+    var addedInRound = false;
+    for (var i = 0; i < deficits.length && sequence.length < limit; i++) {
+      final entry = deficits[i];
+      if (entry.value <= 0) continue;
+      sequence.add(entry.key);
+      deficits[i] = MapEntry(entry.key, entry.value - 1);
+      addedInRound = true;
+    }
+    if (!addedInRound) break;
+  }
+
+  if (sequence.length < limit) {
+    final fallbackNeed = switch (archetype) {
+      'control' => 'draw',
+      'combo' => 'draw',
+      'aggro' => 'creature',
+      _ => 'utility',
+    };
+    while (sequence.length < limit) {
+      sequence.add(fallbackNeed);
+    }
+  }
+
+  return sequence;
+}
+
+List<Map<String, dynamic>> buildDeterministicOptimizeRemovalCandidates({
+  required List<Map<String, dynamic>> allCardData,
+  required List<String> commanders,
+  required Set<String> commanderColorIdentity,
+  required String targetArchetype,
+  required bool keepTheme,
+  required List<String>? coreCards,
+  required List<String> commanderPriorityNames,
+}) {
+  List<Map<String, dynamic>> buildCandidates({
+    required bool allowCoreTradeoffs,
+  }) {
+    if (allCardData.isEmpty) return const [];
+
+    final commanderLower =
+        commanders.map((name) => name.trim().toLowerCase()).toSet();
+    final coreLower = (coreCards ?? const <String>[])
+        .map((name) => name.trim().toLowerCase())
+        .toSet();
+    final preferredNames =
+        commanderPriorityNames.map((name) => name.toLowerCase()).toSet();
+    final currentRoleCounts = <String, int>{};
+    final roleTargets = _buildRoleTargetProfile(targetArchetype);
+    final structuralRecoveryScenario = isOptimizeStructuralRecoveryScenario(
+      allCardData: allCardData,
+      commanderColorIdentity: commanderColorIdentity,
+    );
+    final structuralRecoverySwapTarget =
+        computeOptimizeStructuralRecoverySwapTarget(
+      allCardData: allCardData,
+      commanderColorIdentity: commanderColorIdentity,
+      targetArchetype: targetArchetype,
+    );
+    var landCount = 0;
+
+    for (final card in allCardData) {
+      final qty = (card['quantity'] as int?) ?? 1;
+      final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+      if (typeLine.contains('land')) {
+        landCount += qty;
+        continue;
+      }
+
+      final role = _inferFunctionalRole(
+        name: (card['name'] as String?) ?? '',
+        typeLine: (card['type_line'] as String?) ?? '',
+        oracleText: (card['oracle_text'] as String?) ?? '',
+      );
+      currentRoleCounts[role] = (currentRoleCounts[role] ?? 0) + qty;
+    }
+
+    final removalCandidates = <Map<String, dynamic>>[];
+    for (final card in allCardData) {
+      final name = ((card['name'] as String?) ?? '').trim();
+      if (name.isEmpty) continue;
+      final lower = name.toLowerCase();
+      if (commanderLower.contains(lower)) continue;
+
+      final isCore = keepTheme && coreLower.contains(lower);
+      if (isCore && !allowCoreTradeoffs) continue;
+
+      final typeLine = (card['type_line'] as String?) ?? '';
+      final isLand = typeLine.toLowerCase().contains('land');
+      if (isLand) continue;
+
+      final role = _inferFunctionalRole(
+        name: name,
+        typeLine: typeLine,
+        oracleText: (card['oracle_text'] as String?) ?? '',
+      );
+      final currentRole = currentRoleCounts[role] ?? 0;
+      final targetRole = roleTargets[role] ?? 0;
+      final surplus = (currentRole - targetRole).clamp(0, 99);
+      if (surplus <= 0) continue;
+      final cmc = (card['cmc'] as num?)?.toDouble() ?? 0.0;
+      final preferredPenalty = preferredNames.contains(lower) ? 220 : 0;
+      final corePenalty = isCore ? 240 : 0;
+      final score =
+          surplus * 100 + (cmc * 12).round() - preferredPenalty - corePenalty;
+      if (score <= 0) continue;
+
+      removalCandidates.add({
+        'name': name,
+        'role': role,
+        'cmc': cmc,
+        'score': score,
+        'type_line': typeLine,
+        'oracle_text': (card['oracle_text'] as String?) ?? '',
+      });
+    }
+
+    final recommendedLandCount =
+        _recommendedLandCountForOptimizeArchetype(targetArchetype);
+    final excessLands = landCount - recommendedLandCount;
+    if (excessLands > 0) {
+      for (final card in allCardData) {
+        final name = ((card['name'] as String?) ?? '').trim();
+        if (name.isEmpty) continue;
+
+        final typeLine = ((card['type_line'] as String?) ?? '').toLowerCase();
+        if (!typeLine.contains('land')) continue;
+
+        final lower = name.toLowerCase();
+        final isBasic = _isBasicLandName(lower);
+        final supportsColors = _landProducesCommanderColors(
+          card: card,
+          commanderColorIdentity: commanderColorIdentity,
+        );
+        final tappedPenalty = (((card['oracle_text'] as String?) ?? '')
+                .toLowerCase()
+                .contains('enters the battlefield tapped'))
+            ? 20
+            : 0;
+        final colorlessPenalty =
+            supportsColors ? 0 : (commanderColorIdentity.isEmpty ? 0 : 70);
+        final basicPenalty = isBasic ? 30 : 0;
+        final score =
+            excessLands * 100 + colorlessPenalty + basicPenalty + tappedPenalty;
+        final copies = ((card['quantity'] as int?) ?? 1).clamp(
+          1,
+          excessLands.clamp(
+            1,
+            structuralRecoveryScenario ? structuralRecoverySwapTarget : 6,
+          ),
+        );
+
+        for (var i = 0; i < copies; i++) {
+          removalCandidates.add({
+            'name': name,
+            'role': 'land',
+            'cmc': 0.0,
+            'score': score - i,
+            'type_line': card['type_line'],
+            'oracle_text': (card['oracle_text'] as String?) ?? '',
+          });
+        }
+      }
+    }
+
+    removalCandidates.sort((a, b) {
+      final byScore = (b['score'] as int).compareTo(a['score'] as int);
+      if (byScore != 0) return byScore;
+      return ((a['name'] as String)).compareTo(b['name'] as String);
+    });
+
+    return removalCandidates
+        .where((candidate) => (candidate['score'] as int) > 0)
+        .take(structuralRecoveryScenario ? structuralRecoverySwapTarget : 6)
+        .toList();
+  }
+
+  if (allCardData.isEmpty) return const [];
+  final strictCandidates = buildCandidates(allowCoreTradeoffs: false);
+  if (!keepTheme || strictCandidates.length >= 3) {
+    return strictCandidates;
+  }
+
+  final merged = <Map<String, dynamic>>[...strictCandidates];
+  final relaxedCandidates = buildCandidates(allowCoreTradeoffs: true);
+  final seenNonLandNames = strictCandidates
+      .where((candidate) => candidate['role'] != 'land')
+      .map((candidate) => ((candidate['name'] as String?) ?? '').toLowerCase())
+      .where((name) => name.isNotEmpty)
+      .toSet();
+
+  for (final candidate in relaxedCandidates) {
+    final role = (candidate['role'] as String?) ?? 'utility';
+    final lowerName = ((candidate['name'] as String?) ?? '').toLowerCase();
+    final isLand = role == 'land';
+    if (!isLand && seenNonLandNames.contains(lowerName)) continue;
+
+    merged.add(candidate);
+    if (!isLand && lowerName.isNotEmpty) {
+      seenNonLandNames.add(lowerName);
+    }
+    if (merged.length >= 6) break;
+  }
+
+  final structuralRecoveryScenario = isOptimizeStructuralRecoveryScenario(
+    allCardData: allCardData,
+    commanderColorIdentity: commanderColorIdentity,
+  );
+  final takeCount = structuralRecoveryScenario
+      ? computeOptimizeStructuralRecoverySwapTarget(
+          allCardData: allCardData,
+          commanderColorIdentity: commanderColorIdentity,
+          targetArchetype: targetArchetype,
+        )
+      : 6;
+  return merged.take(takeCount).toList();
+}
+
+Map<String, int> _buildRoleTargetProfile(String targetArchetype) {
   final archetype = targetArchetype.toLowerCase();
   final baseTargets = <String, int>{
     'ramp': 10,
@@ -4048,6 +6174,15 @@ Map<String, int> _buildSlotNeedsForDeck({
     baseTargets['interaction'] = 8;
     baseTargets['wincon'] = 5;
   }
+
+  return baseTargets;
+}
+
+Map<String, int> _buildSlotNeedsForDeck({
+  required List<Map<String, dynamic>> currentDeckCards,
+  required String targetArchetype,
+}) {
+  final baseTargets = _buildRoleTargetProfile(targetArchetype);
 
   final current = <String, int>{
     'ramp': 0,
@@ -4128,10 +6263,11 @@ Future<List<Map<String, dynamic>>> _loadDeterministicSlotFillers({
     final primaryNeed = slotNeeds[role] ?? 0;
     final utilityNeed = slotNeeds['utility'] ?? 0;
     final fromAiSuggestion =
-      (preferredNames ?? const <String>{}).contains(name.toLowerCase());
+        (preferredNames ?? const <String>{}).contains(name.toLowerCase());
     final aiBoost = fromAiSuggestion ? 35 : 0;
-    final score =
-      primaryNeed * 100 + (role == 'utility' ? utilityNeed * 10 : 0) + aiBoost;
+    final score = primaryNeed * 100 +
+        (role == 'utility' ? utilityNeed * 10 : 0) +
+        aiBoost;
 
     return {
       ...c,
@@ -4160,6 +6296,123 @@ Future<List<Map<String, dynamic>>> _loadDeterministicSlotFillers({
       'color_identity': e['color_identity'],
     };
   }).toList();
+}
+
+Future<List<Map<String, dynamic>>> buildDeterministicOptimizeSwapCandidates({
+  required Pool pool,
+  required List<Map<String, dynamic>> allCardData,
+  required List<String> commanders,
+  required Set<String> commanderColorIdentity,
+  required String targetArchetype,
+  required int? bracket,
+  required bool keepTheme,
+  required String? detectedTheme,
+  required List<String>? coreCards,
+  required List<String> commanderPriorityNames,
+}) async {
+  if (allCardData.isEmpty) return const [];
+
+  final preferredNames =
+      commanderPriorityNames.map((name) => name.toLowerCase()).toSet();
+  final structuralRecoveryScenario = isOptimizeStructuralRecoveryScenario(
+    allCardData: allCardData,
+    commanderColorIdentity: commanderColorIdentity,
+  );
+  final removalCandidates = buildDeterministicOptimizeRemovalCandidates(
+    allCardData: allCardData,
+    commanders: commanders,
+    commanderColorIdentity: commanderColorIdentity,
+    targetArchetype: targetArchetype,
+    keepTheme: keepTheme,
+    coreCards: coreCards,
+    commanderPriorityNames: commanderPriorityNames,
+  );
+  final removalList = removalCandidates
+      .map((candidate) => candidate['name'] as String)
+      .toList();
+  if (removalList.isEmpty) return const [];
+  final functionalNeedsOverride = structuralRecoveryScenario
+      ? buildStructuralRecoveryFunctionalNeeds(
+          allCardData: allCardData,
+          targetArchetype: targetArchetype,
+          limit: removalList.length,
+        )
+      : null;
+
+  final deckNamesLower = allCardData
+      .map((c) => ((c['name'] as String?) ?? '').toLowerCase())
+      .where((n) => n.isNotEmpty)
+      .toSet();
+  final replacements = await _findSynergyReplacements(
+    pool: pool,
+    commanders: commanders,
+    commanderColorIdentity: commanderColorIdentity,
+    targetArchetype: targetArchetype,
+    bracket: bracket,
+    keepTheme: keepTheme,
+    detectedTheme: detectedTheme,
+    coreCards: coreCards,
+    missingCount: removalList.length,
+    removedCards: removalList,
+    functionalNeedsOverride: functionalNeedsOverride,
+    excludeNames: deckNamesLower,
+    allCardData: allCardData,
+    preferredNames: preferredNames,
+    preferLowCurve: structuralRecoveryScenario,
+  );
+  if (replacements.length < removalList.length) {
+    final usedReplacementNames = replacements
+        .map((replacement) =>
+            ((replacement['name'] as String?) ?? '').trim().toLowerCase())
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    final fillerPool = await _loadDeterministicSlotFillers(
+      pool: pool,
+      currentDeckCards: allCardData,
+      targetArchetype: targetArchetype,
+      commanderColorIdentity: commanderColorIdentity,
+      bracket: bracket,
+      excludeNames: deckNamesLower.union(usedReplacementNames),
+      preferredNames: preferredNames,
+      limit: removalList.length - replacements.length,
+    );
+    for (final filler in fillerPool) {
+      if (replacements.length >= removalList.length) break;
+      final lowerName =
+          ((filler['name'] as String?) ?? '').trim().toLowerCase();
+      if (lowerName.isEmpty || usedReplacementNames.contains(lowerName)) {
+        continue;
+      }
+      replacements.add({
+        'id': filler['id'],
+        'name': filler['name'],
+      });
+      usedReplacementNames.add(lowerName);
+    }
+  }
+
+  final pairCount = removalList.length < replacements.length
+      ? removalList.length
+      : replacements.length;
+  final pairs = <Map<String, dynamic>>[];
+  for (var i = 0; i < pairCount; i++) {
+    final removalName = removalList[i];
+    final replacement = replacements[i];
+    final removalMeta = removalCandidates.firstWhere(
+      (candidate) => candidate['name'] == removalName,
+      orElse: () => const <String, dynamic>{},
+    );
+
+    pairs.add({
+      'remove': removalName,
+      'add': replacement['name'],
+      'remove_role': removalMeta['role'],
+      'reason':
+          'swap deterministico priorizando funcao ${removalMeta['role'] ?? 'utility'} e pool competitivo do comandante',
+    });
+  }
+
+  return pairs;
 }
 
 Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
@@ -4224,7 +6477,7 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
     },
   );
 
-    final mapped = result
+  final mapped = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4236,7 +6489,7 @@ Future<List<Map<String, dynamic>>> _loadMetaInsightFillers({
           })
       .toList();
 
-    return _dedupeCandidatesByName(mapped).take(limit).toList();
+  return _dedupeCandidatesByName(mapped).take(limit).toList();
 }
 
 Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
@@ -4251,37 +6504,45 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
   final identity = commanderColorIdentity.toList();
   Log.d(
       '  [broad] start limit=$limit identity=${identity.join(',')} exclude=${excludeNames.length}');
+  // CORRIGIDO: DISTINCT ON + card_meta_insights para popularidade em vez de ordem alfabética
   final result = await pool.execute(
     Sql.named('''
-      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
-      FROM cards c
-      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
-      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
-        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
-        AND c.type_line NOT ILIKE '%land%'
-        AND c.name NOT LIKE 'A-%'
-        AND c.name NOT LIKE '\_%' ESCAPE '\\'
-        AND c.name NOT LIKE '%World Champion%'
-        AND c.name NOT LIKE '%Heroes of the Realm%'
-        AND c.oracle_text IS NOT NULL
-        AND (
-          (
-            c.color_identity IS NOT NULL
-            AND (
-              c.color_identity <@ @identity::text[]
-              OR c.color_identity = '{}'
+      SELECT sub.id, sub.name, sub.type_line, sub.oracle_text, sub.colors, sub.color_identity
+      FROM (
+        SELECT DISTINCT ON (LOWER(c.name))
+          c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity,
+          COALESCE(cmi.usage_count, 0) AS pop_score
+        FROM cards c
+        LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+        LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
+        WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+          AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+          AND c.type_line NOT ILIKE '%land%'
+          AND c.name NOT LIKE 'A-%'
+          AND c.name NOT LIKE '\_%' ESCAPE '\\'
+          AND c.name NOT LIKE '%World Champion%'
+          AND c.name NOT LIKE '%Heroes of the Realm%'
+          AND c.oracle_text IS NOT NULL
+          AND (
+            (
+              c.color_identity IS NOT NULL
+              AND (
+                c.color_identity <@ @identity::text[]
+                OR c.color_identity = '{}'
+              )
+            )
+            OR (
+              c.color_identity IS NULL
+              AND (
+                c.colors <@ @identity::text[]
+                OR c.colors = '{}'
+                OR c.colors IS NULL
+              )
             )
           )
-          OR (
-            c.color_identity IS NULL
-            AND (
-              c.colors <@ @identity::text[]
-              OR c.colors = '{}'
-              OR c.colors IS NULL
-            )
-          )
-        )
-      ORDER BY c.name ASC
+        ORDER BY LOWER(c.name), COALESCE(cmi.usage_count, 0) DESC
+      ) sub
+      ORDER BY sub.pop_score DESC, RANDOM()
       LIMIT @limit
     '''),
     parameters: {
@@ -4293,7 +6554,7 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
 
   Log.d('  [broad] sql rows=${result.length}');
 
-    var candidates = result
+  var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4304,8 +6565,8 @@ Future<List<Map<String, dynamic>>> _loadBroadCommanderNonLandFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
-    candidates = _dedupeCandidatesByName(candidates);
-    Log.d('  [broad] dedup rows=${candidates.length}');
+  candidates = _dedupeCandidatesByName(candidates);
+  Log.d('  [broad] dedup rows=${candidates.length}');
 
   if (bracket != null && candidates.isNotEmpty) {
     final decision = applyBracketPolicyToAdditions(
@@ -4431,38 +6692,45 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
   if (limit <= 0) return const [];
 
   final identity = commanderColorIdentity.toList();
+  // CORRIGIDO: DISTINCT ON + popularidade em vez de ordem alfabética
   final result = await pool.execute(
     Sql.named('''
-      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
-      FROM cards c
-      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
-      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
-        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
-        AND c.type_line NOT ILIKE '%land%'
-        AND c.name NOT LIKE 'A-%'
-        AND c.name NOT LIKE '\_%' ESCAPE '\'
-        AND c.name NOT LIKE '%World Champion%'
-        AND c.name NOT LIKE '%Heroes of the Realm%'
-        AND c.oracle_text IS NOT NULL
-        -- Removido filtro de LENGTH para permitir cartas com texto curto
-        AND (
-          (
-            c.color_identity IS NOT NULL
-            AND (
-              c.color_identity <@ @identity::text[]
-              OR c.color_identity = '{}'
+      SELECT sub.id, sub.name, sub.type_line, sub.oracle_text, sub.colors, sub.color_identity
+      FROM (
+        SELECT DISTINCT ON (LOWER(c.name))
+          c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity,
+          COALESCE(cmi.usage_count, 0) AS pop_score
+        FROM cards c
+        LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+        LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
+        WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+          AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+          AND c.type_line NOT ILIKE '%land%'
+          AND c.name NOT LIKE 'A-%'
+          AND c.name NOT LIKE '\_%' ESCAPE '\\'
+          AND c.name NOT LIKE '%World Champion%'
+          AND c.name NOT LIKE '%Heroes of the Realm%'
+          AND c.oracle_text IS NOT NULL
+          AND (
+            (
+              c.color_identity IS NOT NULL
+              AND (
+                c.color_identity <@ @identity::text[]
+                OR c.color_identity = '{}'
+              )
+            )
+            OR (
+              c.color_identity IS NULL
+              AND (
+                c.colors <@ @identity::text[]
+                OR c.colors = '{}'
+                OR c.colors IS NULL
+              )
             )
           )
-          OR (
-            c.color_identity IS NULL
-            AND (
-              c.colors <@ @identity::text[]
-              OR c.colors = '{}'
-              OR c.colors IS NULL
-            )
-          )
-        )
-      ORDER BY c.name ASC
+        ORDER BY LOWER(c.name), COALESCE(cmi.usage_count, 0) DESC
+      ) sub
+      ORDER BY sub.pop_score DESC, RANDOM()
       LIMIT 600
     '''),
     parameters: {
@@ -4471,7 +6739,7 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
     },
   );
 
-    var candidates = result
+  var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4482,23 +6750,58 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
-    candidates = _dedupeCandidatesByName(candidates);
+  candidates = _dedupeCandidatesByName(candidates);
 
   // Fallback: se pool ficou pequeno, adicionar staples universais (ramp/draw/removal)
   if (candidates.length < limit) {
     final stapleNames = [
-      'Sol Ring', 'Arcane Signet', 'Mind Stone', 'Fellwar Stone',
-      'Swiftfoot Boots', 'Lightning Greaves', 'Command Tower',
-      'Demonic Tutor', 'Vampiric Tutor', 'Rhystic Study', 'Necropotence',
-      'Cyclonic Rift', 'Swords to Plowshares', 'Anguished Unmaking',
-      'Beast Within', 'Nature''s Claim', 'Counterspell', 'Mana Drain',
-      'Fact or Fiction', 'Ponder', 'Preordain', 'Brainstorm',
-      'Signet', 'Talisman', 'Dark Ritual', 'Reanimate', 'Animate Dead',
-      'Eternal Witness', 'Regrowth', 'Hero''s Downfall', 'Mortify',
-      'Path to Exile', 'Generous Gift', 'Chaos Warp', 'Krosan Grip',
-      'Disenchant', 'Return to Nature', 'Mana Leak', 'Force of Will',
-      'Force of Negation', 'Teferi''s Protection', 'Toxic Deluge',
-      'Blasphemous Act', 'Boardwipe', 'Draw', 'Ramp', 'Removal'
+      'Sol Ring',
+      'Arcane Signet',
+      'Mind Stone',
+      'Fellwar Stone',
+      'Swiftfoot Boots',
+      'Lightning Greaves',
+      'Command Tower',
+      'Demonic Tutor',
+      'Vampiric Tutor',
+      'Rhystic Study',
+      'Necropotence',
+      'Cyclonic Rift',
+      'Swords to Plowshares',
+      'Anguished Unmaking',
+      'Beast Within',
+      'Nature' 's Claim',
+      'Counterspell',
+      'Mana Drain',
+      'Fact or Fiction',
+      'Ponder',
+      'Preordain',
+      'Brainstorm',
+      'Signet',
+      'Talisman',
+      'Dark Ritual',
+      'Reanimate',
+      'Animate Dead',
+      'Eternal Witness',
+      'Regrowth',
+      'Hero' 's Downfall',
+      'Mortify',
+      'Path to Exile',
+      'Generous Gift',
+      'Chaos Warp',
+      'Krosan Grip',
+      'Disenchant',
+      'Return to Nature',
+      'Mana Leak',
+      'Force of Will',
+      'Force of Negation',
+      'Teferi' 's Protection',
+      'Toxic Deluge',
+      'Blasphemous Act',
+      'Boardwipe',
+      'Draw',
+      'Ramp',
+      'Removal'
     ];
     final stapleResult = await pool.execute(
       Sql.named('''
@@ -4527,7 +6830,8 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
               'color_identity':
                   (row[5] as List?)?.cast<String>() ?? const <String>[],
             })
-        .where((c) => !excludeNames.contains((c['name'] as String).toLowerCase()))
+        .where(
+            (c) => !excludeNames.contains((c['name'] as String).toLowerCase()))
         .toList();
     candidates.addAll(stapleCandidates);
     candidates = _dedupeCandidatesByName(candidates);
@@ -4535,7 +6839,8 @@ Future<List<Map<String, dynamic>>> _loadCompetitiveNonLandFillers({
     if (candidates.isEmpty) {
       print('[COMPLETE FILLER] Pool vazio, fallback para staples universais.');
     } else if (stapleCandidates.isNotEmpty) {
-      print('[COMPLETE FILLER] Pool expandido com staples universais: ${stapleCandidates.length}');
+      print(
+          '[COMPLETE FILLER] Pool expandido com staples universais: ${stapleCandidates.length}');
     }
   }
 
@@ -4576,19 +6881,27 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
 }) async {
   if (limit <= 0) return const [];
 
+  // CORRIGIDO: DISTINCT ON + popularidade em vez de ordem alfabética
   final result = await pool.execute(
     Sql.named('''
-      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
-      FROM cards c
-      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
-      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
-        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
-        AND c.type_line NOT ILIKE '%land%'
-        AND c.name NOT LIKE 'A-%'
-        AND c.name NOT LIKE '\_%' ESCAPE '\\'
-        AND c.name NOT LIKE '%World Champion%'
-        AND c.name NOT LIKE '%Heroes of the Realm%'
-      ORDER BY c.name ASC
+      SELECT sub.id, sub.name, sub.type_line, sub.oracle_text, sub.colors, sub.color_identity
+      FROM (
+        SELECT DISTINCT ON (LOWER(c.name))
+          c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity,
+          COALESCE(cmi.usage_count, 0) AS pop_score
+        FROM cards c
+        LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+        LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
+        WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+          AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+          AND c.type_line NOT ILIKE '%land%'
+          AND c.name NOT LIKE 'A-%'
+          AND c.name NOT LIKE '\_%' ESCAPE '\\'
+          AND c.name NOT LIKE '%World Champion%'
+          AND c.name NOT LIKE '%Heroes of the Realm%'
+        ORDER BY LOWER(c.name), COALESCE(cmi.usage_count, 0) DESC
+      ) sub
+      ORDER BY sub.pop_score DESC, RANDOM()
       LIMIT @limit
     '''),
     parameters: {
@@ -4597,7 +6910,7 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
     },
   );
 
-    var candidates = result
+  var candidates = result
       .map((row) => {
             'id': row[0] as String,
             'name': row[1] as String,
@@ -4608,7 +6921,7 @@ Future<List<Map<String, dynamic>>> _loadEmergencyNonBasicFillers({
                 (row[5] as List?)?.cast<String>() ?? const <String>[],
           })
       .toList();
-    candidates = _dedupeCandidatesByName(candidates);
+  candidates = _dedupeCandidatesByName(candidates);
 
   if (bracket != null && candidates.isNotEmpty) {
     final decision = applyBracketPolicyToAdditions(
@@ -4646,18 +6959,26 @@ Future<List<Map<String, dynamic>>> _loadIdentitySafeNonLandFillers({
   Log.d(
       '  [identity-safe] start limit=$limit identity=${commanderColorIdentity.join(',')} exclude=${excludeNames.length}');
 
+  // CORRIGIDO: DISTINCT ON + popularidade em vez de ordem alfabética
   final result = await pool.execute(
     Sql.named('''
-      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity
-      FROM cards c
-      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
-      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
-        AND c.type_line NOT ILIKE '%land%'
-        AND c.name NOT LIKE 'A-%'
-        AND c.name NOT LIKE '\_%' ESCAPE '\\'
-        AND c.name NOT LIKE '%World Champion%'
-        AND c.name NOT LIKE '%Heroes of the Realm%'
-      ORDER BY c.name ASC
+      SELECT sub.id, sub.name, sub.type_line, sub.oracle_text, sub.colors, sub.color_identity
+      FROM (
+        SELECT DISTINCT ON (LOWER(c.name))
+          c.id::text, c.name, c.type_line, c.oracle_text, c.colors, c.color_identity,
+          COALESCE(cmi.usage_count, 0) AS pop_score
+        FROM cards c
+        LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+        LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
+        WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+          AND c.type_line NOT ILIKE '%land%'
+          AND c.name NOT LIKE 'A-%'
+          AND c.name NOT LIKE '\_%' ESCAPE '\\'
+          AND c.name NOT LIKE '%World Champion%'
+          AND c.name NOT LIKE '%Heroes of the Realm%'
+        ORDER BY LOWER(c.name), COALESCE(cmi.usage_count, 0) DESC
+      ) sub
+      ORDER BY sub.pop_score DESC, RANDOM()
       LIMIT 4000
     '''),
   );
@@ -4674,8 +6995,7 @@ Future<List<Map<String, dynamic>>> _loadIdentitySafeNonLandFillers({
     final typeLine = (row[2] as String?) ?? '';
     final oracleText = (row[3] as String?) ?? '';
     final colors = (row[4] as List?)?.cast<String>() ?? const <String>[];
-    final colorIdentity =
-        (row[5] as List?)?.cast<String>() ?? const <String>[];
+    final colorIdentity = (row[5] as List?)?.cast<String>() ?? const <String>[];
 
     final withinIdentity = isWithinCommanderIdentity(
       cardIdentity: colorIdentity.isNotEmpty ? colorIdentity : colors,
@@ -4736,8 +7056,7 @@ Future<List<Map<String, dynamic>>> _loadPreferredNameFillers({
     final typeLine = (row[2] as String?) ?? '';
     final oracleText = (row[3] as String?) ?? '';
     final colors = (row[4] as List?)?.cast<String>() ?? const <String>[];
-    final colorIdentity =
-        (row[5] as List?)?.cast<String>() ?? const <String>[];
+    final colorIdentity = (row[5] as List?)?.cast<String>() ?? const <String>[];
 
     final withinIdentity = isWithinCommanderIdentity(
       cardIdentity: colorIdentity.isNotEmpty ? colorIdentity : colors,
@@ -4771,7 +7090,6 @@ Future<List<Map<String, dynamic>>> _loadPreferredNameFillers({
 /// 3. Fallback: re-consultar a IA se o DB não tiver boas opções
 Future<List<Map<String, dynamic>>> _findSynergyReplacements({
   required Pool pool,
-  required DeckOptimizerService optimizer,
   required List<String> commanders,
   required Set<String> commanderColorIdentity,
   required String targetArchetype,
@@ -4781,8 +7099,11 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
   required List<String>? coreCards,
   required int missingCount,
   required List<String> removedCards,
+  List<String>? functionalNeedsOverride,
   required Set<String> excludeNames,
   required List<Map<String, dynamic>> allCardData,
+  Set<String> preferredNames = const <String>{},
+  bool preferLowCurve = false,
 }) async {
   final results = <Map<String, dynamic>>[];
 
@@ -4805,7 +7126,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
     }
     return const ['ramp', 'draw', 'removal', 'creature', 'utility'];
   }
-  
+
   // Passo 1: Analisar os tipos funcionais das cartas que foram removidas
   // para saber QUE TIPO de carta precisamos substituir
   final functionalNeeds = <String>[]; // ex: 'draw', 'removal', 'ramp', etc.
@@ -4819,57 +7140,76 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
       parameters: {'names': removedCards},
     );
 
+    final removedByName = <String, Map<String, dynamic>>{};
     for (final row in removedTypesResult) {
-      final oracle = ((row[2] as String?) ?? '').toLowerCase();
-      final typeLine = ((row[1] as String?) ?? '').toLowerCase();
+      final name = ((row[0] as String?) ?? '').trim().toLowerCase();
+      if (name.isEmpty) continue;
+      removedByName[name] = {
+        'name': (row[0] as String?) ?? '',
+        'type_line': (row[1] as String?) ?? '',
+        'oracle_text': (row[2] as String?) ?? '',
+      };
+    }
 
-      if (oracle.contains('draw') || oracle.contains('cards')) {
-        functionalNeeds.add('draw');
-      } else if (oracle.contains('destroy') ||
-          oracle.contains('exile') ||
-          oracle.contains('counter')) {
-        functionalNeeds.add('removal');
-      } else if ((oracle.contains('add') && oracle.contains('mana')) ||
-          typeLine.contains('land')) {
-        functionalNeeds.add('ramp');
-      } else if (typeLine.contains('creature')) {
-        functionalNeeds.add('creature');
-      } else if (typeLine.contains('artifact')) {
-        functionalNeeds.add('artifact');
-      } else {
+    for (final removedName in removedCards) {
+      final removed = removedByName[removedName.trim().toLowerCase()];
+      if (removed == null) {
         functionalNeeds.add('utility');
+        continue;
       }
+
+      functionalNeeds.add(
+        _inferOptimizeFunctionalNeed(
+          name: removed['name'] as String? ?? '',
+          typeLine: removed['type_line'] as String? ?? '',
+          oracleText: removed['oracle_text'] as String? ?? '',
+        ),
+      );
     }
   }
-  
+
   // Passo 2: Buscar cartas do DB que combinem com o commander e preencham o gap
-  // Priorizamos cartas populares (por rank EDHREC implícito na query) dentro da identidade
+  // CORRIGIDO: DISTINCT ON + popularidade em vez de ordem alfabética
   final colorIdentityArr = commanderColorIdentity.toList();
-  
-  // Query inteligente: buscar cartas dentro da identidade de cor,
-  // que não estejam no deck nem na lista de exclusão,
-  // legais em commander, ordenadas por popularidade
+  final normalizedPreferredNames = preferredNames
+      .map((name) => name.trim().toLowerCase())
+      .where((name) => name.isNotEmpty)
+      .toSet();
+  final commanderName = commanders.isNotEmpty ? commanders.first.trim() : '';
+  final rejectedAdditionCounts = commanderName.isEmpty
+      ? const <String, int>{}
+      : await _loadRejectedOptimizeAdditionCounts(
+          pool: pool,
+          commanderName: commanderName,
+        );
+
   final candidatesResult = await pool.execute(
     Sql.named('''
-      SELECT c.id::text, c.name, c.type_line, c.oracle_text, c.color_identity
-      FROM cards c
-      LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
-      WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
-        AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
-        AND c.type_line NOT LIKE 'Basic Land%'
-        AND c.type_line NOT LIKE 'Basic Snow Land%'
-        AND c.name NOT LIKE 'A-%'
-        AND c.name NOT LIKE '\_%' ESCAPE '\\'
-        AND c.name NOT LIKE '%World Champion%'
-        AND c.name NOT LIKE '%Heroes of the Realm%'
-        AND c.oracle_text IS NOT NULL
-        AND LENGTH(TRIM(c.oracle_text)) > 0
-        AND (
-          c.color_identity <@ @identity::text[]
-          OR c.color_identity = '{}'
-          OR c.color_identity IS NULL
-        )
-      ORDER BY c.name ASC
+      SELECT sub.id, sub.name, sub.type_line, sub.oracle_text, sub.mana_cost, sub.color_identity, sub.pop_score
+      FROM (
+        SELECT DISTINCT ON (LOWER(c.name))
+          c.id::text, c.name, c.type_line, c.oracle_text, c.mana_cost, c.color_identity,
+          COALESCE(cmi.usage_count, 0) AS pop_score
+        FROM cards c
+        LEFT JOIN card_legalities cl ON cl.card_id = c.id AND cl.format = 'commander'
+        LEFT JOIN card_meta_insights cmi ON LOWER(cmi.card_name) = LOWER(c.name)
+        WHERE (cl.status = 'legal' OR cl.status = 'restricted' OR cl.status IS NULL)
+          AND LOWER(c.name) NOT IN (SELECT LOWER(unnest(@exclude::text[])))
+          AND c.type_line NOT ILIKE '%land%'
+          AND c.name NOT LIKE 'A-%'
+          AND c.name NOT LIKE '\_%' ESCAPE '\\'
+          AND c.name NOT LIKE '%World Champion%'
+          AND c.name NOT LIKE '%Heroes of the Realm%'
+          AND c.oracle_text IS NOT NULL
+          AND LENGTH(TRIM(c.oracle_text)) > 0
+          AND (
+            c.color_identity <@ @identity::text[]
+            OR c.color_identity = '{}'
+            OR c.color_identity IS NULL
+          )
+        ORDER BY LOWER(c.name), COALESCE(cmi.usage_count, 0) DESC
+      ) sub
+      ORDER BY sub.pop_score DESC, RANDOM()
       LIMIT 300
     '''),
     parameters: {
@@ -4877,7 +7217,7 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
       'identity': colorIdentityArr,
     },
   );
-  
+
   // Filtrar e selecionar as melhores cartas baseado nas necessidades funcionais
   final candidatePool = <Map<String, dynamic>>[];
   for (final row in candidatesResult) {
@@ -4885,75 +7225,264 @@ Future<List<Map<String, dynamic>>> _findSynergyReplacements({
     final name = row[1] as String;
     final typeLine = ((row[2] as String?) ?? '').toLowerCase();
     final oracle = ((row[3] as String?) ?? '').toLowerCase();
-    final identity = (row[4] as List?)?.cast<String>() ?? const <String>[];
-    
+    final manaCost = (row[4] as String?) ?? '';
+    final identity = (row[5] as List?)?.cast<String>() ?? const <String>[];
+    final popScore = (row[6] as num?)?.toInt() ?? 0;
+
     // Verificar identidade de cor (double check)
     if (!isWithinCommanderIdentity(
       cardIdentity: identity,
       commanderIdentity: commanderColorIdentity,
     )) continue;
-    
+
     candidatePool.add({
       'id': id,
       'name': name,
       'type_line': typeLine,
       'oracle_text': oracle,
+      'mana_cost': manaCost,
+      'pop_score': popScore,
     });
   }
-  
+
   // Passo 3: Selecionar as melhores cartas priorizando as necessidades funcionais
   final usedNames = <String>{};
-  
-  final needs = functionalNeeds.isNotEmpty
-      ? functionalNeeds
-      : defaultNeedsForArchetype(targetArchetype);
+
+  final needs =
+      (functionalNeedsOverride != null && functionalNeedsOverride.isNotEmpty)
+          ? functionalNeedsOverride
+          : functionalNeeds.isNotEmpty
+              ? functionalNeeds
+              : defaultNeedsForArchetype(targetArchetype);
 
   // Primeiro: tentar preencher necessidades funcionais específicas
   for (var i = 0; i < missingCount && i < needs.length; i++) {
     final need = needs[i];
     Map<String, dynamic>? best;
-    
+    var bestScore = -0x7fffffff;
+
     for (final candidate in candidatePool) {
       final name = (candidate['name'] as String).toLowerCase();
       if (usedNames.contains(name)) continue;
-      
-      final oracle = candidate['oracle_text'] as String;
-      final typeLine = candidate['type_line'] as String;
-      
-      final matches = switch (need) {
-        'draw' => oracle.contains('draw') || oracle.contains('cards'),
-        'removal' => oracle.contains('destroy') || oracle.contains('exile') || oracle.contains('counter'),
-        'ramp' => oracle.contains('add') && oracle.contains('mana') || typeLine.contains('land'),
-        'tutor' => oracle.contains('search your library') && !oracle.contains('land'),
-        'protection' => oracle.contains('hexproof') || oracle.contains('indestructible') || oracle.contains('ward'),
-        'creature' => typeLine.contains('creature'),
-        'artifact' => typeLine.contains('artifact'),
-        _ => true, // utility: qualquer carta boa serve
-      };
-      
-      if (matches) {
+      final score = scoreOptimizeReplacementCandidate(
+        functionalNeed: need,
+        cardName: candidate['name'] as String? ?? '',
+        typeLine: candidate['type_line'] as String? ?? '',
+        oracleText: candidate['oracle_text'] as String? ?? '',
+        manaCost: candidate['mana_cost'] as String? ?? '',
+        popScore: (candidate['pop_score'] as int?) ?? 0,
+        preferredNames: normalizedPreferredNames,
+        rejectedAdditionCounts: rejectedAdditionCounts,
+        preferLowCurve: preferLowCurve,
+      );
+      final matches = matchesFunctionalNeed(
+        need,
+        oracleText: candidate['oracle_text'] as String? ?? '',
+        typeLine: candidate['type_line'] as String? ?? '',
+      );
+
+      if (matches && score > bestScore) {
         best = candidate;
-        break;
+        bestScore = score;
       }
     }
-    
+
     if (best != null) {
       results.add({'id': best['id'], 'name': best['name']});
       usedNames.add((best['name'] as String).toLowerCase());
     }
   }
-  
+
   // Se ainda faltam cartas, pegar as próximas melhores do pool (por EDHREC rank)
   if (results.length < missingCount) {
-    for (final candidate in candidatePool) {
+    final rankedRemaining = candidatePool.where((candidate) {
+      final name = (candidate['name'] as String).toLowerCase();
+      return !usedNames.contains(name);
+    }).toList()
+      ..sort((a, b) {
+        final scoreA = scoreOptimizeReplacementCandidate(
+          functionalNeed: 'utility',
+          cardName: a['name'] as String? ?? '',
+          typeLine: a['type_line'] as String? ?? '',
+          oracleText: a['oracle_text'] as String? ?? '',
+          manaCost: a['mana_cost'] as String? ?? '',
+          popScore: (a['pop_score'] as int?) ?? 0,
+          preferredNames: normalizedPreferredNames,
+          rejectedAdditionCounts: rejectedAdditionCounts,
+          preferLowCurve: preferLowCurve,
+        );
+        final scoreB = scoreOptimizeReplacementCandidate(
+          functionalNeed: 'utility',
+          cardName: b['name'] as String? ?? '',
+          typeLine: b['type_line'] as String? ?? '',
+          oracleText: b['oracle_text'] as String? ?? '',
+          manaCost: b['mana_cost'] as String? ?? '',
+          popScore: (b['pop_score'] as int?) ?? 0,
+          preferredNames: normalizedPreferredNames,
+          rejectedAdditionCounts: rejectedAdditionCounts,
+          preferLowCurve: preferLowCurve,
+        );
+        final byScore = scoreB.compareTo(scoreA);
+        if (byScore != 0) return byScore;
+        final nameA = (a['name'] as String? ?? '').toLowerCase();
+        final nameB = (b['name'] as String? ?? '').toLowerCase();
+        return nameA.compareTo(nameB);
+      });
+
+    for (final candidate in rankedRemaining) {
       if (results.length >= missingCount) break;
       final name = (candidate['name'] as String).toLowerCase();
       if (usedNames.contains(name)) continue;
-      
+
       results.add({'id': candidate['id'], 'name': candidate['name']});
       usedNames.add(name);
     }
   }
-  
+
   return results;
+}
+
+bool matchesFunctionalNeed(
+  String need, {
+  required String oracleText,
+  required String typeLine,
+}) {
+  final oracle = oracleText.toLowerCase();
+  final type = typeLine.toLowerCase();
+
+  return switch (need) {
+    'draw' => oracle.contains('draw') || oracle.contains('cards'),
+    'removal' => oracle.contains('destroy') ||
+        oracle.contains('exile') ||
+        oracle.contains('counter'),
+    'wipe' => _looksLikeBoardWipe(oracleText),
+    'ramp' => (oracle.contains('add') && oracle.contains('mana')) ||
+        oracle.contains('search your library for a land'),
+    'tutor' =>
+      oracle.contains('search your library') && !oracle.contains('land'),
+    'protection' => oracle.contains('hexproof') ||
+        oracle.contains('indestructible') ||
+        oracle.contains('ward') ||
+        oracle.contains('phase out') ||
+        oracle.contains('phases out'),
+    'creature' => type.contains('creature'),
+    'artifact' => type.contains('artifact'),
+    _ => true,
+  };
+}
+
+int scoreOptimizeReplacementCandidate({
+  required String functionalNeed,
+  required String cardName,
+  required String typeLine,
+  required String oracleText,
+  required String manaCost,
+  required int popScore,
+  required Set<String> preferredNames,
+  required Map<String, int> rejectedAdditionCounts,
+  bool preferLowCurve = false,
+}) {
+  final normalizedName = cardName.trim().toLowerCase();
+  final normalizedType = typeLine.toLowerCase();
+  final normalizedOracle = oracleText.toLowerCase();
+  final estimatedCmc = _estimateManaCostCmc(manaCost);
+  final matchesNeed = matchesFunctionalNeed(
+    functionalNeed,
+    oracleText: oracleText,
+    typeLine: typeLine,
+  );
+  final needScore = matchesNeed ? 160 : (functionalNeed == 'utility' ? 40 : 0);
+  final preferredScore = preferredNames.contains(normalizedName) ? 120 : 0;
+  final popularityScore = (popScore ~/ 10).clamp(0, 90);
+  final rejectionPenalty =
+      ((rejectedAdditionCounts[normalizedName] ?? 0) * 35).clamp(0, 175);
+  final protectionBonus =
+      functionalNeed == 'protection' && normalizedOracle.contains('free')
+          ? 15
+          : 0;
+  final offNeedPenalty = !matchesNeed && functionalNeed != 'utility' ? 90 : 0;
+  final landPenalty = normalizedType.contains('land') ? 220 : 0;
+  final temporaryManaPenalty = _looksLikeTemporaryManaBurst(
+    name: cardName,
+    typeLine: typeLine,
+    oracleText: oracleText,
+  )
+      ? (functionalNeed == 'ramp' ? 70 : 160)
+      : 0;
+  final lowCurveBonus = preferLowCurve
+      ? ((4 - estimatedCmc).clamp(0, 4) * 18).round()
+      : ((3 - estimatedCmc).clamp(0, 3) * 6).round();
+  final expensiveSpellPenalty = preferLowCurve && estimatedCmc > 4
+      ? ((estimatedCmc - 4) * 20).round()
+      : 0;
+
+  return needScore +
+      preferredScore +
+      popularityScore +
+      protectionBonus +
+      lowCurveBonus -
+      rejectionPenalty -
+      offNeedPenalty -
+      landPenalty -
+      temporaryManaPenalty -
+      expensiveSpellPenalty;
+}
+
+double _estimateManaCostCmc(String manaCost) {
+  if (manaCost.trim().isEmpty) return 0;
+
+  final matches = RegExp(r'\{([^}]+)\}').allMatches(manaCost);
+  var total = 0.0;
+
+  for (final match in matches) {
+    final symbol = (match.group(1) ?? '').trim().toUpperCase();
+    if (symbol.isEmpty || symbol == 'X') continue;
+    final numeric = int.tryParse(symbol);
+    if (numeric != null) {
+      total += numeric;
+      continue;
+    }
+    total += 1;
+  }
+
+  return total;
+}
+
+Future<Map<String, int>> _loadRejectedOptimizeAdditionCounts({
+  required Pool pool,
+  required String commanderName,
+}) async {
+  if (commanderName.trim().isEmpty) return const <String, int>{};
+
+  try {
+    final result = await pool.execute(
+      Sql.named('''
+        SELECT
+          LOWER(value) AS card_name,
+          COUNT(*)::int AS reject_count
+        FROM optimization_analysis_logs oal
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+          COALESCE(oal.additions_list, '[]'::jsonb)
+        ) AS value
+        WHERE oal.operation_mode = 'optimize'
+          AND LOWER(oal.commander_name) = LOWER(@commander_name)
+          AND COALESCE(oal.decisions_reasoning->>'status_code', '0') <> '200'
+          AND oal.created_at > NOW() - INTERVAL '180 days'
+        GROUP BY LOWER(value)
+        ORDER BY reject_count DESC, card_name ASC
+        LIMIT 200
+      '''),
+      parameters: {
+        'commander_name': commanderName,
+      },
+    );
+
+    return {
+      for (final row in result)
+        (row[0] as String?) ?? '': (row[1] as int?) ?? 0,
+    }..removeWhere((key, value) => key.trim().isEmpty || value <= 0);
+  } catch (e) {
+    Log.w('Falha ao carregar penalidades historicas de optimize: $e');
+    return const <String, int>{};
+  }
 }

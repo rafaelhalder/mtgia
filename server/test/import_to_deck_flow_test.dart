@@ -73,20 +73,46 @@ void main() {
         if (authToken != null) 'Authorization': 'Bearer $authToken',
       };
 
-  Future<String> createDeck() async {
+  Future<String> createDeck({
+    String format = 'standard',
+    List<Map<String, dynamic>> cards = const [],
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/decks'),
       headers: authHeaders(withContentType: true),
       body: jsonEncode({
         'name': 'ImportToDeck ${DateTime.now().millisecondsSinceEpoch}',
-        'format': 'standard',
+        'format': format,
         'description': 'test import to deck',
-        'cards': [],
+        'cards': cards,
       }),
     );
 
     expect(response.statusCode, anyOf(200, 201), reason: response.body);
     return decodeJson(response)['id'] as String;
+  }
+
+  Future<Map<String, dynamic>?> findCardByNames(List<String> names) async {
+    for (final name in names) {
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/cards?name=${Uri.encodeQueryComponent(name)}&limit=10',
+        ),
+        headers: authHeaders(),
+      );
+      if (response.statusCode != 200) continue;
+      final data = decodeJson(response);
+      final cards = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      if (cards.isNotEmpty) return cards.first;
+    }
+    return null;
+  }
+
+  bool isCommanderEligible(Map<String, dynamic> card) {
+    final typeLine = (card['type_line'] as String? ?? '').toLowerCase();
+    final oracle = (card['oracle_text'] as String? ?? '').toLowerCase();
+    return (typeLine.contains('legendary') && typeLine.contains('creature')) ||
+        oracle.contains('can be your commander');
   }
 
   Future<void> deleteDeck(String deckId) async {
@@ -166,6 +192,55 @@ void main() {
 
         expect(response.statusCode, equals(404), reason: response.body);
         expect(decodeJson(response)['error'], isA<String>());
+      },
+      skip: skipIntegration,
+    );
+
+    test(
+      'rejects import that would exceed Commander deck size',
+      () async {
+        final commander = await findCardByNames([
+          'Talrand, Sky Summoner',
+          'Krenko, Mob Boss',
+          'Lathril, Blade of the Elves',
+          'Niv-Mizzet, Parun',
+        ]);
+        final wastes = await findCardByNames(['Wastes']);
+
+        if (commander == null ||
+            !isCommanderEligible(commander) ||
+            wastes == null) {
+          return;
+        }
+
+        final deckId = await createDeck(
+          format: 'commander',
+          cards: [
+            {
+              'card_id': commander['id'],
+              'quantity': 1,
+              'is_commander': true,
+            },
+            {
+              'card_id': wastes['id'],
+              'quantity': 99,
+              'is_commander': false,
+            },
+          ],
+        );
+        createdDeckIds.add(deckId);
+
+        final response = await http.post(
+          Uri.parse('$baseUrl/import/to-deck'),
+          headers: authHeaders(withContentType: true),
+          body: jsonEncode({
+            'deck_id': deckId,
+            'list': '1 Wastes',
+            'replace_all': false,
+          }),
+        );
+
+        expect(response.statusCode, equals(400), reason: response.body);
       },
       skip: skipIntegration,
     );

@@ -1,13 +1,12 @@
 import 'dart:io';
-import 'package:postgres/postgres.dart';
 import '../lib/database.dart';
 
 /// Migration para criar as tabelas de conhecimento do sistema ML
-/// 
+///
 /// Este sistema implementa "Imitation Learning" - aprendemos com decks
 /// bem-sucedidos (meta decks do MTGTop8, EDHREC, MTGGoldfish) para
 /// melhorar as sugestões de otimização.
-/// 
+///
 /// Tabelas criadas:
 /// 1. card_meta_insights - Conhecimento sobre cartas individuais
 /// 2. synergy_packages - Combos e sinergias de cartas
@@ -232,7 +231,7 @@ void main() async {
 
     // Criar índices para performance
     print('🔍 Criando índices...');
-    
+
     await conn.execute('''
       CREATE INDEX IF NOT EXISTS idx_card_insights_name 
         ON card_meta_insights(card_name);
@@ -272,7 +271,6 @@ void main() async {
     print('   • ml_prompt_feedback    - Feedback do usuário');
     print('   • ml_learning_state     - Estado do modelo');
     print('\n🚀 Próximo passo: Execute bin/extract_meta_insights.dart');
-
   } catch (e, st) {
     print('❌ Erro na migration: $e');
     print(st);
